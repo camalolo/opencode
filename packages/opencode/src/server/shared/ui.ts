@@ -6,6 +6,9 @@ import { ProxyUtil } from "../proxy-util"
 
 let embeddedUIPromise: Promise<Record<string, string> | null> | undefined
 
+// PERF: see serveEmbeddedUIEffect — immutable embedded asset responses by path.
+const embeddedUICache = new Map<string, ReturnType<typeof embeddedUIResponse>>()
+
 export const UI_UPSTREAM = new URL("https://app.opencode.ai")
 
 export const csp = (hash = "") =>
@@ -44,8 +47,16 @@ export function upstreamURL(path: string) {
 export function embeddedUI(disableEmbeddedWebUi: boolean) {
   if (disableEmbeddedWebUi) return Promise.resolve(null)
   return (embeddedUIPromise ??=
-    // @ts-expect-error - generated file at build time
-    import("opencode-web-ui.gen.ts").then((module) => module.default as Record<string, string>).catch(() => null))
+    // PERF: source-run servers have no bundled virtual module at the bare
+    // specifier, which silently falls back to proxying every UI asset from
+    // app.opencode.ai (200ms-2.5s per request). Try the source-local manifest
+    // first; keep the original specifier for built binaries.
+    import("../../opencode-web-ui.gen.ts")
+      .then((module) => module.default as Record<string, string>)
+      .catch(() =>
+        // @ts-expect-error - generated file at build time
+        import("opencode-web-ui.gen.ts").then((module) => module.default as Record<string, string>).catch(() => null),
+      ))
 }
 
 function notFound() {
@@ -69,8 +80,18 @@ export function serveEmbeddedUIEffect(
   const file = embeddedWebUI[requestPath.replace(/^\//, "")] ?? embeddedWebUI["index.html"] ?? null
   if (!file) return Effect.succeed(notFound())
 
+  // PERF: embedded assets are immutable for the process lifetime; cache the
+  // constructed response so repeat fetches (web UI re-requests sprites/fonts
+  // per view) serve from memory instead of re-reading from disk each time.
+  const cached = embeddedUICache.get(requestPath)
+  if (cached) return Effect.succeed(cached)
+
   return fs.readFile(file).pipe(
-    Effect.map((body) => embeddedUIResponse(file, body)),
+    Effect.map((body) => {
+      const response = embeddedUIResponse(file, body)
+      if (embeddedUICache.size < 512) embeddedUICache.set(requestPath, response)
+      return response
+    }),
     Effect.catchReason("PlatformError", "NotFound", () => Effect.succeed(notFound())),
   )
 }
