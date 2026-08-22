@@ -179,6 +179,7 @@ type ServerSDKBase = {
     listen: ServerEventEmitter["listen"]
     start: () => Promise<void> | undefined
   }
+  onReconnect: (listener: () => void) => () => void
   createClient: (
     opts: Omit<Parameters<typeof createSdkForServer>[0], "server" | "fetch">,
   ) => ReturnType<typeof createSdkForServer>
@@ -218,6 +219,12 @@ function createServerSdkContextBase(server: ServerConnection.Any, scope: ServerS
   const FLUSH_FRAME_MS = 16
   const STREAM_YIELD_MS = 8
   const RECONNECT_DELAY_MS = 250
+  // Both event protocols heartbeat every 10 seconds. If nothing arrives for
+  // 3.5 beats the stream is dead (phone sleep/wake, silent network loss): the
+  // pending read never settles, so the retry loop below never fires on its
+  // own. A side-channel timer aborts the attempt to force a reconnect.
+  const HEARTBEAT_IDLE_MS = 35_000
+  const STREAM_CHECK_MS = 5_000
 
   let queue: Queued[] = []
   let buffer: Queued[] = []
@@ -256,10 +263,20 @@ function createServerSdkContextBase(server: ServerConnection.Any, scope: ServerS
   let run: Promise<void> | undefined
   let started = false
   let generation = 0
+  let everConnected = false
+  let lastEventAt = 0
+  let streamCheck: ReturnType<typeof setInterval> | undefined
+  const reconnectListeners = new Set<() => void>()
+
+  const abortStaleStream = () => {
+    if (!started || !attempt || lastEventAt === 0) return
+    if (Date.now() - lastEventAt > HEARTBEAT_IDLE_MS) attempt.abort()
+  }
 
   const start = () => {
     if (started) return run
     started = true
+    if (streamCheck === undefined) streamCheck = setInterval(abortStaleStream, STREAM_CHECK_MS)
     const active = ++generation
     const previous = run
     const current = (async () => {
@@ -267,6 +284,10 @@ function createServerSdkContextBase(server: ServerConnection.Any, scope: ServerS
       // oxlint-disable-next-line no-unmodified-loop-condition -- `started` is set to false by stop() which also aborts; both flags are checked to allow graceful exit
       while (!abort.signal.aborted && started && generation === active) {
         attempt = new AbortController()
+        // Measure silence within this attempt only; otherwise a slow first
+        // event on a fresh connection looks like a stale stream and gets
+        // aborted by the checker before it can ever deliver.
+        lastEventAt = Date.now()
         const onAbort = () => {
           attempt?.abort()
         }
@@ -278,8 +299,19 @@ function createServerSdkContextBase(server: ServerConnection.Any, scope: ServerS
               ? (await eventSdk.global.event({ signal: attempt.signal })).stream
               : eventApi.event.subscribe({ signal: attempt.signal })
           let yielded = Date.now()
+          // Events published while disconnected are gone for good: the server
+          // keeps no replay buffer and sends no event ids. The first event of
+          // any attempt after the first proves the stream is live again; let
+          // listeners refetch server state to close the gap.
+          let pendingReconnect = everConnected
           for await (const event of events) {
             streamErrorLogged = false
+            lastEventAt = Date.now()
+            everConnected = true
+            if (pendingReconnect) {
+              pendingReconnect = false
+              for (const listener of reconnectListeners) listener()
+            }
             const legacy = "payload" in event
             if (legacy && event.payload.type === "sync") continue
             const directory = legacy ? (event.directory ?? "global") : (event.location?.directory ?? "global")
@@ -320,11 +352,20 @@ function createServerSdkContextBase(server: ServerConnection.Any, scope: ServerS
     started = false
     generation++
     attempt?.abort()
+    if (streamCheck !== undefined) {
+      clearInterval(streamCheck)
+      streamCheck = undefined
+    }
   }
 
   onMount(() => {
     makeEventListener(window, "pagehide", stop)
     makeEventListener(window, "pageshow", (event) => resumeStreamAfterPageShow(event, start))
+    // Timers stay frozen until after visibilitychange on wake; check at once
+    // so a stream that died mid-freeze reconnects immediately, not 35s later.
+    makeEventListener(document, "visibilitychange", () => {
+      if (document.visibilityState === "visible") abortStaleStream()
+    })
   })
 
   onCleanup(() => {
@@ -361,6 +402,10 @@ function createServerSdkContextBase(server: ServerConnection.Any, scope: ServerS
       on: emitter.on.bind(emitter),
       listen: emitter.listen.bind(emitter),
       start,
+    },
+    onReconnect: (listener: () => void) => {
+      reconnectListeners.add(listener)
+      return () => reconnectListeners.delete(listener)
     },
     createClient(opts: Omit<Parameters<typeof createSdkForServer>[0], "server" | "fetch">) {
       return createSdkForServer({

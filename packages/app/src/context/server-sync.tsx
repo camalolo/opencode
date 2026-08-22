@@ -290,6 +290,15 @@ export function createServerSyncContextInner(serverSDK: ServerSDK) {
 
   const queryClient = useQueryClient()
   const homeSessions = createHomeSessionIndexCache(queryClient, ServerConnection.key(serverSDK.server))
+  // SSE has no server-side replay, so events published while the stream was
+  // down are lost (all refetch triggers are off by design). The stream context
+  // aborts dead connections and reconnects on its own; refetch every query for
+  // this server when that happens to close the gap without a page reload.
+  onCleanup(
+    serverSDK.onReconnect(() => {
+      void queryClient.invalidateQueries({ queryKey: [serverSDK.scope] })
+    }),
+  )
   const refreshProviders = () =>
     queryClient.refetchQueries({
       predicate: (query) => query.queryKey[0] === serverSDK.scope && query.queryKey[2] === "providers",
