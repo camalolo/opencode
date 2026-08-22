@@ -37,7 +37,18 @@ export const providerHandlers = HttpApiBuilder.group(InstanceHttpApi, "provider"
     const provider = yield* Provider.Service
     const svc = yield* ProviderAuth.Service
 
-    const list = Effect.fn("ProviderHttpApi.list")(function* () {
+    // PERF: the provider list is expensive to build (models.dev catalog transform +
+    // deep clone + per-model schema validation) and to serialize (5MB+ JSON).
+    // All three inputs are reference-stable between reloads, so we memoize the
+    // serialized payload on input identity and serve raw bytes on cache hits.
+    let listCache: {
+      config: unknown
+      all: unknown
+      connected: unknown
+      json: Uint8Array
+    } | undefined
+
+    const computeList = Effect.fn("ProviderHttpApi.list.compute")(function* () {
       const config = yield* cfg.get()
       const all = yield* ModelsDev.Service.use((s) => s.get())
       const disabled = new Set(config.disabled_providers ?? [])
@@ -51,11 +62,29 @@ export const providerHandlers = HttpApiBuilder.group(InstanceHttpApi, "provider"
         mapValues(filtered, (item) => Provider.fromModelsDevProvider(item)),
         connected,
       )
-      return {
+      const result = {
         all: Object.values(providers).map(Provider.toPublicInfo),
         default: Provider.defaultModelIDs(providers),
         connected: Object.keys(connected),
       }
+      const json = new TextEncoder().encode(JSON.stringify(result))
+      listCache = { config, all, connected, json }
+      return json
+    })
+
+    const list = Effect.fn("ProviderHttpApi.list")(function* () {
+      const config = yield* cfg.get()
+      const all = yield* ModelsDev.Service.use((s) => s.get())
+      const connected = yield* provider.list()
+      const hit =
+        listCache !== undefined &&
+        listCache.config === config &&
+        listCache.all === all &&
+        listCache.connected === connected
+          ? listCache.json
+          : undefined
+      const json = hit ?? (yield* computeList())
+      return HttpServerResponse.uint8Array(json, { contentType: "application/json" })
     })
 
     const auth = Effect.fn("ProviderHttpApi.auth")(function* () {
@@ -105,7 +134,7 @@ export const providerHandlers = HttpApiBuilder.group(InstanceHttpApi, "provider"
     })
 
     return handlers
-      .handle("list", list)
+      .handleRaw("list", list)
       .handle("auth", auth)
       .handleRaw("authorize", authorizeRaw)
       .handle("callback", callback)
