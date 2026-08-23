@@ -1,0 +1,11 @@
+[Unit]
+Description=OpenCode OTLP trace collector (spans -> ~/.local/share/opencode/log/traces.jsonl)
+After=network.target
+
+[Service]
+ExecStart=/usr/bin/env node %h/Sources/opencode/tools/profiling/otlp-collector.mjs
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target
