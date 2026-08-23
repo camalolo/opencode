@@ -588,6 +588,24 @@ const layer = Layer.effect(
 
           return { info: msg, parts: [part] }
         }),
+      ).pipe(
+        // Without this, pre-spawn and spawn defects (missing cwd, permission
+        // denied, bad interpreter, ...) reach the HTTP boundary as opaque
+        // "check server logs" 500s. Attach the command context so the failure
+        // explains itself; the boundary passes NamedError messages through.
+        Effect.catchCause((cause) =>
+          Effect.gen(function* () {
+            if (Cause.hasInterruptsOnly(cause)) return yield* Effect.failCause(cause)
+            const message = shellFailureMessage(input.command, cause)
+            yield* events.publish(Session.Event.Error, {
+              sessionID: input.sessionID,
+              error: new NamedError.Unknown({ message }).toObject(),
+            })
+            return yield* Effect.failCause(
+              Cause.die(new NamedError.Unknown({ message }, { cause: Cause.squash(cause) })),
+            )
+          }),
+        ),
       )
     })
 
@@ -1532,6 +1550,14 @@ export const ShellInput = Schema.Struct({
   command: Schema.String,
 })
 export type ShellInput = Schema.Schema.Type<typeof ShellInput>
+
+function shellFailureMessage(command: string, cause: Cause.Cause<unknown>) {
+  const detail = String(Cause.squash(cause) ?? "")
+  const hint = /NotFound: FileSystem\.access/.test(detail)
+    ? " The session's working directory no longer exists — start a new session in an existing directory."
+    : ""
+  return `Failed to run shell command \`${command.slice(0, 200)}\`: ${detail}${hint}`
+}
 
 export const CommandInput = Schema.Struct({
   messageID: Schema.optional(MessageID),

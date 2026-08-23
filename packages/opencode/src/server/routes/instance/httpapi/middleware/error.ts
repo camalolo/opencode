@@ -29,13 +29,18 @@ export const errorLayer = HttpRouter.middleware<{ handles: unknown }>()((effect)
 
       return Effect.logError("failed", { ref, error, cause: Cause.pretty(cause) }).pipe(
         Effect.as(
-          HttpServerResponse.jsonUnsafe(
-            new NamedError.Unknown({
-              message: "Unexpected server error. Check server logs for details.",
-              ref,
-            }).toObject(),
-            { status: 500 },
-          ),
+          // NamedError defects carry a user-facing message already (e.g. shell
+          // failures with command context) — pass it through instead of hiding
+          // it behind "check server logs".
+          error instanceof NamedError
+            ? HttpServerResponse.jsonUnsafe(error.toObject(), { status: 500 })
+            : HttpServerResponse.jsonUnsafe(
+                new NamedError.Unknown({
+                  message: "Unexpected server error. Check server logs for details.",
+                  ref,
+                }).toObject(),
+                { status: 500 },
+              ),
         ),
       )
     }),
