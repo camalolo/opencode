@@ -32,7 +32,7 @@ import { trimSessions } from "./global-sync/session-trim"
 import type { ProjectMeta } from "./global-sync/types"
 import { SESSION_RECENT_LIMIT } from "./global-sync/types"
 import { formatServerError } from "@/utils/server-errors"
-import { queryOptions, useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/solid-query"
+import { queryOptions, useMutation, useQueries, useQuery, useQueryClient, type QueryClient } from "@tanstack/solid-query"
 import type { SolidQueryOptions } from "@tanstack/solid-query"
 import { createRefreshQueue } from "./global-sync/queue"
 import { directoryKey } from "./global-sync/utils"
@@ -202,7 +202,7 @@ function makeQueryOptionsApi(
 }
 export type QueryOptionsApi = ReturnType<typeof makeQueryOptionsApi>
 
-export function createServerSyncContextInner(serverSDK: ServerSDK) {
+export function createServerSyncContextInner(serverSDK: ServerSDK, queryClientOverride?: QueryClient) {
   const language = useLanguage()
   const owner = getOwner()
   if (!owner) throw new Error("ServerSync must be created within owner")
@@ -288,7 +288,7 @@ export function createServerSyncContextInner(serverSDK: ServerSDK) {
     },
   })
 
-  const queryClient = useQueryClient()
+  const queryClient = queryClientOverride ?? useQueryClient()
   const homeSessions = createHomeSessionIndexCache(queryClient, ServerConnection.key(serverSDK.server))
   // SSE has no server-side replay, so events published while the stream was
   // down are lost (all refetch triggers are off by design). The stream context
@@ -733,8 +733,8 @@ export function createServerSyncContextInner(serverSDK: ServerSDK) {
   }
 }
 
-export function createServerSyncContext(serverSDK: ServerSDK) {
-  const inner = createServerSyncContextInner(serverSDK)
+export function createServerSyncContext(serverSDK: ServerSDK, queryClientOverride?: QueryClient) {
+  const inner = createServerSyncContextInner(serverSDK, queryClientOverride)
   return Object.assign(inner, {
     ensureDirSyncContext: createRefCountMap(
       (dir) => createDirSyncContext(dir, inner, serverSDK),

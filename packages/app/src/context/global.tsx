@@ -108,7 +108,11 @@ function createServerCtx(
     },
   })
   const sdk = createServerSdkContext(conn, scope)
-  const sync = createServerSyncContext(sdk)
+  // Pair the sync context with this server's own query client: the home and
+  // settings layouts provide `queryClient` around their content, and the event
+  // overlay (homeSessions cache) must read/write the same cache those queries
+  // live in — otherwise live session events are silently dropped.
+  const sync = createServerSyncContext(sdk, queryClient)
 
   function enrich(project: { worktree: string; expanded: boolean }) {
     const [childStore] = sync.child(project.worktree, { bootstrap: false })

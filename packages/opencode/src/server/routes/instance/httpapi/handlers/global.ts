@@ -1,11 +1,11 @@
 import { Config } from "@/config/config"
-import { GlobalBus, type GlobalEvent as GlobalBusEvent } from "@/bus/global"
+import { GlobalBus, replay as globalReplay, type GlobalEvent as GlobalBusEvent } from "@/bus/global"
 import { EffectBridge } from "@/effect/bridge"
 import { EventV2 } from "@opencode-ai/core/event"
 import { Installation } from "@/installation"
 import { disposeAllInstancesAndEmitGlobalDisposed } from "@/server/global-lifecycle"
 import { InstallationVersion } from "@opencode-ai/core/installation/version"
-import { Effect, Queue, Schema } from "effect"
+import { Effect, Option, Queue, Schema } from "effect"
 import * as Stream from "effect/Stream"
 import { HttpServerRequest, HttpServerResponse } from "effect/unstable/http"
 import { HttpApiBuilder } from "effect/unstable/httpapi"
@@ -14,10 +14,12 @@ import { RootHttpApi } from "../api"
 import { GlobalUpgradeInput } from "../groups/global"
 
 function eventData(data: unknown): Sse.Event {
+  const payload = (data as { payload?: { id?: string } } | undefined)?.payload
   return {
     _tag: "Event",
     event: "message",
-    id: undefined,
+    // real event ids so spec-compliant EventSource clients resume too
+    id: payload?.id,
     data: JSON.stringify(data),
   }
 }
@@ -33,20 +35,52 @@ function parseBody(body: string) {
 function eventResponse() {
   return Effect.gen(function* () {
     yield* Effect.logInfo("global event connected")
-    const events = Stream.callback<GlobalBusEvent>((queue) => {
-      const handler = (event: GlobalBusEvent) => Queue.offerUnsafe(queue, event)
-      return Effect.acquireRelease(
-        Effect.sync(() => GlobalBus.on("event", handler)),
-        () => Effect.sync(() => GlobalBus.off("event", handler)),
-      )
-    })
+    // Subscribe BEFORE reading the replay buffer: events racing in during the
+    // replay snapshot land in the queue and are filtered against the prelude's
+    // newest id, so every event after the cursor is delivered exactly once.
+    const queue = yield* Queue.unbounded<GlobalBusEvent>()
+    const listener = (event: GlobalBusEvent) => Queue.offerUnsafe(queue, event)
+    yield* Effect.acquireRelease(
+      Effect.sync(() => GlobalBus.on("event", listener)),
+      () => Effect.sync(() => GlobalBus.off("event", listener)),
+    )
+    // Last-Event-ID resume (header preferred, ?since= for clients that
+    // cannot set headers). A valid cursor replays the missed events after a
+    // server.resumed marker so the client skips its full-state refetch.
+    const request = yield* HttpServerRequest.HttpServerRequest
+    const cursor =
+      request.headers["last-event-id"] ??
+      Option.getOrElse(HttpServerRequest.toURL(request), () => new URL(request.url, "http://localhost")).searchParams.get("since") ??
+      undefined
+    const resume = cursor ? globalReplay(cursor) : undefined
+    const prelude: GlobalBusEvent[] = []
+    if (resume && !resume.overflow) {
+      prelude.push({ payload: { type: "server.resumed", properties: { replayed: resume.events.length } } })
+      for (const missed of resume.events) prelude.push({ directory: missed.directory, payload: missed.payload })
+    } else if (resume?.overflow) {
+      // cursor older than the buffer floor: replay would be partial, the
+      // client must resync
+      prelude.push({ payload: { type: "server.snapshot-required", properties: {} } })
+    } else {
+      prelude.push({ payload: { id: EventV2.ID.create(), type: "server.connected", properties: {} } })
+    }
+    // newest id already covered by the prelude; queue events at or below it
+    // are the same bus emissions replayed above
+    const lastPreludeId = resume && !resume.overflow && resume.events.length > 0
+      ? (resume.events[resume.events.length - 1]!.payload.id as string)
+      : cursor
+    const events = Stream.fromQueue(queue).pipe(
+      Stream.filter(
+        (event) => typeof event.payload?.id !== "string" || event.payload.id > (lastPreludeId ?? ""),
+      ),
+    )
     const heartbeat = Stream.tick("10 seconds").pipe(
       Stream.drop(1),
       Stream.map(() => ({ payload: { id: EventV2.ID.create(), type: "server.heartbeat", properties: {} } })),
     )
 
     return HttpServerResponse.stream(
-      Stream.make({ payload: { id: EventV2.ID.create(), type: "server.connected", properties: {} } }).pipe(
+      Stream.fromIterable(prelude).pipe(
         Stream.concat(events.pipe(Stream.merge(heartbeat, { haltStrategy: "left" }))),
         Stream.map(eventData),
         Stream.pipeThroughChannel(Sse.encode()),

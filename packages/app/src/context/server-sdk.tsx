@@ -220,10 +220,13 @@ function createServerSdkContextBase(server: ServerConnection.Any, scope: ServerS
   const STREAM_YIELD_MS = 8
   const RECONNECT_DELAY_MS = 250
   // Both event protocols heartbeat every 10 seconds. If nothing arrives for
-  // 3.5 beats the stream is dead (phone sleep/wake, silent network loss): the
+  // ~2.5 beats the stream is dead (phone sleep/wake, silent network loss): the
   // pending read never settles, so the retry loop below never fires on its
   // own. A side-channel timer aborts the attempt to force a reconnect.
-  const HEARTBEAT_IDLE_MS = 35_000
+  // Reconnects are cheap when the server supports Last-Event-ID resume (it
+  // replays the missed events instead of forcing a full refetch), so a
+  // conservative margin matters less than fast recovery on flaky networks.
+  const HEARTBEAT_IDLE_MS = 25_000
   const STREAM_CHECK_MS = 5_000
 
   let queue: Queued[] = []
@@ -265,12 +268,66 @@ function createServerSdkContextBase(server: ServerConnection.Any, scope: ServerS
   let generation = 0
   let everConnected = false
   let lastEventAt = 0
+  // cursor of the last applied v1 event (evt_ ids are monotonic, so the
+  // server can replay "everything after" it on reconnect via Last-Event-ID)
+  let lastEventId: string | undefined
   let streamCheck: ReturnType<typeof setInterval> | undefined
   const reconnectListeners = new Set<() => void>()
 
   const abortStaleStream = () => {
     if (!started || !attempt || lastEventAt === 0) return
     if (Date.now() - lastEventAt > HEARTBEAT_IDLE_MS) attempt.abort()
+  }
+
+  // Browsers throttle timers in background tabs and phones freeze the page
+  // on lock: on those wakeups the socket is usually half-dead while
+  // lastEventAt still looks recent to the stalled checker. Cut detection
+  // short by aborting immediately when the page becomes visible again and
+  // the stream has been quiet for more than one heartbeat interval.
+  if (typeof document !== "undefined") {
+    const onVisible = () => {
+      if (document.visibilityState !== "visible") return
+      if (started && attempt && lastEventAt > 0 && Date.now() - lastEventAt > 10_000) attempt.abort()
+    }
+    document.addEventListener("visibilitychange", onVisible)
+    abort.signal.addEventListener("abort", () => document.removeEventListener("visibilitychange", onVisible))
+  }
+
+  // v1 event stream via a raw reader instead of the generated SDK: the SDK
+  // cannot send Last-Event-ID, and resume needs it. Yields the same
+  // { directory?, payload } objects the SDK stream produced.
+  async function* v1EventStream(input: { signal: AbortSignal }) {
+    const headers: Record<string, string> = {}
+    if (lastEventId) headers["last-event-id"] = lastEventId
+    const doFetch = eventFetch ?? globalThis.fetch
+    const base = server.http.url.endsWith("/") ? server.http.url.slice(0, -1) : server.http.url
+    const response = await doFetch(`${base}/global/event`, { headers, signal: input.signal } as RequestInit)
+    if (!response.ok || !response.body) throw new Error(`event stream HTTP ${response.status}`)
+    const reader = response.body.getReader()
+    const decoder = new TextDecoder()
+    let carry = ""
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      carry += decoder.decode(value, { stream: true })
+      let boundary = carry.indexOf("\n\n")
+      while (boundary !== -1) {
+        const frame = carry.slice(0, boundary)
+        carry = carry.slice(boundary + 2)
+        boundary = carry.indexOf("\n\n")
+        for (const rawLine of frame.split("\n")) {
+          const line = rawLine.endsWith("\r") ? rawLine.slice(0, -1) : rawLine
+          if (!line.startsWith("data:")) continue
+          const text = line.slice(5).trim()
+          if (!text) continue
+          try {
+            yield JSON.parse(text) as { directory?: string; payload: Event }
+          } catch {
+            // skip malformed frames; the next heartbeat proves liveness
+          }
+        }
+      }
+    }
   }
 
   const start = () => {
@@ -296,26 +353,38 @@ function createServerSdkContextBase(server: ServerConnection.Any, scope: ServerS
           const kind = await protocol
           const events =
             kind === "v1"
-              ? (await eventSdk.global.event({ signal: attempt.signal })).stream
+              ? v1EventStream({ signal: attempt.signal })
               : eventApi.event.subscribe({ signal: attempt.signal })
           let yielded = Date.now()
-          // Events published while disconnected are gone for good: the server
-          // keeps no replay buffer and sends no event ids. The first event of
-          // any attempt after the first proves the stream is live again; let
-          // listeners refetch server state to close the gap.
+          // A server with Last-Event-ID resume answers a cursor-bearing
+          // reconnect with server.resumed + the missed events, so state
+          // catches up from the replay and the full-refetch listeners can be
+          // skipped. Any other first event (old server, snapshot-required,
+          // fresh connect) falls through to the listener path: the first event
+          // proves the stream is live and listeners close the gap.
           let pendingReconnect = everConnected
           for await (const event of events) {
             streamErrorLogged = false
             lastEventAt = Date.now()
             everConnected = true
+            const legacy = "payload" in event
+            const payload = legacy ? (event.payload as Event) : adaptServerEvent(event)
+            const marker = legacy ? (payload.type as string) : undefined
+            if (marker === "server.resumed") {
+              pendingReconnect = false
+              continue
+            }
+            if (marker === "server.snapshot-required") {
+              for (const listener of reconnectListeners) listener()
+              continue
+            }
             if (pendingReconnect) {
               pendingReconnect = false
               for (const listener of reconnectListeners) listener()
             }
-            const legacy = "payload" in event
-            if (legacy && event.payload.type === "sync") continue
+            if (legacy && typeof (payload as { id?: unknown }).id === "string") lastEventId = (payload as { id: string }).id
+            if (legacy && payload.type === "sync") continue
             const directory = legacy ? (event.directory ?? "global") : (event.location?.directory ?? "global")
-            const payload = legacy ? (event.payload as Event) : adaptServerEvent(event)
             if (enqueueServerEvent(queue, { directory, payload })) schedule()
 
             if (Date.now() - yielded < STREAM_YIELD_MS) continue

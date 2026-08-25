@@ -1,4 +1,6 @@
+import { QueryClientProvider } from "@tanstack/solid-query"
 import { ScrollView } from "@opencode-ai/ui/scroll-view"
+import { Show } from "solid-js"
 import { createHomeController } from "./home/home-controller"
 import { createHomeProjectsController } from "./home/home-projects-controller"
 import { HomeUtilityNav } from "./home/home-projects-view"
@@ -10,9 +12,26 @@ import { HomeSessions } from "./home/home-sessions"
 
 export function NewHome() {
   const home = createHomeController()
-  const projects = createHomeProjectsController(home)
-  const sessions = createHomeSessionsController(home)
-  const search = createHomeSessionSearchController(home, sessions)
+  // The home queries must live in the focused server's own query client: the
+  // per-server sync context applies live session events into that client, and
+  // the root client would never observe them (state silently dropped). The
+  // per-server ctx is referentially stable, so this only remounts when the
+  // focused server actually changes.
+  return (
+    <Show when={home.server.focusedContext()} keyed>
+      {(ctx) => (
+        <QueryClientProvider client={ctx.queryClient}>
+          <HomeSurface home={home} />
+        </QueryClientProvider>
+      )}
+    </Show>
+  )
+}
+
+function HomeSurface(props: { home: ReturnType<typeof createHomeController> }) {
+  const projects = createHomeProjectsController(props.home)
+  const sessions = createHomeSessionsController(props.home)
+  const search = createHomeSessionSearchController(props.home, sessions)
   const scroll = createHomeScrollController(sessions.data.groups)
   return (
     <div
