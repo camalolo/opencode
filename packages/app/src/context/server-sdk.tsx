@@ -433,8 +433,22 @@ function createServerSdkContextBase(server: ServerConnection.Any, scope: ServerS
     // Timers stay frozen until after visibilitychange on wake; check at once
     // so a stream that died mid-freeze reconnects immediately, not 35s later.
     makeEventListener(document, "visibilitychange", () => {
-      if (document.visibilityState === "visible") abortStaleStream()
+      if (document.visibilityState !== "visible") return
+      // OS sleep and screen locks stop the stream via pagehide while the
+      // matching wake pageshow never carries persisted=true (mobile freeze
+      // paths). start() is idempotent, so revive unconditionally or the page
+      // stays frozen at an old checkpoint until a manual reload.
+      void start()
+      abortStaleStream()
     })
+    // Page Lifecycle API: a tab frozen while visible fires `resume` on
+    // restore without any visibilitychange — the other revival gap.
+    const onLifecycleResume = () => {
+      void start()
+      abortStaleStream()
+    }
+    document.addEventListener("resume", onLifecycleResume)
+    onCleanup(() => document.removeEventListener("resume", onLifecycleResume))
   })
 
   onCleanup(() => {
