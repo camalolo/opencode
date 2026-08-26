@@ -1,5 +1,5 @@
 import { Config } from "@/config/config"
-import { GlobalBus, replay as globalReplay, type GlobalEvent as GlobalBusEvent } from "@/bus/global"
+import { GlobalBus, bootId as globalBootId, replay as globalReplay, type GlobalEvent as GlobalBusEvent } from "@/bus/global"
 import { EffectBridge } from "@/effect/bridge"
 import { EventV2 } from "@opencode-ai/core/event"
 import { Installation } from "@/installation"
@@ -55,14 +55,14 @@ function eventResponse() {
     const resume = cursor ? globalReplay(cursor) : undefined
     const prelude: GlobalBusEvent[] = []
     if (resume && !resume.overflow) {
-      prelude.push({ payload: { type: "server.resumed", properties: { replayed: resume.events.length } } })
+      prelude.push({ payload: { type: "server.resumed", properties: { boot: globalBootId, replayed: resume.events.length } } })
       for (const missed of resume.events) prelude.push({ directory: missed.directory, payload: missed.payload })
     } else if (resume?.overflow) {
       // cursor older than the buffer floor: replay would be partial, the
       // client must resync
-      prelude.push({ payload: { type: "server.snapshot-required", properties: {} } })
+      prelude.push({ payload: { type: "server.snapshot-required", properties: { boot: globalBootId } } })
     } else {
-      prelude.push({ payload: { id: EventV2.ID.create(), type: "server.connected", properties: {} } })
+      prelude.push({ payload: { id: EventV2.ID.create(), type: "server.connected", properties: { boot: globalBootId } } })
     }
     // newest id already covered by the prelude; queue events at or below it
     // are the same bus emissions replayed above

@@ -271,6 +271,10 @@ function createServerSdkContextBase(server: ServerConnection.Any, scope: ServerS
   // cursor of the last applied v1 event (evt_ ids are monotonic, so the
   // server can replay "everything after" it on reconnect via Last-Event-ID)
   let lastEventId: string | undefined
+  // boot id from the server's connection markers: a change means the server
+  // restarted since the last event was seen, so its ring cannot vouch for
+  // the gap and a resume must fall back to a full resync
+  let lastBoot: string | undefined
   let streamCheck: ReturnType<typeof setInterval> | undefined
   const reconnectListeners = new Set<() => void>()
 
@@ -370,6 +374,18 @@ function createServerSdkContextBase(server: ServerConnection.Any, scope: ServerS
             const legacy = "payload" in event
             const payload = legacy ? (event.payload as Event) : adaptServerEvent(event)
             const marker = legacy ? (payload.type as string) : undefined
+            const markerBoot = legacy ? (payload.properties as { boot?: unknown } | undefined)?.boot : undefined
+            if (typeof markerBoot === "string") {
+              const bootChanged = lastBoot !== undefined && lastBoot !== markerBoot
+              lastBoot = markerBoot
+              // replayed events after a restart are still valid, but they say
+              // nothing about what happened between disconnect and restart:
+              // resync alongside the replay
+              if (bootChanged && pendingReconnect) {
+                pendingReconnect = false
+                for (const listener of reconnectListeners) listener()
+              }
+            }
             if (marker === "server.resumed") {
               pendingReconnect = false
               continue

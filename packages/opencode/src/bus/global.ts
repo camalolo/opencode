@@ -16,6 +16,12 @@ export type GlobalEvent = {
 const RING_MAX = Number(process.env.OPENCODE_EVENT_RING_MAX ?? 4096)
 const RING_BYTES = 8 * 1024 * 1024
 
+// Boot identity: the ring dies with the process, so a cursor issued by a
+// previous process can never be validated against it. Connection markers
+// carry this id; a client whose last-seen boot differs must resync instead
+// of trusting a replayed:0 resume after a server restart.
+export const bootId = Identifier.create("evt", "ascending")
+
 const ring: GlobalEvent[] = []
 let ringBytes = 0
 // ID of the most recently evicted entry: a cursor at or below it can no

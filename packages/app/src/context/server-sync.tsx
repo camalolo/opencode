@@ -169,8 +169,19 @@ export function seedActiveSessionStatuses(
   session: Pick<ServerSession, "data" | "set">,
   active: SessionActiveOutput | Record<string, SessionStatus>,
 ) {
+  // reconcile, not just seed: a run that ended while the event stream was
+  // down (server restart, missed idle event) would otherwise leave a busy
+  // status — and its "thinking" spinner — stuck on a finished chat forever
+  session.set(
+    "session_status",
+    produce((draft) => {
+      for (const sessionID of Object.keys(draft)) {
+        if (active[sessionID]) continue
+        delete draft[sessionID]
+      }
+    }),
+  )
   for (const sessionID of Object.keys(active)) {
-    if (session.data.session_status[sessionID] !== undefined) continue
     const status = active[sessionID]
     session.set("session_status", sessionID, status?.type === "running" ? { type: "busy" } : status)
   }
