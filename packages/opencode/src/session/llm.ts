@@ -59,6 +59,38 @@ export class Service extends Context.Service<Service, Interface>()("@opencode/LL
 
 export const use = serviceUse(Service)
 
+// A provider stream can stall silently (dead TCP, wedged upstream): next()
+// then never settles and the session hangs busy forever — no error, no close,
+// spinner until restart. Race each pull against a stall timer so the failure
+// flows into the processor's retry/halt path. Chunks reset the timer, so
+// legitimately long turns with flowing events are never cut.
+const STALL_MS = Number(process.env.OPENCODE_LLM_STALL_MS ?? 300_000)
+
+function stallGuard<T>(iterable: AsyncIterable<T>): AsyncIterable<T> {
+  return {
+    [Symbol.asyncIterator]() {
+      const iter = iterable[Symbol.asyncIterator]()
+      return {
+        async next() {
+          let timer: ReturnType<typeof setTimeout> | undefined
+          try {
+            return await Promise.race([
+              iter.next(),
+              new Promise<never>((_, reject) => {
+                timer = setTimeout(() => reject(new Error(`LLM stream stalled: no events for ${STALL_MS}ms`)), STALL_MS)
+              }),
+            ])
+          } finally {
+            clearTimeout(timer)
+          }
+        },
+        return: (value) => iter.return?.(value) ?? Promise.resolve({ done: true as const, value }),
+        throw: (reason) => iter.throw?.(reason) ?? Promise.reject(reason),
+      }
+    },
+  }
+}
+
 const live: Layer.Layer<
   Service,
   never,
@@ -370,7 +402,7 @@ const live: Layer.Layer<
             // Adapter seam: both runtimes expose the same LLMEvent stream. Native
             // already returns one; AI SDK streams are converted here.
             const state = LLMAISDK.adapterState()
-            return Stream.fromAsyncIterable(result.result.fullStream, (e) =>
+            return Stream.fromAsyncIterable(stallGuard(result.result.fullStream), (e) =>
               e instanceof Error ? e : new Error(String(e)),
             ).pipe(
               Stream.mapEffect((event) => LLMAISDK.toLLMEvents(state, event)),
