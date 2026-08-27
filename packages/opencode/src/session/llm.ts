@@ -70,7 +70,13 @@ export const use = serviceUse(Service)
 // tool-call and rearms at the next sign of life (result/error/new step).
 // Tool windows are NOT policed by default — set OPENCODE_LLM_TOOL_STALL_MS
 // (0 disables) to add an explicit ceiling on silent tool runs.
-const STALL_MS = Number(process.env.OPENCODE_LLM_STALL_MS ?? 300_000)
+// Tuned from production evidence (zai/glm-5.3, 2026-08-27): legit legs can sit
+// radio-silent for minutes during non-streamed reasoning — a parallel swarm
+// lost real turns to a 300s kill while sibling streams flowed fine. Silence
+// alone therefore defaults to a generous 15min ceiling (env-tunable); true
+// dead sockets (see the 2026-08-26 1h busy-hang) still fail into the retry/halt
+// path far sooner than "forever". Set 0 to disable entirely.
+const STALL_MS = Number(process.env.OPENCODE_LLM_STALL_MS ?? 900_000)
 const STALL_TOOL_MS = Number(process.env.OPENCODE_LLM_TOOL_STALL_MS ?? 0)
 const STALL_RESUME = new Set(["tool-result", "tool-error", "step-start", "step-finish", "finish"])
 
@@ -83,7 +89,16 @@ function stallGuard<T extends { type?: string }>(iterable: AsyncIterable<T>): As
       return {
         async next() {
           let timer: ReturnType<typeof setTimeout> | undefined
+          let quietTimer: ReturnType<typeof setInterval> | undefined
           const ms = limit()
+          // Progressive visibility: log growing silences so a future kill can
+          // be told apart from a recovered slow-think leg.
+          if (ms > 0) {
+            const startedAt = Date.now()
+            quietTimer = setInterval(() => {
+              if (!paused) console.warn(`[llm] stream silent ${Math.round((Date.now() - startedAt) / 1000)}s (stall ceiling ${ms}ms)`)
+            }, 30_000)
+          }
           try {
             // ms <= 0 disables the watchdog for that window entirely
             const item =
@@ -105,6 +120,7 @@ function stallGuard<T extends { type?: string }>(iterable: AsyncIterable<T>): As
             return item
           } finally {
             clearTimeout(timer)
+            clearInterval(quietTimer)
           }
         },
         return: (value) => iter.return?.(value) ?? Promise.resolve({ done: true as const, value }),
