@@ -82,16 +82,21 @@ function stallGuard<T extends { type?: string }>(iterable: AsyncIterable<T>): As
       return {
         async next() {
           let timer: ReturnType<typeof setTimeout> | undefined
+          const ms = limit()
           try {
-            const item = await Promise.race([
-              iter.next(),
-              new Promise<never>((_, reject) => {
-                timer = setTimeout(
-                  () => reject(new Error(`LLM stream stalled: no events for ${limit()}ms${paused ? " during tool execution" : ""}`)),
-                  limit(),
-                )
-              }),
-            ])
+            // ms <= 0 disables the watchdog for that window entirely
+            const item =
+              ms > 0
+                ? await Promise.race([
+                    iter.next(),
+                    new Promise<never>((_, reject) => {
+                      timer = setTimeout(
+                        () => reject(new Error(`LLM stream stalled: no events for ${ms}ms${paused ? " during tool execution" : ""}`)),
+                        ms,
+                      )
+                    }),
+                  ])
+                : await iter.next()
             if (item.done) return item
             const type = (item.value as { type?: string }).type
             if (type === "tool-call") paused = true
