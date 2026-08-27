@@ -83,10 +83,12 @@ export function stallGuard<T extends { type?: string }>(iterable: AsyncIterable<
                 )
               }),
             ])
-            if (!item.done) noteActivity()
-            const type = (item.value as { type?: string }).type
-            if (type === "tool-call") paused = true
-            if (RESUME_TYPES.has(type ?? "")) paused = false
+            if (!item.done) {
+              noteActivity()
+              const type = (item.value as { type?: string }).type
+              if (type === "tool-call") paused = true
+              if (RESUME_TYPES.has(type ?? "")) paused = false
+            }
             return item
           } finally {
             disarm?.()
