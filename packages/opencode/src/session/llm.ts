@@ -66,11 +66,12 @@ export const use = serviceUse(Service)
 // legitimately long turns with flowing events are never cut.
 //
 // Tool execution (including subagent turns) also emits nothing while running
-// and easily outlasts the idle window, so the watchdog pauses at tool-call
-// and rearms at the next sign of life (result/error/new step). A generous
-// cap still bounds a hung tool — there it fails into the halt path instead.
+// and can legitimately last arbitrarily long, so the watchdog pauses at
+// tool-call and rearms at the next sign of life (result/error/new step).
+// Tool windows are NOT policed by default — set OPENCODE_LLM_TOOL_STALL_MS
+// (0 disables) to add an explicit ceiling on silent tool runs.
 const STALL_MS = Number(process.env.OPENCODE_LLM_STALL_MS ?? 300_000)
-const STALL_TOOL_MS = Number(process.env.OPENCODE_LLM_TOOL_STALL_MS ?? 3_600_000)
+const STALL_TOOL_MS = Number(process.env.OPENCODE_LLM_TOOL_STALL_MS ?? 0)
 const STALL_RESUME = new Set(["tool-result", "tool-error", "step-start", "step-finish", "finish"])
 
 function stallGuard<T extends { type?: string }>(iterable: AsyncIterable<T>): AsyncIterable<T> {
