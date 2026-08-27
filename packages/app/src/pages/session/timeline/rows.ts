@@ -190,7 +190,10 @@ export namespace Timeline {
       assistantGroupIndex += 1
     })
 
-    if (isActive && status === "busy" && !error && (showReasoning ? assistantPartRefs.length === 0 : true)) {
+    // Composing placeholder: only truthful before the turn has produced any
+    // renderable output — once text/tool rows stream, those carry the sense of
+    // liveness and a trailing "thinking" shim under them reads like junk.
+    if (isActive && status === "busy" && !error && assistantPartRefs.length === 0) {
       const heading = assistantMessages
         .flatMap((message) => getMessageParts(message.id))
         .map((part) => (part.type === "reasoning" && part.text ? reasoningHeading(part.text) : undefined))
