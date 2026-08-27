@@ -8,7 +8,7 @@ import type {
 } from "@opencode-ai/sdk/v2/client"
 import { showToast } from "@/utils/toast"
 import { getFilename } from "@opencode-ai/core/util/path"
-import { type Accessor, batch, createMemo, getOwner, onCleanup, onMount, untrack } from "solid-js"
+import { type Accessor, batch, createMemo, createSignal, getOwner, onCleanup, onMount, untrack } from "solid-js"
 import { createStore, produce, reconcile } from "solid-js/store"
 import { useLanguage } from "@/context/language"
 import type { InitError } from "../pages/error"
@@ -301,6 +301,10 @@ export function createServerSyncContextInner(serverSDK: ServerSDK, queryClientOv
 
   const queryClient = queryClientOverride ?? useQueryClient()
   const homeSessions = createHomeSessionIndexCache(queryClient, ServerConnection.key(serverSDK.server))
+  // Bumped whenever a stream gap was bridged: mounted chat timelines watch it
+  // and force-resync their session store, because replayed events alone cannot
+  // be trusted to reassemble messages whose parent frames were dropped.
+  const [streamEpoch, setStreamEpoch] = createSignal(0)
   // SSE has no server-side replay, so events published while the stream was
   // down are lost (all refetch triggers are off by design). The stream context
   // aborts dead connections and reconnects on its own; refetch every query for
@@ -308,6 +312,7 @@ export function createServerSyncContextInner(serverSDK: ServerSDK, queryClientOv
   onCleanup(
     serverSDK.onReconnect(() => {
       void queryClient.invalidateQueries({ queryKey: [serverSDK.scope] })
+      setStreamEpoch((value) => value + 1)
     }),
   )
   const refreshProviders = () =>
@@ -693,6 +698,7 @@ export function createServerSyncContextInner(serverSDK: ServerSDK, queryClientOv
   return {
     data: globalStore,
     set,
+    streamEpoch,
     get ready() {
       return globalStore.ready
     },

@@ -387,6 +387,11 @@ function createServerSdkContextBase(server: ServerConnection.Any, scope: ServerS
               }
             }
             if (marker === "server.resumed") {
+              // A replay proves the connection gapped: replayed frames alone
+              // cannot reassemble state reliably (parents may be missing or
+              // already-applied), so ask listeners to revalidate their stores.
+              const resumedProps = payload.properties as { replayed?: number } | undefined
+              if ((resumedProps?.replayed ?? 0) > 0) for (const listener of reconnectListeners) listener()
               pendingReconnect = false
               continue
             }

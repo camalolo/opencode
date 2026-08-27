@@ -16,14 +16,19 @@ export function createTimelineModel(input: {
   let refreshFrame: number | undefined
   let refreshTimer: number | undefined
 
+  // Re-bumped by the sync context on every bridged stream gap; when it moves,
+  // the open chat force-resyncs instead of trusting its cached store.
+  let seenEpoch = serverSync().streamEpoch()
   const [resource] = createResource(
-    () => input.sessionID(),
-    (id) => {
+    () => [input.sessionID(), serverSync().streamEpoch()] as const,
+    ([id, epoch]) => {
       clearRefresh()
       if (!id) return
+      const forced = epoch !== seenEpoch
+      seenEpoch = epoch
 
       const cached = untrack(() => sync().data.message[id] !== undefined)
-      const stale = cached && !serverSync().session.fresh(id, sessionFreshness)
+      const stale = forced || (cached && !serverSync().session.fresh(id, sessionFreshness))
 
       refreshFrame = requestAnimationFrame(() => {
         refreshFrame = undefined
