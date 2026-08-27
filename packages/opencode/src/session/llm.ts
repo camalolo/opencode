@@ -64,22 +64,39 @@ export const use = serviceUse(Service)
 // spinner until restart. Race each pull against a stall timer so the failure
 // flows into the processor's retry/halt path. Chunks reset the timer, so
 // legitimately long turns with flowing events are never cut.
+//
+// Tool execution (including subagent turns) also emits nothing while running
+// and easily outlasts the idle window, so the watchdog pauses at tool-call
+// and rearms at the next sign of life (result/error/new step). A generous
+// cap still bounds a hung tool — there it fails into the halt path instead.
 const STALL_MS = Number(process.env.OPENCODE_LLM_STALL_MS ?? 300_000)
+const STALL_TOOL_MS = Number(process.env.OPENCODE_LLM_TOOL_STALL_MS ?? 3_600_000)
+const STALL_RESUME = new Set(["tool-result", "tool-error", "step-start", "step-finish", "finish"])
 
-function stallGuard<T>(iterable: AsyncIterable<T>): AsyncIterable<T> {
+function stallGuard<T extends { type?: string }>(iterable: AsyncIterable<T>): AsyncIterable<T> {
   return {
     [Symbol.asyncIterator]() {
       const iter = iterable[Symbol.asyncIterator]()
+      let paused = false
+      const limit = () => (paused ? STALL_TOOL_MS : STALL_MS)
       return {
         async next() {
           let timer: ReturnType<typeof setTimeout> | undefined
           try {
-            return await Promise.race([
+            const item = await Promise.race([
               iter.next(),
               new Promise<never>((_, reject) => {
-                timer = setTimeout(() => reject(new Error(`LLM stream stalled: no events for ${STALL_MS}ms`)), STALL_MS)
+                timer = setTimeout(
+                  () => reject(new Error(`LLM stream stalled: no events for ${limit()}ms${paused ? " during tool execution" : ""}`)),
+                  limit(),
+                )
               }),
             ])
+            if (item.done) return item
+            const type = (item.value as { type?: string }).type
+            if (type === "tool-call") paused = true
+            if (STALL_RESUME.has(type ?? "")) paused = false
+            return item
           } finally {
             clearTimeout(timer)
           }
