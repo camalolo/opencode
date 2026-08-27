@@ -7,6 +7,7 @@ import { serviceUse } from "@opencode-ai/core/effect/service-use"
 import { Context, Effect, Layer } from "effect"
 import * as Stream from "effect/Stream"
 import { streamText, wrapLanguageModel, type ModelMessage, type Tool } from "ai"
+import { stallGuard } from "./llm-stall"
 import type { LLMEvent } from "@opencode-ai/llm"
 import { LLMClient } from "@opencode-ai/llm/route"
 import type { LLMClientService } from "@opencode-ai/llm/route"
@@ -59,76 +60,8 @@ export class Service extends Context.Service<Service, Interface>()("@opencode/LL
 
 export const use = serviceUse(Service)
 
-// A provider stream can stall silently (dead TCP, wedged upstream): next()
-// then never settles and the session hangs busy forever — no error, no close,
-// spinner until restart. Race each pull against a stall timer so the failure
-// flows into the processor's retry/halt path. Chunks reset the timer, so
-// legitimately long turns with flowing events are never cut.
-//
-// Tool execution (including subagent turns) also emits nothing while running
-// and can legitimately last arbitrarily long, so the watchdog pauses at
-// tool-call and rearms at the next sign of life (result/error/new step).
-// Tool windows are NOT policed by default — set OPENCODE_LLM_TOOL_STALL_MS
-// (0 disables) to add an explicit ceiling on silent tool runs.
-// Tuned from production evidence (zai/glm-5.3, 2026-08-27): legit legs can sit
-// radio-silent for minutes during non-streamed reasoning — a parallel swarm
-// lost real turns to a 300s kill while sibling streams flowed fine. Silence
-// alone therefore defaults to a generous 15min ceiling (env-tunable); true
-// dead sockets (see the 2026-08-26 1h busy-hang) still fail into the retry/halt
-// path far sooner than "forever". Set 0 to disable entirely.
-const STALL_MS = Number(process.env.OPENCODE_LLM_STALL_MS ?? 900_000)
-const STALL_TOOL_MS = Number(process.env.OPENCODE_LLM_TOOL_STALL_MS ?? 0)
-const STALL_RESUME = new Set(["tool-result", "tool-error", "step-start", "step-finish", "finish"])
-
-function stallGuard<T extends { type?: string }>(iterable: AsyncIterable<T>): AsyncIterable<T> {
-  return {
-    [Symbol.asyncIterator]() {
-      const iter = iterable[Symbol.asyncIterator]()
-      let paused = false
-      const limit = () => (paused ? STALL_TOOL_MS : STALL_MS)
-      return {
-        async next() {
-          let timer: ReturnType<typeof setTimeout> | undefined
-          let quietTimer: ReturnType<typeof setInterval> | undefined
-          const ms = limit()
-          // Progressive visibility: log growing silences so a future kill can
-          // be told apart from a recovered slow-think leg.
-          if (ms > 0) {
-            const startedAt = Date.now()
-            quietTimer = setInterval(() => {
-              if (!paused) console.warn(`[llm] stream silent ${Math.round((Date.now() - startedAt) / 1000)}s (stall ceiling ${ms}ms)`)
-            }, 30_000)
-          }
-          try {
-            // ms <= 0 disables the watchdog for that window entirely
-            const item =
-              ms > 0
-                ? await Promise.race([
-                    iter.next(),
-                    new Promise<never>((_, reject) => {
-                      timer = setTimeout(
-                        () => reject(new Error(`LLM stream stalled: no events for ${ms}ms${paused ? " during tool execution" : ""}`)),
-                        ms,
-                      )
-                    }),
-                  ])
-                : await iter.next()
-            if (item.done) return item
-            const type = (item.value as { type?: string }).type
-            if (type === "tool-call") paused = true
-            if (STALL_RESUME.has(type ?? "")) paused = false
-            return item
-          } finally {
-            clearTimeout(timer)
-            clearInterval(quietTimer)
-          }
-        },
-        return: (value) => iter.return?.(value) ?? Promise.resolve({ done: true as const, value }),
-        throw: (reason) => iter.throw?.(reason) ?? Promise.reject(reason),
-      }
-    },
-  }
-}
+// Stream-level death detection lives in ./llm-stall — its semantics and
+// tuning history are documented there.
 
 const live: Layer.Layer<
   Service,
