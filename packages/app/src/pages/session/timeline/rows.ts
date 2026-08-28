@@ -190,10 +190,14 @@ export namespace Timeline {
       assistantGroupIndex += 1
     })
 
-    // Composing placeholder: only truthful before the turn has produced any
-    // renderable output — once text/tool rows stream, those carry the sense of
-    // liveness and a trailing "thinking" shim under them reads like junk.
-    if (isActive && status === "busy" && !error && assistantPartRefs.length === 0) {
+    // Composing placeholder: the shimmer is the liveness signal for phases
+    // where nothing else moves — before first output, and during silent
+    // inter-step thinking (models that do not stream reasoning). While a tool
+    // runs its own row glows, so the shim would only add noise below it.
+    const toolInFlight = assistantPartRefs.some(
+      ({ part }) => part.type === "tool" && (part.state.status === "pending" || part.state.status === "running"),
+    )
+    if (isActive && status === "busy" && !error && !toolInFlight) {
       const heading = assistantMessages
         .flatMap((message) => getMessageParts(message.id))
         .map((part) => (part.type === "reasoning" && part.text ? reasoningHeading(part.text) : undefined))
