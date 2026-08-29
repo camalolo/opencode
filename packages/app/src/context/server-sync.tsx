@@ -305,13 +305,18 @@ export function createServerSyncContextInner(serverSDK: ServerSDK, queryClientOv
   // and force-resync their session store, because replayed events alone cannot
   // be trusted to reassemble messages whose parent frames were dropped.
   const [streamEpoch, setStreamEpoch] = createSignal(0)
-  // SSE has no server-side replay, so events published while the stream was
-  // down are lost (all refetch triggers are off by design). The stream context
-  // aborts dead connections and reconnects on its own; refetch every query for
-  // this server when that happens to close the gap without a page reload.
+  // The stream aborts dead connections and reconnects on its own; replay
+  // bridges small gaps, and the listeners below revalidate every store when
+  // it cannot (snapshot-required, server restart). activeSessions is mounted
+  // through this context's useQuery, which resolves the app-root query
+  // client — not the per-server `queryClient` invalidated above — so refetch
+  // it explicitly: its queryFn is the only thing that reconciles stale busy
+  // statuses (a turn that ended while the stream was down would otherwise
+  // leave the "thinking" shim stuck on a finished chat).
   onCleanup(
     serverSDK.onReconnect(() => {
       void queryClient.invalidateQueries({ queryKey: [serverSDK.scope] })
+      void activeSessionsQuery.refetch()
       setStreamEpoch((value) => value + 1)
     }),
   )
