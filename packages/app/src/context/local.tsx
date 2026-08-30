@@ -161,6 +161,20 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
       setStore("promoting", undefined)
     })
 
+    // Adopt the server-side selection when it diverges from this device's:
+    // another device picking a model writes session metadata, the updated
+    // event lands here, and the local pick is reconciled - so every device
+    // converges on the same model for the same chat.
+    createEffect(() => {
+      const session = id()
+      if (!session) return
+      const pick = serverPick()
+      if (!pick) return
+      const local = saved.session[session]
+      if (local?.model?.providerID === pick.providerID && local?.model?.modelID === pick.modelID) return
+      setSaved("session", session, { ...(local ?? { agent: agent.current()?.name }), model: { ...pick } })
+    })
+
     const configuredModel = () => {
       const model = resolveDefaultModel(providers.defaultModel(), sync().data.config.model)
       if (!model) return
@@ -171,6 +185,35 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
       for (const item of models.recent.list()) {
         if (validModel(item)) return item
       }
+    }
+
+    // Cross-device selection state, stored on the session itself: explicit
+    // picks in metadata (written by model.set) and the model of the last
+    // prompt (maintained by the server). Every device resolves the same
+    // values, so reopening a chat anywhere shows the model it runs on.
+    const serverPick = () => {
+      const session = id()
+      if (!session) return
+      const info = sync().session.get(session)
+      const pick = info?.metadata as { modelSelection?: ModelKey } | undefined
+      return pick?.modelSelection
+    }
+
+    const serverLastModel = () => {
+      const session = id()
+      if (!session) return
+      const model = sync().session.get(session)?.model
+      if (!model) return
+      return { providerID: model.providerID, modelID: model.id }
+    }
+
+    const writeServerPick = (model: ModelKey | undefined) => {
+      const session = id()
+      if (!session || !model) return
+      const metadata = sync().session.get(session)?.metadata ?? {}
+      void serverSDK()
+        .client.session.update({ sessionID: session, metadata: { ...metadata, modelSelection: { ...model } } })
+        .catch(() => undefined)
     }
 
     // Last model this chat actually used, from its own history. The generic
@@ -260,7 +303,9 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
 
     const current = () => {
       const item = firstModel(
+        () => serverPick(),
         () => scope()?.model,
+        () => serverLastModel(),
         () => agent.current()?.model,
         lastUsedModel,
         fallback,
@@ -337,6 +382,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
               variant: selected(),
             })
             write({ model: item })
+            writeServerPick(item)
             if (!item) return
             models.setVisibility(item, true)
             if (!options?.recent) return
@@ -383,6 +429,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
               write({ variant: value ?? null })
               if (model) {
                 models.variant.set({ providerID: model.provider.id, modelID: model.id }, value ?? undefined)
+                writeServerPick({ providerID: model.provider.id, modelID: model.id })
               }
             }),
           )
