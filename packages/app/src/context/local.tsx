@@ -99,9 +99,21 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
     })
 
     const validModel = (model: ModelKey) => {
-      const provider = providers.all().get(model.providerID)
-      return !!provider?.models[model.modelID] && connected().has(model.providerID)
+      // The directory-scoped catalog can lag behind (or omit) providers the
+      // user already chats with; accept the pick if either it or the
+      // server-wide catalog knows it, otherwise a valid saved selection is
+      // silently treated as invalid and replaced by an arbitrary fallback.
+      if (inCatalog(providers.all(), connected(), model)) return true
+      const global = sync().data.provider
+      if (!global) return false
+      return inCatalog(global.all, new Set(global.connected), model)
     }
+
+    const inCatalog = (
+      all: Map<string, { models: Record<string, unknown> }>,
+      connected: Set<string>,
+      model: ModelKey,
+    ) => !!all.get(model.providerID)?.models[model.modelID] && connected.has(model.providerID)
 
     const firstModel = (...items: Array<() => ModelKey | undefined>) => {
       for (const item of items) {
@@ -158,6 +170,22 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
     const recentModel = () => {
       for (const item of models.recent.list()) {
         if (validModel(item)) return item
+      }
+    }
+
+    // Last model this chat actually used, from its own history. The generic
+    // fallback below lands on the first connected provider's model — an
+    // arbitrary pick that silently diverges from what the conversation has
+    // been running on (reported as "my model selection keeps reverting").
+    const lastUsedModel = () => {
+      const session = id()
+      if (!session) return
+      const messages = sync().data.message[session] ?? []
+      for (let i = messages.length - 1; i >= 0; i--) {
+        const message = messages[i]
+        if (message.role !== "assistant") continue
+        if (validModel({ providerID: message.providerID, modelID: message.modelID }))
+          return { providerID: message.providerID, modelID: message.modelID }
       }
     }
 
@@ -234,6 +262,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
       const item = firstModel(
         () => scope()?.model,
         () => agent.current()?.model,
+        lastUsedModel,
         fallback,
       )
       if (!item) return

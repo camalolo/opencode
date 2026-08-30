@@ -17,8 +17,13 @@ export function createPromptModelSelection(input: { agent: () => { model?: Model
   const connected = createMemo(() => new Set(providers.connected().map((item) => item.id)))
 
   const valid = (model: ModelKey) => {
+    // Mirror of the local-context check: the scoped catalog can omit providers
+    // the user already chats with, so also accept the server-wide view.
     const provider = providers.all().get(model.providerID)
-    return !!provider?.models[model.modelID] && connected().has(model.providerID)
+    if (!!provider?.models[model.modelID] && connected().has(model.providerID)) return true
+    const global = sync().data.provider
+    if (!global) return false
+    return !!global.all.get(model.providerID)?.models[model.modelID] && global.connected.includes(model.providerID)
   }
 
   const configured = () => {
