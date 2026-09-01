@@ -111,7 +111,8 @@ export function createBrowserDraftStore(): DraftStore {
           if (item?.blob && typeof item.blob.id === "string") used.add(item.blob.id)
           return item
         })
-        const blobs = transaction.objectStore("blobs").openKeyCursor()
+        // A key cursor cannot delete entries; a value cursor still exposes .key
+        const blobs = transaction.objectStore("blobs").openCursor()
         blobs.addEventListener("success", () => {
           const cursor = blobs.result
           if (!cursor) return

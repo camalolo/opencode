@@ -70,6 +70,7 @@ import { useTabs } from "@/context/tabs"
 import { legacySessionHref, requireServerKey, sessionHref } from "@/utils/session-route"
 import { useSDK } from "@/context/sdk"
 import { useSync } from "@/context/sync"
+import { useServerSync } from "@/context/server-sync"
 import { notifySessionTabsRemoved } from "@/components/titlebar-session-events"
 import { sessionTitle } from "@/utils/session-title"
 import { scheduleConnectedMeasure } from "./measure"
@@ -262,6 +263,7 @@ export function MessageTimeline(props: {
   const serverSDK = useServerSDK()
   const sdk = useSDK()
   const sync = useSync()
+  const serverSync = useServerSync()
   const settings = useSettings()
   const tabs = useTabs()
   const dialog = useDialog()
@@ -629,10 +631,22 @@ export function MessageTimeline(props: {
     props.onMarkScrollGesture(event.currentTarget)
   }
 
+  // A reconnect resync replaces rows and dumps coalesced updates; the layout
+  // churn fires scroll events that the auto-scroll hook would misread as the
+  // user scrolling away from the bottom, flapping the anchor up and down.
+  // Mute the scroll handler briefly after each resync burst - real wheel-up
+  // input still reaches the wheel listener and stops following immediately.
+  let resyncChurnUntil = 0
+  createEffect(() => {
+    if (serverSync().streamEpoch() === 0) return
+    resyncChurnUntil = Date.now() + 2_000
+  })
+
   const handleListScroll = (event: Event & { currentTarget: HTMLDivElement }) => {
     if (prependLoading) updatePrependAnchor()
     props.onScheduleScrollState(event.currentTarget)
     props.onHistoryScroll()
+    if (Date.now() < resyncChurnUntil) return
     if (!props.hasScrollGesture()) return
     props.onUserScroll()
     props.onAutoScrollHandleScroll()
