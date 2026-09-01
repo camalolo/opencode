@@ -458,6 +458,12 @@ export function MessageTimeline(props: {
   })
   const resizeItem = virtualizer.resizeItem
   let resizeAnchorScheduled = false
+  // Measurement churn counters: a resync makes every row re-measure; while
+  // that storm is running the scroll handler must not read layout shifts as
+  // user input, and the counts feed the __timelineDiag ring for diagnosis.
+  let churnResizes = 0
+  let lastResizeAt = 0
+  let lastDiagResizes = 0
   const anchorResizedBottom = () => {
     if (resizeAnchorScheduled || props.hasScrollGesture()) return
     resizeAnchorScheduled = true
@@ -468,6 +474,8 @@ export function MessageTimeline(props: {
     })
   }
   virtualizer.resizeItem = (index, size) => {
+    churnResizes++
+    lastResizeAt = Date.now()
     const item = virtualizer.measurementsCache[index]
     const previous = item ? (virtualizer.itemSizeCache.get(item.key) ?? item.size) : undefined
     const root = listRoot()
@@ -634,23 +642,42 @@ export function MessageTimeline(props: {
   // A reconnect resync replaces rows and dumps coalesced updates; the layout
   // churn fires scroll events that the auto-scroll hook would misread as the
   // user scrolling away from the bottom, flapping the anchor up and down.
-  // Mute the scroll handler briefly after each resync burst - real wheel-up
-  // input still reaches the wheel listener and stops following immediately.
+  // Mute the scroll handler while the measurement storm runs (adaptive: the
+  // mute holds while rows keep re-measuring, hard-capped at 8s) - real
+  // wheel-up input still reaches the wheel listener and stops following.
   let resyncChurnUntil = 0
+  const lastScrollTops = new WeakMap<HTMLDivElement, number>()
+  const diag = (entry: { type: string } & Record<string, unknown>) => {
+    const w = window as unknown as { __timelineDiag?: Array<Record<string, unknown>> }
+    w.__timelineDiag ??= []
+    w.__timelineDiag.push({ at: new Date().toISOString(), resizes: churnResizes - lastDiagResizes, ...entry })
+    lastDiagResizes = churnResizes
+    if (w.__timelineDiag.length > 60) w.__timelineDiag.shift()
+  }
   createEffect(() => {
     if (serverSync().streamEpoch() === 0) return
-    resyncChurnUntil = Date.now() + 2_000
+    resyncChurnUntil = Date.now() + 5_000
+    diag({ type: "resync" })
   })
 
   const handleListScroll = (event: Event & { currentTarget: HTMLDivElement }) => {
+    const root = event.currentTarget
+    const previous = lastScrollTops.get(root)
+    lastScrollTops.set(root, root.scrollTop)
+    if (previous !== undefined && Math.abs(root.scrollTop - previous) > root.clientHeight * 0.6)
+      diag({ type: "jump", from: previous, to: root.scrollTop })
     if (prependLoading) updatePrependAnchor()
-    props.onScheduleScrollState(event.currentTarget)
+    props.onScheduleScrollState(root)
     props.onHistoryScroll()
-    if (Date.now() < resyncChurnUntil) return
+    if (Date.now() < resyncChurnUntil) {
+      if (Date.now() - lastResizeAt < 400)
+        resyncChurnUntil = Math.min(resyncChurnUntil + 250, Date.now() + 8_000)
+      return
+    }
     if (!props.hasScrollGesture()) return
     props.onUserScroll()
     props.onAutoScrollHandleScroll()
-    props.onMarkScrollGesture(event.currentTarget)
+    props.onMarkScrollGesture(root)
   }
 
   onCleanup(() => {
