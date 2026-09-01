@@ -415,6 +415,19 @@ export function MessageTimeline(props: {
   let resizePinnedIndexes: number[] = []
   let resizePinFrame: number | undefined
   let virtualContent: HTMLDivElement | undefined
+  // Shared diagnostic ring (window.__timelineDiag): resync bursts, mount
+  // decisions and large scroll displacements, so an intermittent "the chat
+  // jumped" report can be traced to the exact path afterwards.
+  let churnResizes = 0
+  let lastResizeAt = 0
+  let lastDiagResizes = 0
+  const diag = (entry: { type: string } & Record<string, unknown>) => {
+    const w = window as unknown as { __timelineDiag?: Array<Record<string, unknown>> }
+    w.__timelineDiag ??= []
+    w.__timelineDiag.push({ at: new Date().toISOString(), resizes: churnResizes - lastDiagResizes, hash: location.hash || undefined, ...entry })
+    lastDiagResizes = churnResizes
+    if (w.__timelineDiag.length > 60) w.__timelineDiag.shift()
+  }
   const virtualizer = createVirtualizer<HTMLDivElement, HTMLDivElement>({
     get count() {
       return timelineRows().length
@@ -460,10 +473,12 @@ export function MessageTimeline(props: {
   let resizeAnchorScheduled = false
   // Measurement churn counters: a resync makes every row re-measure; while
   // that storm is running the scroll handler must not read layout shifts as
-  // user input, and the counts feed the __timelineDiag ring for diagnosis.
-  let churnResizes = 0
-  let lastResizeAt = 0
-  let lastDiagResizes = 0
+  // user input (counters feed the diag ring declared above).
+  createEffect(() => {
+    if (serverSync().streamEpoch() === 0) return
+    resyncChurnUntil = Date.now() + 5_000
+    diag({ type: "resync" })
+  })
   const anchorResizedBottom = () => {
     if (resizeAnchorScheduled || props.hasScrollGesture()) return
     resizeAnchorScheduled = true
@@ -503,6 +518,16 @@ export function MessageTimeline(props: {
     const first = virtualizer.range?.startIndex
     return first !== undefined && item.index < first
   }
+  // Record the mount decision so a "came back and it was at the top" report
+  // shows whether the bottom anchor was active and what blocked it.
+  queueMicrotask(() =>
+    diag({
+      type: "mount",
+      anchored: props.shouldAnchorBottom(),
+      cold: !initialMeasurements?.length,
+      offset: Math.round(listRoot()?.scrollTop ?? -1),
+    }),
+  )
   const virtualItemByKey = createMemo(
     () => new Map(virtualizer.getVirtualItems().map((item) => [item.key, item] as const)),
   )
@@ -647,18 +672,6 @@ export function MessageTimeline(props: {
   // wheel-up input still reaches the wheel listener and stops following.
   let resyncChurnUntil = 0
   const lastScrollTops = new WeakMap<HTMLDivElement, number>()
-  const diag = (entry: { type: string } & Record<string, unknown>) => {
-    const w = window as unknown as { __timelineDiag?: Array<Record<string, unknown>> }
-    w.__timelineDiag ??= []
-    w.__timelineDiag.push({ at: new Date().toISOString(), resizes: churnResizes - lastDiagResizes, ...entry })
-    lastDiagResizes = churnResizes
-    if (w.__timelineDiag.length > 60) w.__timelineDiag.shift()
-  }
-  createEffect(() => {
-    if (serverSync().streamEpoch() === 0) return
-    resyncChurnUntil = Date.now() + 5_000
-    diag({ type: "resync" })
-  })
 
   const handleListScroll = (event: Event & { currentTarget: HTMLDivElement }) => {
     const root = event.currentTarget
