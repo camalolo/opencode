@@ -159,3 +159,46 @@ const table = sqliteTable("session", {
 - Keep delivery vocabulary explicit. Prompts steer by default and promote at the next safe provider-turn boundary while the current drain requires continuation. An explicit `queue` input remains pending until the Session would otherwise become idle; promote one queued input at that boundary, then reevaluate continuation before promoting another. Promoting any new user input resets the selected agent's provider-turn allowance; a batch of steers resets it once.
 - Keep EventV2 replay owner claims separate from clustered Session execution ownership.
 - Keep the System Context algebra, registry, and built-ins in `src/system-context`; keep Context Source producers with their observed domains, and keep Session History selection plus Context Epoch persistence Session-owned.
+
+## Server Fleet
+
+Three servers run this fork, all tracking `laurent-dev`:
+
+| Host | Server URL | Service control | Notes |
+|------|------------|-----------------|-------|
+| local (Windows, this repo) | http://localhost:4096 | `pwsh -NoProfile -File C:/Users/camal/scripts/restart-services.ps1` | dev box; safe to restart freely |
+| `home` (ssh alias) | http://127.0.0.1:4096 (via ssh) | `systemctl --user restart opencode` | production; user runs real sessions here |
+| `m2dev-laurent` (ssh alias) | http://127.0.0.1:4096 (via ssh) | `systemctl --user restart opencode` | dev box |
+
+### Deploying
+
+UI changes need build + manifest regen + restart on EVERY server (restarting alone keeps serving the old UI). Remotes: repo at `~/Sources/opencode`.
+
+```sh
+ssh <host> 'export PATH=$HOME/.bun/bin:$PATH; cd ~/Sources/opencode && git pull --ff-only origin laurent-dev && bun install && bun run --cwd packages/app build && bun deploy/gen-web-ui-manifest.ts && systemctl --user restart opencode'
+```
+
+- `m2dev-laurent` additionally needs `/home/laurent/.nvm/versions/node/v24.8.0/bin` first in PATH.
+- Local: build in the repo (`bun run --cwd packages/app build && bun deploy/gen-web-ui-manifest.ts`), then the restart script.
+
+### Idle rule (mandatory)
+
+A restart kills active sessions. Before pulling/restarting a remote, verify it is idle:
+
+```sh
+ssh <host> 'grep -a "message=stream\|message=loop" ~/.local/share/opencode/log/opencode.log | tail -1'
+```
+
+Compare the entry's `timestamp=` (UTC) against `date -u`: require >= 300s of quiet. If sessions are active, ask the user first; never generate test turns on home.
+
+### Verify after deploy
+
+- Health: `curl -s http://127.0.0.1:4096/global/health` -> 200 (on Windows use `curl --noproxy "*" -o NUL`).
+- New process: `curl -sN -m 3 http://127.0.0.1:4096/global/event | sed -n 2p` -> `server.connected` prelude carries a fresh `boot` id.
+- `git log --oneline -1` matches the `laurent-dev` tip.
+- Pushes need `git push --no-verify origin laurent-dev` (pre-push bun-version gate fails otherwise).
+
+### Local testing
+
+- Sessions must live in directory `C:/Users/camal/.agent-browser` to appear in the UI (registered project; sessions in other dirs don't show in the sidebar).
+- Session-scoped API calls need `?directory=` or the `x-opencode-directory` header.
