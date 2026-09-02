@@ -91,6 +91,12 @@ type TimelineRowByTag<T extends TimelineRow.TimelineRow["_tag"]> = Extract<Timel
 const timelineFallbackItemSize = 60
 const timelineCache = new Map<string, { measurements: VirtualItem[]; toolOpen: Record<string, boolean | undefined> }>()
 
+// Created eagerly so `__timelineDiag` is always queryable from the console,
+// even before any resync/jump/mount event has been recorded.
+if (typeof window !== "undefined") {
+  ;(window as unknown as { __timelineDiag?: unknown[] }).__timelineDiag ??= []
+}
+
 const taskDescription = (part: PartType, sessionID: string) => {
   if (part.type !== "tool" || part.tool !== "task") return
   const metadata = "metadata" in part.state ? part.state.metadata : undefined
