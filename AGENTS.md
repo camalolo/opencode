@@ -202,3 +202,15 @@ Compare the entry's `timestamp=` (UTC) against `date -u`: require >= 300s of qui
 
 - Sessions must live in directory `C:/Users/camal/.agent-browser` to appear in the UI (registered project; sessions in other dirs don't show in the sidebar).
 - Session-scoped API calls need `?directory=` or the `x-opencode-directory` header.
+
+### Deferred deploy (busy server)
+
+When a remote is active but the change must land, stage a watcher on the remote instead of retrying manually: it polls the log every 60s and runs the full deploy chain itself at the first >= 300s quiet window (cap it with a deadline, e.g. 4h, so it cannot fire on a stale window a day later).
+
+1. Write the script (idle check + deploy chain + deadline) to `/tmp/<name>.sh` on the remote via ssh.
+2. Launch detached: `ssh <host> 'setsid nohup bash /tmp/<name>.sh >/tmp/<name>.log 2>&1 < /dev/null &'`.
+3. Check progress: `ssh <host> 'cat /tmp/<name>.log; pgrep -f "<name>"'`. It exits after firing once.
+
+Gotchas:
+- `pkill -f <name>` from an ssh command line self-matches the ssh command itself and kills the session - use the bracket trick (`pkill -f "name-with-[i]dle"`) or target the exact script path.
+- A busy swarm can hold the log hot for hours; if the user says go, interrupting is acceptable - the running turn dies but session state survives the restart. Confirm with the user before interrupting.
