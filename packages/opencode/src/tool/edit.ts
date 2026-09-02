@@ -18,6 +18,7 @@ import { Snapshot } from "@/snapshot"
 import { assertExternalDirectoryEffect } from "./external-directory"
 import { FSUtil } from "@opencode-ai/core/fs-util"
 import * as Bom from "@/util/bom"
+import { hasRead, markRead } from "./read-state"
 
 function normalizeLineEndings(text: string): string {
   return text.replaceAll("\r\n", "\n")
@@ -85,6 +86,7 @@ export const EditTool = Tool.define(
           let diff = ""
           let contentOld = ""
           let contentNew = ""
+          let strategy = "exact"
           yield* lock(filePath).withPermits(1)(
             Effect.gen(function* () {
               if (params.oldString === "") {
@@ -112,6 +114,7 @@ export const EditTool = Tool.define(
                 if (yield* format.file(filePath)) {
                   contentNew = yield* Bom.syncFile(afs, filePath, desiredBom)
                 }
+                markRead(ctx.sessionID, filePath)
                 yield* events.publish(FileSystem.Event.Edited, { file: filePath })
                 yield* events.publish(Watcher.Event.Updated, {
                   file: filePath,
@@ -123,6 +126,10 @@ export const EditTool = Tool.define(
               const info = yield* afs.stat(filePath).pipe(Effect.catch(() => Effect.succeed(undefined)))
               if (!info) throw new Error(`File ${filePath} not found`)
               if (info.type === "Directory") throw new Error(`Path is a directory, not a file: ${filePath}`)
+              if (!hasRead(ctx.sessionID, filePath))
+                throw new Error(
+                  `File ${filePath} has not been read in this session. Use the read tool first, then retry the edit.`,
+                )
               const source = yield* Bom.readFile(afs, filePath)
               contentOld = source.text
 
@@ -130,7 +137,9 @@ export const EditTool = Tool.define(
               const old = convertToLineEnding(normalizeLineEndings(params.oldString), ending)
               const replacement = convertToLineEnding(normalizeLineEndings(params.newString), ending)
 
-              const next = Bom.split(replace(contentOld, old, replacement, params.replaceAll))
+              const replaced = replace(contentOld, old, replacement, params.replaceAll)
+              strategy = replaced.strategy
+              const next = Bom.split(replaced.content)
               const desiredBom = source.bom || next.bom
               contentNew = next.text
 
@@ -156,6 +165,7 @@ export const EditTool = Tool.define(
               if (yield* format.file(filePath)) {
                 contentNew = yield* Bom.syncFile(afs, filePath, desiredBom)
               }
+              markRead(ctx.sessionID, filePath)
               yield* events.publish(FileSystem.Event.Edited, { file: filePath })
               yield* events.publish(Watcher.Event.Updated, {
                 file: filePath,
@@ -194,6 +204,8 @@ export const EditTool = Tool.define(
           })
 
           let output = "Edit applied successfully."
+          if (strategy !== "exact")
+            output += `\n\nNote: oldString did not match the file exactly and was applied via ${strategy} fuzzy matching. Verify the edit landed in the intended location.`
           yield* lsp.touchFile(filePath, "document")
           const diagnostics = yield* lsp.diagnostics()
           const normalizedFilePath = FSUtil.normalizePath(filePath)
@@ -679,7 +691,13 @@ export function trimDiff(diff: string): string {
   return trimmedLines.join("\n")
 }
 
-export function replace(content: string, oldString: string, newString: string, replaceAll = false): string {
+export interface ReplaceResult {
+  content: string
+  /** How oldString was located: "exact" or the name of the fuzzy strategy used. */
+  strategy: string
+}
+
+export function replace(content: string, oldString: string, newString: string, replaceAll = false): ReplaceResult {
   if (oldString === newString) {
     throw new Error("No changes to apply: oldString and newString are identical.")
   }
@@ -691,17 +709,19 @@ export function replace(content: string, oldString: string, newString: string, r
 
   let notFound = true
 
-  for (const replacer of [
-    SimpleReplacer,
-    LineTrimmedReplacer,
-    BlockAnchorReplacer,
-    WhitespaceNormalizedReplacer,
-    IndentationFlexibleReplacer,
-    EscapeNormalizedReplacer,
-    TrimmedBoundaryReplacer,
-    ContextAwareReplacer,
-    MultiOccurrenceReplacer,
-  ]) {
+  const strategies = [
+    ["exact", SimpleReplacer],
+    ["line-trimmed", LineTrimmedReplacer],
+    ["block-anchor", BlockAnchorReplacer],
+    ["whitespace-normalized", WhitespaceNormalizedReplacer],
+    ["indentation-flexible", IndentationFlexibleReplacer],
+    ["escape-normalized", EscapeNormalizedReplacer],
+    ["trimmed-boundary", TrimmedBoundaryReplacer],
+    ["context-aware", ContextAwareReplacer],
+    ["multi-occurrence", MultiOccurrenceReplacer],
+  ] as const
+
+  for (const [strategy, replacer] of strategies) {
     for (const search of replacer(content, oldString)) {
       const index = content.indexOf(search)
       if (index === -1) continue
@@ -712,20 +732,22 @@ export function replace(content: string, oldString: string, newString: string, r
         )
       }
       if (replaceAll) {
-        return content.replaceAll(search, newString)
+        return { content: content.replaceAll(search, newString), strategy }
       }
       const lastIndex = content.lastIndexOf(search)
       if (index !== lastIndex) continue
-      return content.substring(0, index) + newString + content.substring(index + search.length)
+      return { content: content.substring(0, index) + newString + content.substring(index + search.length), strategy }
     }
   }
 
   if (notFound) {
     throw new Error(
-      "Could not find oldString in the file. It must match exactly, including whitespace, indentation, and line endings.",
+      "Could not find oldString in the file, even with whitespace and fuzzy fallbacks. Re-read the file and copy oldString exactly from the read output (without the 'line: ' line-number prefix), including indentation and line endings.",
     )
   }
-  throw new Error("Found multiple matches for oldString. Provide more surrounding context to make the match unique.")
+  throw new Error(
+    "Found multiple matches for oldString. Include more surrounding lines to make the match unique, or set replaceAll: true to replace every occurrence.",
+  )
 }
 
 function isDisproportionateMatch(search: string, oldString: string) {

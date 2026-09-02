@@ -14,6 +14,7 @@ import { Truncate } from "@/tool/truncate"
 import { SessionID, MessageID } from "../../src/session/schema"
 import * as Tool from "../../src/tool/tool"
 import { testEffect } from "../lib/effect"
+import { markRead } from "../../src/tool/read-state"
 import { Watcher } from "@opencode-ai/core/filesystem/watcher"
 
 const ctx = {
@@ -60,6 +61,14 @@ const fail = Effect.fn("EditToolTest.fail")(function* (args: Tool.InferParameter
 })
 
 const put = Effect.fn("EditToolTest.put")(function* (p: string, content: string) {
+  const fs = yield* FSUtil.Service
+  yield* fs.writeWithDirs(p, content)
+  // Editing an existing file requires a prior read in the session; writing the
+  // fixture counts as the model having seen the content.
+  markRead(ctx.sessionID, p)
+})
+
+const putUnread = Effect.fn("EditToolTest.putUnread")(function* (p: string, content: string) {
   const fs = yield* FSUtil.Service
   yield* fs.writeWithDirs(p, content)
 })
@@ -151,6 +160,7 @@ describe("tool.edit", () => {
         const result = yield* run({ filePath: filepath, oldString: "old content", newString: "new content" })
 
         expect(result.output).toContain("Edit applied successfully")
+        expect(result.output).not.toContain("fuzzy")
         expect(yield* load(filepath)).toBe("new content here")
       }),
     )
@@ -192,6 +202,44 @@ describe("tool.edit", () => {
 
         expect((yield* fail({ filePath: filepath, oldString: "same", newString: "same" })).message).toContain(
           "identical",
+        )
+      }),
+    )
+
+    it.instance("requires the file to be read before editing", () =>
+      Effect.gen(function* () {
+        const test = yield* TestInstance
+        const filepath = path.join(test.directory, "unread.txt")
+        yield* putUnread(filepath, "secret content")
+
+        expect(
+          (yield* fail({ filePath: filepath, oldString: "secret", newString: "redacted" })).message,
+        ).toContain("has not been read")
+        expect(yield* load(filepath)).toBe("secret content")
+      }),
+    )
+
+    it.instance("reports fuzzy matching in output", () =>
+      Effect.gen(function* () {
+        const test = yield* TestInstance
+        const filepath = path.join(test.directory, "indented.txt")
+        yield* put(filepath, "line1\n    line2\nline3")
+
+        const result = yield* run({ filePath: filepath, oldString: "line1\nline2\nline3", newString: "line1\nCHANGED\nline3" })
+
+        expect(result.output).toContain("line-trimmed fuzzy matching")
+        expect(yield* load(filepath)).toBe("line1\nCHANGED\nline3")
+      }),
+    )
+
+    it.instance("errors when oldString matches multiple locations", () =>
+      Effect.gen(function* () {
+        const test = yield* TestInstance
+        const filepath = path.join(test.directory, "dup.txt")
+        yield* put(filepath, "dup\ndup\n")
+
+        expect((yield* fail({ filePath: filepath, oldString: "dup", newString: "uniq" })).message).toContain(
+          "Found multiple matches for oldString",
         )
       }),
     )
