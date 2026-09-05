@@ -404,7 +404,9 @@ function createServerSdkContextBase(server: ServerConnection.Any, scope: ServerS
               for (const listener of reconnectListeners) listener()
             }
             if (legacy && typeof (payload as { id?: unknown }).id === "string") lastEventId = (payload as { id: string }).id
-            if (legacy && payload.type === "sync") continue
+            // Legacy v1 streams carry a "sync" event type that no longer
+            // exists in the v2 Event union — widen the check, keep the skip.
+            if (legacy && (payload as { type?: string }).type === "sync") continue
             const directory = legacy ? (event.directory ?? "global") : (event.location?.directory ?? "global")
             if (enqueueServerEvent(queue, { directory, payload })) schedule()
 
