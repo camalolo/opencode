@@ -59,6 +59,7 @@ import { Popover as KobaltePopover } from "@kobalte/core/popover"
 import { normalize } from "@opencode-ai/session-ui/session-diff"
 import { useFileComponent } from "@opencode-ai/ui/context/file"
 import { shouldMarkBoundaryGesture, normalizeWheelDelta } from "@/pages/session/message-gesture"
+import { createScrollPreservation } from "@/pages/session/timeline/scroll-preservation"
 import { SessionContextUsage } from "@/components/session-context-usage"
 import { useDialog } from "@opencode-ai/ui/context/dialog"
 import { useLanguage } from "@/context/language"
@@ -350,6 +351,10 @@ export function MessageTimeline(props: {
   const activeMessageID = projection.activeMessageID
   const assistantMessagesByParent = projection.assistantMessagesByParent
   const lastAssistantGroupKey = projection.lastAssistantGroupKey
+  // Sticky upward: a title that arrives after first paint flips the margin
+  // 0→64 once; it must never flip back — a 0↔64 flip re-bases every row
+  // offset mid-scroll and yanks the viewport during resync churn.
+  const headerScrollMargin = createMemo<number>((previous) => (showHeader() ? 64 : (previous ?? 0)), 0)
   const messageByID = projection.messageByID
   const messageLastRowIndex = projection.messageLastRowIndex
   const messageRowIndex = projection.messageRowIndex
@@ -461,7 +466,7 @@ export function MessageTimeline(props: {
     followOnAppend: true,
     scrollEndThreshold: 80,
     get scrollMargin() {
-      return showHeader() ? 64 : 0
+      return headerScrollMargin()
     },
     overscan: 50,
     paddingEnd: 64,
@@ -678,13 +683,25 @@ export function MessageTimeline(props: {
   // wheel-up input still reaches the wheel listener and stops following.
   let resyncChurnUntil = 0
   const lastScrollTops = new WeakMap<HTMLDivElement, number>()
+  // Scroll preservation across resync collapses (see scroll-preservation.ts):
+  // a forced resync can transiently shrink the virtual content and the browser
+  // clamps scrollTop into the shrunk height — the viewport lands at the top
+  // with no user input. Bottom anchoring owns the position when active; user
+  // gestures always win.
+  const scrollPreservation = createScrollPreservation({
+    viewport: () => listRoot(),
+    gesturing: () => props.hasScrollGesture(),
+    anchored: () => props.shouldAnchorBottom(),
+    onRestore: (from, to) => diag({ type: "clamp-restore", from: Math.round(from), to: Math.round(to) }),
+  })
 
   const handleListScroll = (event: Event & { currentTarget: HTMLDivElement }) => {
     const root = event.currentTarget
     const previous = lastScrollTops.get(root)
     lastScrollTops.set(root, root.scrollTop)
-    if (previous !== undefined && Math.abs(root.scrollTop - previous) > root.clientHeight * 0.6)
-      diag({ type: "jump", from: previous, to: root.scrollTop })
+    const jumped = previous !== undefined && Math.abs(root.scrollTop - previous) > root.clientHeight * 0.6
+    if (jumped) diag({ type: "jump", from: previous, to: root.scrollTop })
+    scrollPreservation.trackScroll(root.scrollTop, jumped, !props.hasScrollGesture() && Date.now() < resyncChurnUntil)
     if (prependLoading) updatePrependAnchor()
     props.onScheduleScrollState(root)
     props.onHistoryScroll()
@@ -700,6 +717,7 @@ export function MessageTimeline(props: {
   }
 
   onCleanup(() => {
+    scrollPreservation.disconnect()
     props.setScrollRef(undefined)
   })
 
@@ -1931,6 +1949,7 @@ export function MessageTimeline(props: {
           ref={(element) => {
             virtualContent = element
             props.setContentRef(element)
+            scrollPreservation.observe(element)
           }}
           style={{
             height: `${virtualizer.getTotalSize()}px`,
