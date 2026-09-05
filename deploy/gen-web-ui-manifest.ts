@@ -16,7 +16,12 @@ const files = (await Array.fromAsync(new Bun.Glob("**/*").scan({ cwd: dist, dot:
   .filter((file) => !file.endsWith(".map"))
   .sort()
 
-const imports = files.map((file, i) => `import file_${i} from ${JSON.stringify(`../../app/dist/${file}`)} with { type: "file" };`)
+const imports = files.map((file, i) => {
+  // The manifest imports every dist artifact as an embedded Bun file; chunk
+  // modules differ in export shape (named-only i18n chunks, loose binaries),
+  // so silence tsgo on each import line instead of chasing export shapes.
+  return `// @ts-ignore\nimport file_${i} from ${JSON.stringify(`../../app/dist/${file}`)} with { type: "file" };`
+})
 const entries = files.map((file, i) => `  ${JSON.stringify(file)}: file_${i},`)
 const out = [
   "// Generated: embedded web UI manifest (source-run equivalent of build-time gen)",
