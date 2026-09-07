@@ -320,6 +320,10 @@ export function createServerSyncContextInner(serverSDK: ServerSDK, queryClientOv
       setStreamEpoch((value) => value + 1)
     }),
   )
+  // Quiet reconnects (a gap with no events to replay, e.g. a model thinking
+  // without streaming) skip the full resync above - still refresh statuses so
+  // a session that started or finished a turn meanwhile is not shown inert.
+  onCleanup(serverSDK.onStatusRefresh(() => void activeSessionsQuery.refetch()))
   const refreshProviders = () =>
     queryClient.refetchQueries({
       predicate: (query) => query.queryKey[0] === serverSDK.scope && query.queryKey[2] === "providers",

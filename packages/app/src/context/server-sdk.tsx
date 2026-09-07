@@ -180,6 +180,7 @@ type ServerSDKBase = {
     start: () => Promise<void> | undefined
   }
   onReconnect: (listener: () => void) => () => void
+  onStatusRefresh: (listener: () => void) => () => void
   createClient: (
     opts: Omit<Parameters<typeof createSdkForServer>[0], "server" | "fetch">,
   ) => ReturnType<typeof createSdkForServer>
@@ -277,6 +278,12 @@ function createServerSdkContextBase(server: ServerConnection.Any, scope: ServerS
   let lastBoot: string | undefined
   let streamCheck: ReturnType<typeof setInterval> | undefined
   const reconnectListeners = new Set<() => void>()
+  // Lightweight liveness refresh: unlike the full-refetch reconnect listeners
+  // (which only fire when a gap actually had events), this runs on EVERY
+  // successful (re)connect so sessions that started or finished a turn during
+  // a silent gap - no events to replay, e.g. a model thinking without
+  // streaming - still get their busy/idle status immediately.
+  const statusListeners = new Set<() => void>()
 
   const abortStaleStream = () => {
     if (!started || !attempt || lastEventAt === 0) return
@@ -393,16 +400,19 @@ function createServerSdkContextBase(server: ServerConnection.Any, scope: ServerS
               const resumedProps = payload.properties as { replayed?: number } | undefined
               if ((resumedProps?.replayed ?? 0) > 0) for (const listener of reconnectListeners) listener()
               pendingReconnect = false
+              for (const listener of statusListeners) listener()
               continue
             }
             if (marker === "server.snapshot-required") {
               for (const listener of reconnectListeners) listener()
+              for (const listener of statusListeners) listener()
               continue
             }
             if (pendingReconnect) {
               pendingReconnect = false
               for (const listener of reconnectListeners) listener()
             }
+            if (marker === "server.connected") for (const listener of statusListeners) listener()
             if (legacy && typeof (payload as { id?: unknown }).id === "string") lastEventId = (payload as { id: string }).id
             // Legacy v1 streams carry a "sync" event type that no longer
             // exists in the v2 Event union — widen the check, keep the skip.
@@ -512,6 +522,10 @@ function createServerSdkContextBase(server: ServerConnection.Any, scope: ServerS
     onReconnect: (listener: () => void) => {
       reconnectListeners.add(listener)
       return () => reconnectListeners.delete(listener)
+    },
+    onStatusRefresh: (listener: () => void) => {
+      statusListeners.add(listener)
+      return () => statusListeners.delete(listener)
     },
     createClient(opts: Omit<Parameters<typeof createSdkForServer>[0], "server" | "fetch">) {
       return createSdkForServer({
