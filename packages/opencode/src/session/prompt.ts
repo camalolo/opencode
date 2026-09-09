@@ -1126,6 +1126,11 @@ const layer = Layer.effect(
               (part) => part.type === "tool" && !part.metadata?.providerExecuted && !isOrphanedInterruptedTool(part),
             ) ?? false
 
+          // "unknown" means the provider stream was cut before sending a
+          // finish reason (mid-turn connection drop): not a real answer, so
+          // keep the loop running and let the next step resume the work -
+          // unless a tool was mid-run when the stream died, which needs
+          // tool-result synthesis first.
           if (
             lastAssistant?.finish &&
             !["tool-calls"].includes(lastAssistant.finish) &&
@@ -1145,6 +1150,30 @@ const layer = Layer.effect(
             }
             yield* Effect.logInfo("exiting loop", { "session.id": sessionID })
             break
+          }
+
+          if (
+            lastAssistant?.finish === "unknown" &&
+            !hasToolCalls &&
+            lastAssistant.parentID === lastUser.id
+          ) {
+            const orphan = lastAssistantMsg?.parts.find(
+              (part): part is SessionV1.ToolPart => part.type === "tool" && isOrphanedInterruptedTool(part),
+            )
+            if (orphan) {
+              yield* Effect.logWarning("loop exit with orphaned interrupted tool", {
+                "session.id": sessionID,
+                messageID: lastAssistant.id,
+                tool: orphan.tool,
+                callID: orphan.callID,
+              })
+              yield* Effect.logInfo("exiting loop", { "session.id": sessionID })
+              break
+            }
+            yield* Effect.logWarning("continuing after provider stream cut without finish", {
+              "session.id": sessionID,
+              messageID: lastAssistant.id,
+            })
           }
 
           step++
