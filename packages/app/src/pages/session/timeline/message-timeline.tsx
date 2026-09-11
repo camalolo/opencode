@@ -430,7 +430,6 @@ export function MessageTimeline(props: {
   // decisions and large scroll displacements, so an intermittent "the chat
   // jumped" report can be traced to the exact path afterwards.
   let churnResizes = 0
-  let lastResizeAt = 0
   let lastDiagResizes = 0
   const diag = (entry: { type: string } & Record<string, unknown>) => {
     const w = window as unknown as { __timelineDiag?: Array<Record<string, unknown>> }
@@ -482,12 +481,10 @@ export function MessageTimeline(props: {
   })
   const resizeItem = virtualizer.resizeItem
   let resizeAnchorScheduled = false
-  // Measurement churn counters: a resync makes every row re-measure; while
-  // that storm is running the scroll handler must not read layout shifts as
-  // user input (counters feed the diag ring declared above).
+  // Measurement churn counters: a resync makes every row re-measure; the
+  // counts feed the diag ring declared above.
   createEffect(() => {
     if (serverSync().streamEpoch() === 0) return
-    resyncChurnUntil = Date.now() + 5_000
     diag({ type: "resync" })
   })
   const anchorResizedBottom = () => {
@@ -501,7 +498,6 @@ export function MessageTimeline(props: {
   }
   virtualizer.resizeItem = (index, size) => {
     churnResizes++
-    lastResizeAt = Date.now()
     const item = virtualizer.measurementsCache[index]
     const previous = item ? (virtualizer.itemSizeCache.get(item.key) ?? item.size) : undefined
     const root = listRoot()
@@ -676,12 +672,9 @@ export function MessageTimeline(props: {
   }
 
   // A reconnect resync replaces rows and dumps coalesced updates; the layout
-  // churn fires scroll events that the auto-scroll hook would misread as the
-  // user scrolling away from the bottom, flapping the anchor up and down.
-  // Mute the scroll handler while the measurement storm runs (adaptive: the
-  // mute holds while rows keep re-measuring, hard-capped at 8s) - real
-  // wheel-up input still reaches the wheel listener and stops following.
-  let resyncChurnUntil = 0
+  // churn fires scroll events, but only gesture-marked events may influence
+  // follow state (see handleListScroll): touch devices have no wheel fallback,
+  // so swallowing their scroll events would lock them to the bottom.
   const lastScrollTops = new WeakMap<HTMLDivElement, number>()
   // Scroll preservation across resync collapses (see scroll-preservation.ts):
   // a forced resync can transiently shrink the virtual content and the browser
@@ -701,15 +694,10 @@ export function MessageTimeline(props: {
     lastScrollTops.set(root, root.scrollTop)
     const jumped = previous !== undefined && Math.abs(root.scrollTop - previous) > root.clientHeight * 0.6
     if (jumped) diag({ type: "jump", from: previous, to: root.scrollTop })
-    scrollPreservation.trackScroll(root.scrollTop, jumped, !props.hasScrollGesture() && Date.now() < resyncChurnUntil)
+    scrollPreservation.trackScroll(root.scrollTop, jumped, !props.hasScrollGesture())
     if (prependLoading) updatePrependAnchor()
     props.onScheduleScrollState(root)
     props.onHistoryScroll()
-    if (Date.now() < resyncChurnUntil) {
-      if (Date.now() - lastResizeAt < 400)
-        resyncChurnUntil = Math.min(resyncChurnUntil + 250, Date.now() + 8_000)
-      return
-    }
     if (!props.hasScrollGesture()) return
     props.onUserScroll()
     props.onAutoScrollHandleScroll()
