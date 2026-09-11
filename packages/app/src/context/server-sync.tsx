@@ -253,13 +253,26 @@ export function createServerSyncContextInner(serverSDK: ServerSDK, queryClientOv
     loadActiveSessionsQuery(serverSDK.scope, {
       active: async () => {
         if ((await serverSDK.protocol) === "v1") {
-          const statuses = (await serverSDK.client.session.status()).data ?? {}
-          seedActiveSessionStatuses(session, statuses)
-          for (const sessionID of Object.keys(statuses)) {
+          // /session/status is directory-scoped: the root instance only reports
+          // its own sessions, so query every directory the known sessions live
+          // in and merge - otherwise the reconcile in seedActiveSessionStatuses
+          // would erase live statuses of project-directory sessions on every
+          // refresh and show running turns as idle.
+          const dirs = new Set<string>([""])
+          for (const info of Object.values(session.data.info)) {
+            if (info?.directory) dirs.add(info.directory)
+          }
+          const merged: Record<string, SessionStatus> = {}
+          for (const dir of dirs) {
+            const scoped = dir ? await sdkFor(dir).session.status() : await serverSDK.client.session.status()
+            Object.assign(merged, scoped.data ?? {})
+          }
+          seedActiveSessionStatuses(session, merged)
+          for (const sessionID of Object.keys(merged)) {
             void session.resolve(sessionID).catch(() => undefined)
           }
           return Object.fromEntries(
-            Object.entries(statuses).flatMap(([sessionID, status]) =>
+            Object.entries(merged).flatMap(([sessionID, status]) =>
               status.type === "idle" ? [] : [[sessionID, { type: "running" as const }]],
             ),
           )
