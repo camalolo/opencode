@@ -18,6 +18,7 @@ import { Parameters as Lsp } from "../../src/tool/lsp"
 import { Parameters as Plan } from "../../src/tool/plan"
 import { Parameters as Question } from "../../src/tool/question"
 import { Parameters as Read } from "../../src/tool/read"
+import { Parameters as SearchSessions } from "../../src/tool/search-sessions"
 import { Parameters as Shell } from "../../src/tool/shell"
 import { Parameters as Skill } from "../../src/tool/skill"
 import { Parameters as Task } from "../../src/tool/task"
@@ -46,6 +47,7 @@ describe("tool parameters", () => {
     test("plan", () => expect(toJsonSchema(Plan)).toMatchSnapshot())
     test("question", () => expect(toJsonSchema(Question)).toMatchSnapshot())
     test("read", () => expect(toJsonSchema(Read)).toMatchSnapshot())
+    test("search_sessions", () => expect(toJsonSchema(SearchSessions)).toMatchSnapshot())
     test("skill", () => expect(toJsonSchema(Skill)).toMatchSnapshot())
     test("task", () => expect(toJsonSchema(Task)).toMatchSnapshot())
     test("todo", () => expect(toJsonSchema(Todo)).toMatchSnapshot())
@@ -222,6 +224,33 @@ describe("tool parameters", () => {
       const parsed = parse(Read, { filePath: "/a", offset: 10, limit: 100 })
       expect(parsed.offset).toBe(10)
       expect(parsed.limit).toBe(100)
+    })
+  })
+
+  describe("search_sessions", () => {
+    test("accepts query-only", () => {
+      expect(parse(SearchSessions, { query: "deploy" })).toEqual({ query: "deploy" })
+    })
+    test("accepts filters", () => {
+      const parsed = parse(SearchSessions, {
+        query: "deploy.*failed",
+        regex: true,
+        case_sensitive: true,
+        session_id: "ses_test",
+        scope: "global",
+        sources: ["tools"],
+        limit: 5,
+      })
+      expect(parsed.regex).toBe(true)
+      expect(parsed.scope).toBe("global")
+      expect(parsed.sources).toEqual(["tools"])
+    })
+    test("rejects missing query", () => {
+      expect(accepts(SearchSessions, {})).toBe(false)
+    })
+    test("rejects unknown scope and source", () => {
+      expect(accepts(SearchSessions, { query: "x", scope: "everything" })).toBe(false)
+      expect(accepts(SearchSessions, { query: "x", sources: ["everything"] })).toBe(false)
     })
   })
 

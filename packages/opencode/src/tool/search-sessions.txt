@@ -1,0 +1,8 @@
+- Search past opencode sessions on this machine for text or regular expressions
+- Use it to find earlier work: what was decided, changed, built, or run in a previous session
+- Searches user prompts, assistant replies, reasoning, and tool inputs/outputs, and matches session titles
+- Returns matching sessions with their ids, titles, directories, dates, and highlighted snippets
+- Follow up with `session_id` to search deeper inside one of the returned sessions
+- Use specific terms (feature names, file paths, error strings); very broad terms match too much to be useful
+- Regular expressions must contain at least one literal substring, e.g. "deploy.*failed" works while "\d+" does not
+- Results are capped; narrow the query, the scope, or the source list when you hit the cap

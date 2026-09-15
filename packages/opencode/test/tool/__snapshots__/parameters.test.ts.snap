@@ -464,3 +464,56 @@ exports[`tool parameters JSON Schema (wire shape) write 1`] = `
   "type": "object",
 }
 `;
+
+exports[`tool parameters JSON Schema (wire shape) search_sessions 1`] = `
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "properties": {
+    "case_sensitive": {
+      "description": "Match case exactly. Defaults to false.",
+      "type": "boolean",
+    },
+    "limit": {
+      "description": "Maximum number of matches to return (default 15, max 50).",
+      "type": "number",
+    },
+    "query": {
+      "description": "Text to look for. With regex: true this is a regular expression.",
+      "type": "string",
+    },
+    "regex": {
+      "description": "Treat query as a regular expression. Defaults to a case-insensitive literal search.",
+      "type": "boolean",
+    },
+    "scope": {
+      "description": ""project" (default) searches sessions of the current project, "global" searches every session.",
+      "enum": [
+        "project",
+        "global",
+      ],
+      "type": "string",
+    },
+    "session_id": {
+      "description": "Only search this session, for example to look deeper after a first search.",
+      "type": "string",
+    },
+    "sources": {
+      "description": "Which transcript content to search: user prompts, assistant replies, reasoning, tool calls and outputs. Defaults to all of them.",
+      "items": {
+        "enum": [
+          "user",
+          "assistant",
+          "reasoning",
+          "tools",
+        ],
+        "type": "string",
+      },
+      "type": "array",
+    },
+  },
+  "required": [
+    "query",
+  ],
+  "type": "object",
+}
+`;

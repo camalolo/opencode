@@ -8,6 +8,7 @@ import { ShellTool } from "./shell"
 import { EditTool } from "./edit"
 import { GlobTool } from "./glob"
 import { GrepTool } from "./grep"
+import { SearchSessionsTool } from "./search-sessions"
 import { ReadTool } from "./read"
 import { TaskTool } from "./task"
 import { Database } from "@opencode-ai/core/database/database"
@@ -107,6 +108,7 @@ const layer = Layer.effect(
     const writetool = yield* WriteTool
     const edit = yield* EditTool
     const greptool = yield* GrepTool
+    const searchSessionsTool = yield* SearchSessionsTool
     const patchtool = yield* ApplyPatchTool
     const skilltool = yield* SkillTool
     const agent = yield* Agent.Service
@@ -207,6 +209,7 @@ const layer = Layer.effect(
           read: Tool.init(read),
           glob: Tool.init(globtool),
           grep: Tool.init(greptool),
+          searchSessions: Tool.init(searchSessionsTool),
           edit: Tool.init(edit),
           write: Tool.init(writetool),
           task: Tool.init(task),
@@ -230,6 +233,7 @@ const layer = Layer.effect(
             tool.read,
             tool.glob,
             tool.grep,
+            tool.searchSessions,
             tool.edit,
             tool.write,
             tool.task,
