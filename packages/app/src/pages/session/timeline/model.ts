@@ -1,11 +1,13 @@
 import type { Message, UserMessage } from "@opencode-ai/sdk/v2"
-import { createMemo, createResource, onCleanup, untrack, type Accessor } from "solid-js"
+import { createMemo, createResource, createSignal, onCleanup, untrack, type Accessor } from "solid-js"
 import { useServerSync } from "@/context/server-sync"
 import { useSync } from "@/context/sync"
 import { same } from "@/utils/same"
 
 const emptyUserMessages: UserMessage[] = []
 const sessionFreshness = 15_000
+const resyncRetryBaseMs = 1_000
+const resyncRetryMaxMs = 15_000
 
 export function createTimelineModel(input: {
   sessionID: Accessor<string | undefined>
@@ -15,6 +17,35 @@ export function createTimelineModel(input: {
   const sync = useSync()
   let refreshFrame: number | undefined
   let refreshTimer: number | undefined
+  // A stream epoch requests one forced resync; if that resync fails, no new
+  // epoch arrives until the NEXT gap, so the retry loop below is the only
+  // thing standing between the user and a silently stale timeline.
+  const [resyncing, setResyncing] = createSignal(false)
+  let resyncTimer: ReturnType<typeof setTimeout> | undefined
+  let resyncRun = 0
+
+  const forceResync = (sessionID: string) => {
+    const run = ++resyncRun
+    if (resyncTimer !== undefined) {
+      clearTimeout(resyncTimer)
+      resyncTimer = undefined
+    }
+    setResyncing(true)
+    const attempt = async (failures: number) => {
+      if (run !== resyncRun || input.sessionID() !== sessionID) return
+      try {
+        await sync().session.sync(sessionID, { force: true })
+      } catch {
+        if (run !== resyncRun || input.sessionID() !== sessionID) return
+        const delay = Math.min(resyncRetryBaseMs * 2 ** failures, resyncRetryMaxMs)
+        resyncTimer = setTimeout(() => void attempt(failures + 1), delay)
+        return
+      }
+      if (run !== resyncRun) return
+      setResyncing(false)
+    }
+    void attempt(0)
+  }
 
   // Re-bumped by the sync context on every bridged stream gap; when it moves,
   // the open chat force-resyncs instead of trusting its cached store.
@@ -36,7 +67,7 @@ export function createTimelineModel(input: {
           refreshTimer = undefined
           if (input.sessionID() !== id) return
           untrack(() => {
-            if (stale) void sync().session.sync(id, { force: true })
+            if (stale) forceResync(id)
           })
         }, 0)
       })
@@ -86,6 +117,7 @@ export function createTimelineModel(input: {
     lastUserMessage: createMemo(() => visibleUserMessages().at(-1)),
     messages,
     ready,
+    resyncing,
     resource,
     userMessages,
     visibleUserMessages,
@@ -96,6 +128,10 @@ export function createTimelineModel(input: {
     if (refreshTimer !== undefined) window.clearTimeout(refreshTimer)
     refreshFrame = undefined
     refreshTimer = undefined
+    resyncRun++
+    if (resyncTimer !== undefined) clearTimeout(resyncTimer)
+    resyncTimer = undefined
+    setResyncing(false)
   }
 }
 
@@ -131,4 +167,25 @@ export async function loadOlderTimeline(input: {
   })
   if (input.sessionID() !== id) return
   input.after?.(true)
+}
+
+// Pages backward until the store holds the full transcript. A page that adds
+// nothing ends the loop: without that guard a stuck cursor would spin forever.
+export async function loadFullHistoryTimeline(input: {
+  sessionID: Accessor<string | undefined>
+  more: Accessor<boolean>
+  loading: Accessor<boolean>
+  loadMore: () => Promise<unknown>
+  size: Accessor<number>
+}) {
+  const id = input.sessionID()
+  if (!id) return
+  let previous = input.size()
+  while (input.sessionID() === id && input.more() && !input.loading()) {
+    await input.loadMore()
+    if (input.sessionID() !== id) return
+    const count = input.size()
+    if (count <= previous) return
+    previous = count
+  }
 }

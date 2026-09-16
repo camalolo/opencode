@@ -764,6 +764,10 @@ export const dict = {
   "session.messages.loading": "正在載入訊息...",
 
   "session.messages.jumpToLatest": "跳到最新",
+  "session.messages.resyncing": "連線已恢復 — 正在重新同步訊息…",
+  "session.messages.history.windowed": "較早的訊息尚未載入",
+  "session.messages.history.loadAll": "載入完整歷史記錄",
+  "session.messages.history.loadingAll": "正在載入完整歷史記錄…",
   "session.context.addToContext": "將 {{selection}} 新增到上下文",
   "session.todo.title": "待辦事項",
   "session.todo.collapse": "收合",

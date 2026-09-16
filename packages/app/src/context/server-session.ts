@@ -838,11 +838,17 @@ export function createServerSession(
     return runInflight(inflight, sessionID, async () => {
       const cached = data.message[sessionID] !== undefined && meta.limit[sessionID] !== undefined
       if (cached && data.info[sessionID] && !options?.force) return
+      // A gap resync must not shrink the visible timeline: live events grow
+      // the store past the last applied page size, so a forced window is the
+      // larger of the two. preserveUnfetched keeps anything older cached.
+      const limit =
+        options?.messageLimit ??
+        (options?.force
+          ? Math.max(meta.limit[sessionID] ?? 0, data.message[sessionID]?.length ?? 0, initialMessagePageSize)
+          : (meta.limit[sessionID] ?? initialMessagePageSize))
       await Promise.all([
         resolve(sessionID, options),
-        cached && !options?.force
-          ? Promise.resolve()
-          : loadMessages(sessionID, options?.messageLimit ?? meta.limit[sessionID] ?? initialMessagePageSize),
+        cached && !options?.force ? Promise.resolve() : loadMessages(sessionID, limit),
       ])
     })
   }

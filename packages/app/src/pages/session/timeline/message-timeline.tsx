@@ -259,6 +259,10 @@ export function MessageTimeline(props: {
   centered: boolean
   setContentRef: (el: HTMLDivElement) => void
   userMessages: UserMessage[]
+  resyncing?: () => boolean
+  historyMore?: () => boolean
+  historyLoadingAll?: () => boolean
+  onLoadFullHistory?: () => void
   anchor: (id: string) => string
   setRevealMessage?: (fn: (id: string) => void) => void
   setScrollToEnd?: (fn: () => void) => void
@@ -1412,6 +1416,40 @@ export function MessageTimeline(props: {
 
   return (
     <div class="relative w-full h-full min-w-0">
+      <div class="absolute left-1/2 -translate-x-1/2 top-4 z-[60] flex flex-col items-center gap-2 pointer-events-none">
+        <Show when={props.resyncing?.()}>
+          <div
+            class="pointer-events-auto flex items-center px-3 py-1.5 rounded-lg border border-border-weaker-base text-xs text-v2-text-text-base backdrop-blur-[2px]"
+            style={{
+              background: "color-mix(in srgb, var(--v2-background-bg-base) 92%, transparent)",
+              "box-shadow": "var(--v2-elevation-raised)",
+            }}
+          >
+            {language.t("session.messages.resyncing")}
+          </div>
+        </Show>
+        <Show when={props.historyMore?.()}>
+          <div
+            class="pointer-events-auto flex items-center gap-2 px-3 py-1.5 rounded-lg border border-border-weaker-base text-xs text-v2-text-text-base backdrop-blur-[2px]"
+            style={{
+              background: "color-mix(in srgb, var(--v2-background-bg-base) 92%, transparent)",
+              "box-shadow": "var(--v2-elevation-raised)",
+            }}
+          >
+            <span>{language.t("session.messages.history.windowed")}</span>
+            <button
+              type="button"
+              class="cursor-pointer font-medium underline-offset-2 hover:underline disabled:opacity-60 disabled:cursor-default"
+              disabled={props.historyLoadingAll?.()}
+              onClick={() => props.onLoadFullHistory?.()}
+            >
+              {props.historyLoadingAll?.()
+                ? language.t("session.messages.history.loadingAll")
+                : language.t("session.messages.history.loadAll")}
+            </button>
+          </div>
+        </Show>
+      </div>
       <div
         class="absolute left-1/2 -translate-x-1/2 z-[60] pointer-events-none transition-all duration-200 ease-out"
         classList={{

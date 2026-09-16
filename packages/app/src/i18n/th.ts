@@ -769,6 +769,10 @@ export const dict = {
   "session.messages.loadEarlier": "โหลดข้อความก่อนหน้า",
   "session.messages.loading": "กำลังโหลดข้อความ...",
   "session.messages.jumpToLatest": "ไปที่ล่าสุด",
+  "session.messages.resyncing": "การเชื่อมต่อกลับมาแล้ว — กำลังซิงค์ข้อความใหม่…",
+  "session.messages.history.windowed": "ข้อความเก่ากว่ายังไม่ถูกโหลด",
+  "session.messages.history.loadAll": "โหลดประวัติทั้งหมด",
+  "session.messages.history.loadingAll": "กำลังโหลดประวัติทั้งหมด…",
 
   "session.context.addToContext": "เพิ่ม {{selection}} ไปยังบริบท",
   "session.todo.title": "สิ่งที่ต้องทำ",

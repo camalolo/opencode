@@ -778,6 +778,10 @@ export const dict = {
   "session.messages.loadEarlier": "Učitaj ranije poruke",
   "session.messages.loading": "Učitavanje poruka...",
   "session.messages.jumpToLatest": "Idi na najnovije",
+  "session.messages.resyncing": "Connection recovered — resyncing messages…",
+  "session.messages.history.windowed": "Older messages are not loaded",
+  "session.messages.history.loadAll": "Load full history",
+  "session.messages.history.loadingAll": "Loading full history…",
 
   "session.context.addToContext": "Dodaj {{selection}} u kontekst",
   "session.todo.title": "Zadaci",

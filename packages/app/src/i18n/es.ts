@@ -781,6 +781,10 @@ export const dict = {
   "session.messages.loadEarlier": "Cargar mensajes anteriores",
   "session.messages.loading": "Cargando mensajes...",
   "session.messages.jumpToLatest": "Ir al mensaje más reciente",
+  "session.messages.resyncing": "Conexión restablecida — resincronizando mensajes…",
+  "session.messages.history.windowed": "Los mensajes antiguos no están cargados",
+  "session.messages.history.loadAll": "Cargar historial completo",
+  "session.messages.history.loadingAll": "Cargando historial completo…",
 
   "session.context.addToContext": "Añadir {{selection}} al contexto",
   "session.todo.title": "Tareas",

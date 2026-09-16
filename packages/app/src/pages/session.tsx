@@ -72,7 +72,7 @@ import {
 } from "@/pages/session/composer"
 import { createOpenReviewFile, createSessionTabs, createSizing, shouldShowFileTree } from "@/pages/session/helpers"
 import { MessageTimeline } from "@/pages/session/timeline/message-timeline"
-import { createTimelineModel } from "@/pages/session/timeline/model"
+import { createTimelineModel, loadFullHistoryTimeline } from "@/pages/session/timeline/model"
 import { type DiffStyle, SessionReviewTab, type SessionReviewTabProps } from "@/pages/session/review-tab"
 import { useSessionLayout } from "@/pages/session/session-layout"
 import { restorePromptModel, syncPromptModel, syncSessionModel } from "@/pages/session/session-model-helpers"
@@ -1626,6 +1626,25 @@ export default function Page() {
     void loadOlder()
   }
 
+  const [loadingFullHistory, setLoadingFullHistory] = createSignal(false)
+  const loadFullHistory = async () => {
+    if (loadingFullHistory() || !params.id) return
+    setLoadingFullHistory(true)
+    try {
+      await loadFullHistoryTimeline({
+        sessionID: () => params.id,
+        more: historyMore,
+        loading: historyLoading,
+        loadMore: loadOlder,
+        size: () => timeline.messages().length,
+      })
+    } catch {
+      showToast({ title: language.t("common.requestFailed") })
+    } finally {
+      setLoadingFullHistory(false)
+    }
+  }
+
   onCleanup(() => {
     if (historyContinuationFrame !== undefined) cancelAnimationFrame(historyContinuationFrame)
   })
@@ -2095,6 +2114,10 @@ export default function Page() {
                   onUserScroll={markUserScroll}
                   onHistoryScroll={onHistoryScroll}
                   onAutoScrollInteraction={autoScroll.handleInteraction}
+                  resyncing={timeline.resyncing}
+                  historyMore={historyMore}
+                  historyLoadingAll={loadingFullHistory}
+                  onLoadFullHistory={() => void loadFullHistory()}
                   shouldAnchorBottom={() =>
                     !location.hash && !store.messageId && !ui.pendingMessage && !autoScroll.userScrolled()
                   }

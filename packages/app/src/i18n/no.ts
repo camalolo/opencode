@@ -656,6 +656,10 @@ export const dict = {
   "session.messages.loadEarlier": "Last inn tidligere meldinger",
   "session.messages.loading": "Laster meldinger...",
   "session.messages.jumpToLatest": "Hopp til nyeste",
+  "session.messages.resyncing": "Tilkoblingen er gjenopprettet — synkroniserer meldinger på nytt…",
+  "session.messages.history.windowed": "Eldre meldinger er ikke lastet inn",
+  "session.messages.history.loadAll": "Last inn hele historikken",
+  "session.messages.history.loadingAll": "Laster inn hele historikken…",
 
   "session.context.addToContext": "Legg til {{selection}} i kontekst",
   "session.todo.title": "Oppgaver",

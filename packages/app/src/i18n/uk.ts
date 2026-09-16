@@ -804,6 +804,10 @@ export const dict = {
   "session.messages.loadEarlier": "Завантажити раніші повідомлення",
   "session.messages.loading": "Завантаження повідомлень...",
   "session.messages.jumpToLatest": "Перейти до останніх",
+  "session.messages.resyncing": "З'єднання відновлено — повторна синхронізація повідомлень…",
+  "session.messages.history.windowed": "Старіші повідомлення не завантажено",
+  "session.messages.history.loadAll": "Завантажити всю історію",
+  "session.messages.history.loadingAll": "Завантаження всієї історії…",
 
   "session.context.addToContext": "Додати {{selection}} до контексту",
   "session.todo.title": "Завдання",

@@ -657,6 +657,10 @@ export const dict = {
   "session.messages.loading": "Indlæser beskeder...",
 
   "session.messages.jumpToLatest": "Gå til seneste",
+  "session.messages.resyncing": "Forbindelse genoprettet — synkroniserer beskeder igen…",
+  "session.messages.history.windowed": "Ældre beskeder er ikke indlæst",
+  "session.messages.history.loadAll": "Indlæs hele historikken",
+  "session.messages.history.loadingAll": "Indlæser hele historikken…",
   "session.context.addToContext": "Tilføj {{selection}} til kontekst",
   "session.todo.title": "Opgaver",
   "session.todo.collapse": "Skjul",
