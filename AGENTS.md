@@ -170,6 +170,17 @@ Three servers run this fork, all tracking `laurent-dev`:
 | `home` (ssh alias) | http://127.0.0.1:4096 (via ssh) | `systemctl --user restart opencode` | production; user runs real sessions here |
 | `m2dev-laurent` (ssh alias) | http://127.0.0.1:4096 (via ssh) | `systemctl --user restart opencode` | dev box |
 
+### Fleet customizations (outside this repo)
+
+These live on the servers, not in git. They survive `git pull`/rebuilds — a future agent must not assume stock behavior.
+
+- **Server runtime (local)**: repo TS runs directly via bun (`C:/Users/camal/scripts/opencode-server-patched.ps1`, launched by `restart-services.ps1`). `Set-Location $env:USERPROFILE` and `OPENCODE_DISABLE_CHANNEL_DB=1` there are load-bearing (backslash `session.directory`; channel DB selection). Server-code rollback = `git revert`, no rebuild (UI needs build + manifest, see Deploying).
+- **Browser stack (all 3 servers)**: global config loads plugin `@different-ai/opencode-browser@4.6.1` with `OPENCODE_BROWSER_BACKEND=agent` → one shared browser per server via the `agent-browser` daemon (0.37.1, native binary; remotes: `agent-browser.service`, local: `agent-browser-daemon.ps1`; socket `$XDG_RUNTIME_DIR/agent-browser/<session>.sock`, mirrored into `OPENCODE_BROWSER_AGENT_SOCKET` in `opencode.service`; `RuntimeMaxSec` recycles it every 6h).
+  - The plugin bundle is LOCALLY PATCHED (master copy: local `~/.cache/opencode/packages/@different-ai/opencode-browser/node_modules/@different-ai/opencode-browser/dist/plugin.js`; servers load the copy under the dir matching the config spec — `@latest` for bare spec, `@4.6.1` for pinned; backups `*.bak-pre-console` alongside). Patches: `browser_console`/`browser_errors` mapped to the agent backend, `browser_query` page_text newline fix, `browser_cdp` tool (returns live CDP endpoint from `DevToolsActivePort`). Any plugin version bump WIPES the patch — re-push from master and restart.
+  - Raw-CDP rules (baked into `browser_cdp` output): re-attach fresh every time (port + UUIDs change on recycle), never send an `Origin` header (Chromium 403). Helper `~/.local/bin/agent-browser-cdp-info` on remotes. Tab cleanup: `agent-browser-cleanup.sh` + 15min timer (remotes), `agent-browser-cleanup.ps1` (local).
+- **OCR**: vendored patched `opencode-parser` at `~/.config/opencode/vendor/opencode-parser` + shim `~/.config/opencode/plugins/parser.ts` (all 3). Bun+Arborist installs npm-specifier plugins hollow — never add `opencode-parser` to the plugin array (Windows hits it deterministically); keep the shim. Patch: image attachments for text-only models are saved to a temp file with a `parse` instruction instead of being sent as data URLs.
+- **Providers**: `camalolo.com` is the user's llm-proxy (source: home `~/Sources/llm-proxy`, Express+TS). Custom-proxy providers don't inherit models.dev metadata by model ID — declare `attachment`/`modalities` per model or images get stripped. Phone/remote access: `https://home.opencode.camalolo.com` (nginx TLS on home).
+
 ### Deploying
 
 UI changes need build + manifest regen + restart on EVERY server (restarting alone keeps serving the old UI). Remotes: repo at `~/Sources/opencode`.
