@@ -1641,7 +1641,12 @@ export default function Page() {
 
       const el = scroller
       if (!el) return
-      if (el.scrollHeight > el.clientHeight + 1) return
+      // Keep runway above the viewport after a cold mount: a document barely
+      // taller than the viewport puts the hard top a few wheel ticks away,
+      // and the first prepend then fires at scrollTop 0 over cold estimates,
+      // teleporting the viewport. Loads run while bottom-anchored, so the
+      // runway builds invisibly until the document is several viewports tall.
+      if (el.scrollHeight > el.clientHeight * 8 + 1) return
       if (!historyMore()) return
 
       void loadOlder()
