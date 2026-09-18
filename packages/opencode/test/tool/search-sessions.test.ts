@@ -1,5 +1,7 @@
 import { describe, expect } from "bun:test"
+import { sql } from "drizzle-orm"
 import { Database } from "@opencode-ai/core/database/database"
+import { SearchDatabase } from "@opencode-ai/core/database/search-database"
 import { LayerNode } from "@opencode-ai/core/effect/layer-node"
 import { SessionProjector } from "@opencode-ai/core/session/projector"
 import { SearchIndex } from "@opencode-ai/core/session/search-index"
@@ -17,7 +19,7 @@ import type * as Tool from "../../src/tool/tool"
 
 const it = testEffect(
   LayerNode.compile(
-    LayerNode.group([SessionNs.node, SessionProjector.node, SearchIndex.node, Database.node, Truncate.node, Agent.node]),
+    LayerNode.group([SessionNs.node, SessionProjector.node, SearchIndex.node, SearchDatabase.node, Database.node, Truncate.node, Agent.node]),
   ),
 )
 
@@ -319,6 +321,26 @@ describe("tool.search_sessions", () => {
 
       expect((yield* run({ query: "revised phrasing now" })).metadata.matches).toBe(1)
       expect((yield* run({ query: "original phrasing" })).metadata.matches).toBe(0)
+    }),
+  )
+
+  it.instance("drops index rows when a session is deleted", () =>
+    Effect.gen(function* () {
+      const session = yield* SessionNs.Service
+      const past = yield* session.create({ title: "Doomed" })
+      yield* addMessage(past.id, "user", [text("ephemeral zebra deletion probe")])
+
+      expect((yield* run({ query: "ephemeral zebra deletion probe" })).metadata.matches).toBe(1)
+
+      const database = yield* Database.Service
+      const index = yield* SearchIndex.Service
+      const search = yield* SearchDatabase.Service
+      yield* database.db.run(sql`DELETE FROM session WHERE id = ${past.id}`)
+      yield* index.sync({ sweep: true })
+
+      const remaining = yield* search.db.all<{ n: number }>(sql`SELECT count(*) AS n FROM part_search_text`)
+      expect(remaining[0]!.n).toBe(0)
+      expect((yield* run({ query: "ephemeral zebra deletion probe" })).metadata.matches).toBe(0)
     }),
   )
 })

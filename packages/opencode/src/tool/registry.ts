@@ -13,6 +13,7 @@ import { ReadTool } from "./read"
 import { TaskTool } from "./task"
 import { Database } from "@opencode-ai/core/database/database"
 import { SearchIndex } from "@opencode-ai/core/session/search-index"
+import { SearchDatabase } from "@opencode-ai/core/database/search-database"
 import { TodoWriteTool } from "./todo"
 import { WebFetchTool } from "./webfetch"
 import { WriteTool } from "./write"
@@ -448,6 +449,7 @@ export const node = LayerNode.make({
     RuntimeFlags.node,
     MCP.node,
     Database.node,
+    SearchDatabase.node,
     Ripgrep.node,
     SearchIndex.node,
   ],

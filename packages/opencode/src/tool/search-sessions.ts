@@ -1,6 +1,7 @@
 import { and, desc, eq, inArray, ne, or, sql, type SQL } from "drizzle-orm"
 import { Effect, Schema } from "effect"
 import { Database } from "@opencode-ai/core/database/database"
+import { SearchDatabase } from "@opencode-ai/core/database/search-database"
 import { SearchIndex } from "@opencode-ai/core/session/search-index"
 import { MessageTable, PartTable, SessionTable } from "@opencode-ai/core/session/sql"
 import type { SessionV1 } from "@opencode-ai/core/v1/session"
@@ -47,6 +48,7 @@ export const SearchSessionsTool = Tool.define(
   "search_sessions",
   Effect.gen(function* () {
     const database = yield* Database.Service
+    const search = yield* SearchDatabase.Service
     const index = yield* SearchIndex.Service
     return {
       description: DESCRIPTION,
@@ -94,7 +96,7 @@ export const SearchSessionsTool = Tool.define(
             }
             if (sources)
               conditions.push(sql`s.source IN (${sql.join([...sources].map((item) => sql`${item}`), sql`, `)})`)
-            const rows = yield* db
+            const rows = yield* search.db
               .all<IndexedRow>(sql`
                 SELECT s.session_id AS session_id, s.source AS source, s.label AS label,
                        s.time_created AS time_created, s.text AS text

@@ -1,9 +1,9 @@
 {
   "version": "7",
   "dialect": "sqlite",
-  "id": "bb829233-587a-4a3b-a072-26f48ddbaf0f",
+  "id": "2e9d4ca0-14fa-4036-a123-bc94df56fab9",
   "prevIds": [
-    "37feb7ab-649e-465d-922a-df6714a0134b"
+    "bb829233-587a-4a3b-a072-26f48ddbaf0f"
   ],
   "ddl": [
     {
@@ -52,10 +52,6 @@
     },
     {
       "name": "message",
-      "entityType": "tables"
-    },
-    {
-      "name": "part_search_text",
       "entityType": "tables"
     },
     {
@@ -825,96 +821,6 @@
       "name": "data",
       "entityType": "columns",
       "table": "message"
-    },
-    {
-      "type": "integer",
-      "notNull": true,
-      "autoincrement": false,
-      "default": null,
-      "generated": null,
-      "name": "part_rowid",
-      "entityType": "columns",
-      "table": "part_search_text"
-    },
-    {
-      "type": "text",
-      "notNull": true,
-      "autoincrement": false,
-      "default": null,
-      "generated": null,
-      "name": "part_id",
-      "entityType": "columns",
-      "table": "part_search_text"
-    },
-    {
-      "type": "integer",
-      "notNull": true,
-      "autoincrement": false,
-      "default": null,
-      "generated": null,
-      "name": "ordinal",
-      "entityType": "columns",
-      "table": "part_search_text"
-    },
-    {
-      "type": "text",
-      "notNull": true,
-      "autoincrement": false,
-      "default": null,
-      "generated": null,
-      "name": "session_id",
-      "entityType": "columns",
-      "table": "part_search_text"
-    },
-    {
-      "type": "text",
-      "notNull": true,
-      "autoincrement": false,
-      "default": null,
-      "generated": null,
-      "name": "project_id",
-      "entityType": "columns",
-      "table": "part_search_text"
-    },
-    {
-      "type": "text",
-      "notNull": true,
-      "autoincrement": false,
-      "default": null,
-      "generated": null,
-      "name": "source",
-      "entityType": "columns",
-      "table": "part_search_text"
-    },
-    {
-      "type": "text",
-      "notNull": true,
-      "autoincrement": false,
-      "default": null,
-      "generated": null,
-      "name": "label",
-      "entityType": "columns",
-      "table": "part_search_text"
-    },
-    {
-      "type": "integer",
-      "notNull": true,
-      "autoincrement": false,
-      "default": null,
-      "generated": null,
-      "name": "time_created",
-      "entityType": "columns",
-      "table": "part_search_text"
-    },
-    {
-      "type": "text",
-      "notNull": true,
-      "autoincrement": false,
-      "default": null,
-      "generated": null,
-      "name": "text",
-      "entityType": "columns",
-      "table": "part_search_text"
     },
     {
       "type": "text",
@@ -2028,52 +1934,6 @@
       "name": "message_session_time_created_id_idx",
       "entityType": "indexes",
       "table": "message"
-    },
-    {
-      "columns": [
-        {
-          "value": "part_id",
-          "isExpression": false
-        },
-        {
-          "value": "ordinal",
-          "isExpression": false
-        }
-      ],
-      "isUnique": true,
-      "where": null,
-      "origin": "manual",
-      "name": "part_search_text_field_idx",
-      "entityType": "indexes",
-      "table": "part_search_text"
-    },
-    {
-      "columns": [
-        {
-          "value": "part_rowid",
-          "isExpression": false
-        }
-      ],
-      "isUnique": false,
-      "where": null,
-      "origin": "manual",
-      "name": "part_search_text_part_rowid_idx",
-      "entityType": "indexes",
-      "table": "part_search_text"
-    },
-    {
-      "columns": [
-        {
-          "value": "time_created",
-          "isExpression": false
-        }
-      ],
-      "isUnique": false,
-      "where": null,
-      "origin": "manual",
-      "name": "part_search_text_time_idx",
-      "entityType": "indexes",
-      "table": "part_search_text"
     },
     {
       "columns": [

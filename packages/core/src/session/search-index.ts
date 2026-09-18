@@ -1,11 +1,12 @@
 export * as SearchIndex from "./search-index"
 
-import { and, desc, eq, gt, inArray, lte, sql } from "drizzle-orm"
-import { Cause, Context, Duration, Effect, Layer, Schedule, Semaphore } from "effect"
+import { and, asc, desc, eq, gt, inArray, lte, sql } from "drizzle-orm"
+import { Cause, Context, Duration, Effect, Exit, Layer, Semaphore } from "effect"
 import type { EffectDrizzleSqlite } from "@opencode-ai/effect-drizzle-sqlite"
 import { Database } from "../database/database"
+import { SearchDatabase, PartSearchTextTable } from "../database/search-database"
 import { makeGlobalNode } from "../effect/app-node"
-import { MessageTable, PartSearchTextTable, PartTable, SessionTable } from "./sql"
+import { MessageTable, PartTable, SessionTable } from "./sql"
 import { SessionV1 } from "../v1/session"
 import type { SessionSchema } from "./schema"
 
@@ -21,6 +22,16 @@ const FIELD_LIMIT = 512 * 1024
 
 /** Parts newer than this are re-read on every sync so streaming text stays fresh. */
 const REFRESH_WINDOW = 30 * 60 * 1000
+
+/**
+ * The sync loop yields to session work: batches grow only while ticks keep
+ * succeeding, and any failure doubles the pause between ticks instead of
+ * re-entering contention a second later.
+ */
+const TICK_MS = 1000
+const TICK_MAX_MS = 60_000
+const BATCH_MIN = 50
+const BATCH_MAX = 500
 
 export interface Interface {
   /** Brings the index up to date: new parts, changed recent parts, orphan cleanup. */
@@ -149,22 +160,22 @@ const ftsDelete = (tx: Tx, rows: { rowid: number; text: string }[]) => {
 const layer = Layer.effect(
   Service,
   Effect.gen(function* () {
+    // Parts, messages, and sessions live in the main database and are only
+    // ever read here; every index read and write goes to the separate search
+    // database, so indexer transactions cannot block session persistence.
     const { db } = yield* Database.Service
-    // drizzle cannot express virtual tables, so the FTS5 index is ensured here;
-    // it mirrors part_search_text through external content.
-    yield* db
-      .run(
-        sql`CREATE VIRTUAL TABLE IF NOT EXISTS part_search USING fts5(text, content='part_search_text', content_rowid='rowid', tokenize='trigram')`,
-      )
-      .pipe(Effect.orDie)
+    const { db: search } = yield* SearchDatabase.Service
 
     const lock = Semaphore.makeUnsafe(1)
-    const frontierRow = yield* db
+    const frontierRow = yield* search
       .get<{ frontier: number | null }>(sql`SELECT max(part_rowid) AS frontier FROM part_search_text`)
       .pipe(Effect.orDie)
     let frontier = frontierRow?.frontier ?? 0
-    let ticks = 0
     let caughtUp = frontier > 0
+    let tickMs = TICK_MS
+    let batch = BATCH_MIN
+    let sweepSessionCursor = ""
+    let sweepRowCursor = 0
 
     const rolesFor = (messageIDs: SessionV1.MessageID[]) =>
       messageIDs.length === 0
@@ -210,12 +221,12 @@ const layer = Layer.effect(
           projectsFor(rows.map((row) => row.session_id)),
         ])
         const values = rowsToValues(rows, roles, projects)
-        yield* db
+        yield* search
           .transaction((tx) =>
             Effect.gen(function* () {
               // Another sync loop (a second layer build in this process, or
-              // another process sharing the database) may have indexed parts
-              // of this range already. Replace its rows so the unique
+              // another process sharing the search database) may have indexed
+              // parts of this range already. Replace its rows so the unique
               // (part_id, ordinal) guard never trips and FTS stays exact.
               const prior = yield* tx
                 .select({ rowid: sql<number>`rowid`, text: PartSearchTextTable.text })
@@ -227,7 +238,7 @@ const layer = Layer.effect(
               yield* tx.run(
                 sql`DELETE FROM part_search_text WHERE part_rowid > ${frontier} AND part_rowid <= ${last}`,
               )
-              for (const batch of chunks(values, 400)) yield* tx.insert(PartSearchTextTable).values(batch).run()
+              for (const chunk of chunks(values, 400)) yield* tx.insert(PartSearchTextTable).values(chunk).run()
               const inserted = yield* tx
                 .select({ rowid: sql<number>`rowid`, text: PartSearchTextTable.text })
                 .from(PartSearchTextTable)
@@ -257,7 +268,7 @@ const layer = Layer.effect(
           rolesFor(rows.map((row) => row.message_id)),
           projectsFor(rows.map((row) => row.session_id)),
         ])
-        const indexed = yield* db
+        const indexed = yield* search
           .select({
             rowid: sql<number>`rowid`,
             part_id: PartSearchTextTable.part_id,
@@ -291,7 +302,7 @@ const layer = Layer.effect(
           )
         })
         if (changed.length === 0) return
-        yield* db
+        yield* search
           .transaction((tx) =>
             Effect.gen(function* () {
               for (const row of changed) {
@@ -299,8 +310,8 @@ const layer = Layer.effect(
                 yield* ftsDelete(tx, old)
                 yield* tx.delete(PartSearchTextTable).where(eq(PartSearchTextTable.part_id, row.id)).run()
               }
-              for (const batch of chunks(rowsToValues(changed, roles, projects), 400))
-                yield* tx.insert(PartSearchTextTable).values(batch).run()
+              for (const chunk of chunks(rowsToValues(changed, roles, projects), 400))
+                yield* tx.insert(PartSearchTextTable).values(chunk).run()
               const inserted = yield* tx
                 .select({ rowid: sql<number>`rowid`, text: PartSearchTextTable.text })
                 .from(PartSearchTextTable)
@@ -313,21 +324,88 @@ const layer = Layer.effect(
           .pipe(Effect.orDie)
       })
 
-    /** Drops index rows whose part is gone, e.g. after session deletion. */
+    /**
+     * Drops index rows whose session or part is gone, e.g. after deletion.
+     * The index cannot join across the two database files, so cursors walk
+     * the index in batches and existence is checked in the main database.
+     * Sessions go first: deleting a Session cascades its parts away, so the
+     * indexed session_id column purges a whole deleted Session in one pass.
+     * The part-level pass below still catches messages removed on their own.
+     */
     const sweep = Effect.gen(function* () {
-      const orphans = yield* db
-        .all<{ rowid: number; text: string }>(
-          sql`SELECT s.rowid AS rowid, s.text AS text FROM part_search_text s LEFT JOIN part p ON p.id = s.part_id WHERE p.id IS NULL LIMIT 500`,
-        )
+      const sessions = yield* search
+        .selectDistinct({ session_id: PartSearchTextTable.session_id })
+        .from(PartSearchTextTable)
+        .where(sql`${PartSearchTextTable.session_id} > ${sweepSessionCursor}`)
+        .orderBy(PartSearchTextTable.session_id)
+        .limit(500)
+        .all()
         .pipe(Effect.orDie)
-      if (orphans.length === 0) return
-      yield* db
+      if (sessions.length === 0) {
+        sweepSessionCursor = ""
+      } else {
+        sweepSessionCursor = sessions[sessions.length - 1]!.session_id
+        const ids = sessions.map((row) => row.session_id)
+        const alive = yield* db
+          .select({ id: SessionTable.id })
+          .from(SessionTable)
+          .where(inArray(SessionTable.id, ids))
+          .all()
+          .pipe(Effect.orDie)
+        const known = new Set(alive.map((row) => row.id))
+        for (const id of ids.filter((item) => !known.has(item))) {
+          const doomed = yield* search
+            .select({ rowid: sql<number>`rowid`, text: PartSearchTextTable.text })
+            .from(PartSearchTextTable)
+            .where(eq(PartSearchTextTable.session_id, id))
+            .all()
+            .pipe(Effect.orDie)
+          yield* search
+            .transaction((tx) =>
+              Effect.gen(function* () {
+                yield* ftsDelete(tx, doomed)
+                yield* tx.delete(PartSearchTextTable).where(eq(PartSearchTextTable.session_id, id)).run()
+              }),
+            )
+            .pipe(Effect.orDie)
+        }
+      }
+
+      const rows = yield* search
+        .select({
+          rowid: sql<number>`rowid`,
+          part_id: PartSearchTextTable.part_id,
+          text: PartSearchTextTable.text,
+        })
+        .from(PartSearchTextTable)
+        .where(gt(PartSearchTextTable.part_rowid, sweepRowCursor))
+        .orderBy(asc(PartSearchTextTable.part_rowid))
+        .limit(500)
+        .all()
+        .pipe(Effect.orDie)
+      if (rows.length === 0) {
+        sweepRowCursor = 0
+        return
+      }
+      sweepRowCursor = rows[rows.length - 1]!.rowid
+      const ids = [...new Set(rows.map((row) => row.part_id))]
+      const alive = yield* db
+        .select({ id: PartTable.id })
+        .from(PartTable)
+        .where(inArray(PartTable.id, ids))
+        .all()
+        .pipe(Effect.orDie)
+      const known = new Set(alive.map((row) => row.id))
+      const missing = ids.filter((id) => !known.has(id))
+      if (missing.length === 0) return
+      const doomed = rows.filter((row) => missing.includes(row.part_id))
+      yield* search
         .transaction((tx) =>
           Effect.gen(function* () {
-            yield* ftsDelete(tx, orphans)
+            yield* ftsDelete(tx, doomed)
             yield* tx.run(
-              sql`DELETE FROM part_search_text WHERE rowid IN (${sql.join(
-                orphans.map((row) => sql`${row.rowid}`),
+              sql`DELETE FROM part_search_text WHERE part_id IN (${sql.join(
+                missing.map((id) => sql`${id}`),
                 sql`, `,
               )})`,
             )
@@ -336,28 +414,55 @@ const layer = Layer.effect(
         .pipe(Effect.orDie)
     })
 
-    const sync = (options?: { budget?: number; refresh?: number; sweep?: boolean }) =>
+    const run = (options?: { budget?: number; refresh?: number; sweep?: boolean }) =>
       lock.withPermit(
         Effect.gen(function* () {
-          yield* catchUp(options?.budget ?? 500)
-          yield* refresh(options?.refresh ?? (options?.budget ? 500 : 2000))
-          if (options?.sweep) {
-            ticks += 1
-            if (ticks % 20 === 1) yield* sweep
-          }
-        }).pipe(
-          // Transient SQLite contention (e.g. the boot-time project bootstrap
-          // burst) must degrade to a skipped tick, not kill the sync loop.
-          Effect.catchCause((cause) =>
-            Effect.logError("session search index sync failed", { cause: Cause.pretty(cause) }),
-          ),
-        ),
+          yield* catchUp(options?.budget ?? batch)
+          // Streaming refresh is pointless until the backlog is indexed; the
+          // loop passes refresh: 0 to pace steady-state churn to every 5th
+          // tick, while explicit calls always refresh recent parts.
+          const refreshBudget = options?.refresh ?? (options?.budget ? 500 : 2000)
+          if ((caughtUp || options?.budget) && refreshBudget > 0) yield* refresh(refreshBudget)
+          if (options?.sweep) yield* sweep
+        }),
       )
 
-    yield* sync({ sweep: true }).pipe(Effect.repeat(Schedule.spaced(Duration.seconds(1))), Effect.forkScoped)
+    const sync = (options?: { budget?: number; refresh?: number; sweep?: boolean }) =>
+      // Transient SQLite contention or any other failure degrades to a
+      // skipped tick, never a killed sync loop or a failed tool call.
+      run(options).pipe(
+        Effect.catchCause((cause) => Effect.logError("session search index sync failed", { cause: Cause.pretty(cause) })),
+      )
+
+    let loopTicks = 0
+    yield* Effect.forever(
+      Effect.suspend(() => {
+        // The loop paces refresh and sweep itself; explicit sync callers get
+        // exactly what they asked for.
+        const sweepThisTick = loopTicks % 20 === 1
+        const refreshThisTick = loopTicks % 5 === 0
+        loopTicks += 1
+        return Effect.gen(function* () {
+          const outcome = yield* run({ sweep: sweepThisTick, refresh: refreshThisTick ? undefined : 0 }).pipe(Effect.exit)
+          if (Exit.isSuccess(outcome)) {
+            tickMs = TICK_MS
+            batch = Math.min(batch * 2, BATCH_MAX)
+          } else {
+            yield* Effect.logError("session search index sync failed", { cause: Cause.pretty(outcome.cause) })
+            tickMs = Math.min(tickMs * 2, TICK_MAX_MS)
+            batch = BATCH_MIN
+          }
+          yield* Effect.sleep(Duration.millis(tickMs))
+        })
+      }),
+    ).pipe(Effect.forkScoped)
 
     return Service.of({ sync })
   }),
 )
 
-export const node = makeGlobalNode({ name: "session-search-index", layer, deps: [Database.node] })
+export const node = makeGlobalNode({
+  name: "session-search-index",
+  layer,
+  deps: [Database.node, SearchDatabase.node],
+})

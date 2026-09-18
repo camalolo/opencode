@@ -100,35 +100,6 @@ export const PartTable = sqliteTable(
   ],
 )
 
-/**
- * Searchable text extracted from parts, one row per field (a tool part yields
- * separate input and output rows). The `part_search` FTS5 trigram virtual
- * table indexes the text column with content='part_search_text' and is
- * created by the search index service because drizzle cannot express virtual
- * tables. This table has no primary key on purpose: its implicit rowid is the
- * FTS content_rowid. (part_id, ordinal) is unique so concurrent indexers can
- * race safely.
- */
-export const PartSearchTextTable = sqliteTable(
-  "part_search_text",
-  {
-    part_rowid: integer().notNull(),
-    part_id: text().$type<PartID>().notNull(),
-    ordinal: integer().notNull(),
-    session_id: text().$type<SessionSchema.ID>().notNull(),
-    project_id: text().notNull(),
-    source: text().$type<"user" | "assistant" | "reasoning" | "tools">().notNull(),
-    label: text().notNull(),
-    time_created: integer().notNull(),
-    text: text().notNull(),
-  },
-  (table) => [
-    uniqueIndex("part_search_text_field_idx").on(table.part_id, table.ordinal),
-    index("part_search_text_part_rowid_idx").on(table.part_rowid),
-    index("part_search_text_time_idx").on(table.time_created),
-  ],
-)
-
 export const TodoTable = sqliteTable(
   "todo",
   {
