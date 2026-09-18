@@ -1,7 +1,7 @@
 export * as SearchIndex from "./search-index"
 
 import { and, desc, eq, gt, inArray, lte, sql } from "drizzle-orm"
-import { Context, Duration, Effect, Layer, Schedule, Semaphore } from "effect"
+import { Cause, Context, Duration, Effect, Layer, Schedule, Semaphore } from "effect"
 import type { EffectDrizzleSqlite } from "@opencode-ai/effect-drizzle-sqlite"
 import { Database } from "../database/database"
 import { makeGlobalNode } from "../effect/app-node"
@@ -164,6 +164,7 @@ const layer = Layer.effect(
       .pipe(Effect.orDie)
     let frontier = frontierRow?.frontier ?? 0
     let ticks = 0
+    let caughtUp = frontier > 0
 
     const rolesFor = (messageIDs: SessionV1.MessageID[]) =>
       messageIDs.length === 0
@@ -196,7 +197,13 @@ const layer = Layer.effect(
           .limit(budget)
           .all()
           .pipe(Effect.orDie)
-        if (rows.length === 0) return
+        if (rows.length === 0) {
+          if (!caughtUp) {
+            caughtUp = true
+            yield* Effect.logInfo("session search index caught up")
+          }
+          return
+        }
         const last = rows[rows.length - 1]!.rowid
         const [roles, projects] = yield* Effect.all([
           rolesFor(rows.map((row) => row.message_id)),
@@ -324,7 +331,13 @@ const layer = Layer.effect(
             ticks += 1
             if (ticks % 20 === 1) yield* sweep
           }
-        }),
+        }).pipe(
+          // Transient SQLite contention (e.g. the boot-time project bootstrap
+          // burst) must degrade to a skipped tick, not kill the sync loop.
+          Effect.catchCause((cause) =>
+            Effect.logError("session search index sync failed", { cause: Cause.pretty(cause) }),
+          ),
+        ),
       )
 
     yield* sync({ sweep: true }).pipe(Effect.repeat(Schedule.spaced(Duration.seconds(1))), Effect.forkScoped)
