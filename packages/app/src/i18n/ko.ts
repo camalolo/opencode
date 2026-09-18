@@ -495,9 +495,7 @@ export const dict = {
   "session.messages.loading": "메시지 로드 중...",
   "session.messages.jumpToLatest": "최신으로 이동",
   "session.messages.resyncing": "연결이 복구되었습니다 — 메시지 재동기화 중…",
-  "session.messages.history.windowed": "이전 메시지가 로드되지 않았습니다",
-  "session.messages.history.loadAll": "전체 기록 불러오기",
-  "session.messages.history.loadingAll": "전체 기록 불러오는 중…",
+
   "session.context.addToContext": "컨텍스트에 {{selection}} 추가",
   "session.todo.title": "할 일",
   "session.todo.collapse": "접기",

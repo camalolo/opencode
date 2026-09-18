@@ -744,9 +744,7 @@ export const dict = {
   "session.messages.loading": "Đang tải tin nhắn...",
   "session.messages.jumpToLatest": "Chuyển đến mới nhất",
   "session.messages.resyncing": "Đã khôi phục kết nối — đang đồng bộ lại tin nhắn…",
-  "session.messages.history.windowed": "Các tin nhắn cũ hơn chưa được tải",
-  "session.messages.history.loadAll": "Tải toàn bộ lịch sử",
-  "session.messages.history.loadingAll": "Đang tải toàn bộ lịch sử…",
+
   "session.context.addToContext": "Thêm {{selection}} vào ngữ cảnh",
   "session.todo.title": "việc cần làm",
   "session.todo.collapse": "Thu gọn",

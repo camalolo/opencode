@@ -746,9 +746,7 @@ export const dict = {
   "session.messages.loading": "پیغامات لوڈ ہو رہے ہیں...",
   "session.messages.jumpToLatest": "تازہ ترین پر جائیں",
   "session.messages.resyncing": "Connection recovered — resyncing messages…",
-  "session.messages.history.windowed": "Older messages are not loaded",
-  "session.messages.history.loadAll": "Load full history",
-  "session.messages.history.loadingAll": "Loading full history…",
+
   "session.context.addToContext": "{{selection}} کو سیاق و سباق میں شامل کریں۔",
   "session.todo.title": "زیر التوا کام",
   "session.todo.collapse": "سمیٹیں",

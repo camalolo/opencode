@@ -716,9 +716,7 @@ export const dict = {
   "session.messages.loading": "جارٍ تحميل الرسائل...",
   "session.messages.jumpToLatest": "الانتقال إلى الأحدث",
   "session.messages.resyncing": "تم استعادة الاتصال — إعادة مزامنة الرسائل…",
-  "session.messages.history.windowed": "الرسائل الأقدم غير محمّلة",
-  "session.messages.history.loadAll": "تحميل السجل الكامل",
-  "session.messages.history.loadingAll": "جارٍ تحميل السجل الكامل…",
+
   "session.context.addToContext": "إضافة {{selection}} إلى السياق",
   "session.todo.title": "المهام",
   "session.todo.collapse": "طي",

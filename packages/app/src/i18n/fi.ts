@@ -632,9 +632,7 @@ export const dict = {
   "session.messages.loading": "Ladataan viestejä...",
   "session.messages.jumpToLatest": "Siirry uusimpaan",
   "session.messages.resyncing": "Yhteys palautettu — viestejä synkronoidaan uudelleen…",
-  "session.messages.history.windowed": "Vanhempia viestejä ei ole ladattu",
-  "session.messages.history.loadAll": "Lataa koko historia",
-  "session.messages.history.loadingAll": "Ladataan koko historiaa…",
+
   "session.context.addToContext": "Lisää {{selection}} kontekstiin",
   "session.todo.title": "Tehtävät",
   "session.todo.collapse": "Kutista",

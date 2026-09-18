@@ -740,9 +740,7 @@ export const dict = {
   "session.messages.loading": "S'estan carregant els missatges...",
   "session.messages.jumpToLatest": "Ves a l'últim",
   "session.messages.resyncing": "Connexió restablerta — ressincronitzant missatges…",
-  "session.messages.history.windowed": "Els missatges més antics no estan carregats",
-  "session.messages.history.loadAll": "Carrega l'historial complet",
-  "session.messages.history.loadingAll": "Carregant l'historial complet…",
+
   "session.context.addToContext": "Afegeix {{selection}} al context",
   "session.todo.title": "Tots",
   "session.todo.collapse": "Col·lapse",

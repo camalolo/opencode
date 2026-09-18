@@ -260,9 +260,6 @@ export function MessageTimeline(props: {
   setContentRef: (el: HTMLDivElement) => void
   userMessages: UserMessage[]
   resyncing?: () => boolean
-  historyMore?: () => boolean
-  historyLoadingAll?: () => boolean
-  onLoadFullHistory?: () => void
   anchor: (id: string) => string
   setRevealMessage?: (fn: (id: string) => void) => void
   setScrollToEnd?: (fn: () => void) => void
@@ -1426,27 +1423,6 @@ export function MessageTimeline(props: {
             }}
           >
             {language.t("session.messages.resyncing")}
-          </div>
-        </Show>
-        <Show when={props.historyMore?.()}>
-          <div
-            class="pointer-events-auto flex items-center gap-2 px-3 py-1.5 rounded-lg border border-border-weaker-base text-xs text-v2-text-text-base backdrop-blur-[2px]"
-            style={{
-              background: "color-mix(in srgb, var(--v2-background-bg-base) 92%, transparent)",
-              "box-shadow": "var(--v2-elevation-raised)",
-            }}
-          >
-            <span>{language.t("session.messages.history.windowed")}</span>
-            <button
-              type="button"
-              class="cursor-pointer font-medium underline-offset-2 hover:underline disabled:opacity-60 disabled:cursor-default"
-              disabled={props.historyLoadingAll?.()}
-              onClick={() => props.onLoadFullHistory?.()}
-            >
-              {props.historyLoadingAll?.()
-                ? language.t("session.messages.history.loadingAll")
-                : language.t("session.messages.history.loadAll")}
-            </button>
           </div>
         </Show>
       </div>

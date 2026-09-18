@@ -731,9 +731,7 @@ export const dict: Record<string, string> = {
   "session.messages.loading": "පණිවිඩ පූරණය කරමින්...",
   "session.messages.jumpToLatest": "නවතම වෙත පනින්න",
   "session.messages.resyncing": "Connection recovered — resyncing messages…",
-  "session.messages.history.windowed": "Older messages are not loaded",
-  "session.messages.history.loadAll": "Load full history",
-  "session.messages.history.loadingAll": "Loading full history…",
+
   "session.context.addToContext": "සන්දර්භය වෙත {{selection}} එක් කරන්න",
   "session.todo.title": "ටෝඩෝස්",
   "session.todo.collapse": "හකුළන්න",

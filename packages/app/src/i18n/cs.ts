@@ -734,9 +734,7 @@ export const dict = {
   "session.messages.loading": "Načítání zpráv...",
   "session.messages.jumpToLatest": "Přejít na nejnovější",
   "session.messages.resyncing": "Připojení obnoveno — zprávy se znovu synchronizují…",
-  "session.messages.history.windowed": "Starší zprávy nejsou načteny",
-  "session.messages.history.loadAll": "Načíst celou historii",
-  "session.messages.history.loadingAll": "Načítá se celá historie…",
+
   "session.context.addToContext": "Přidejte {{selection}} do kontextu",
   "session.todo.title": "Úkoly",
   "session.todo.collapse": "kolaps",

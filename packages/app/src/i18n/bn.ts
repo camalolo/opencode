@@ -734,9 +734,7 @@ export const dict: Record<string, string> = {
   "session.messages.loading": "বার্তা লোড হচ্ছে...",
   "session.messages.jumpToLatest": "সর্বশেষে ঝাঁপ দাও",
   "session.messages.resyncing": "Connection recovered — resyncing messages…",
-  "session.messages.history.windowed": "Older messages are not loaded",
-  "session.messages.history.loadAll": "Load full history",
-  "session.messages.history.loadingAll": "Loading full history…",
+
   "session.context.addToContext": "প্রসঙ্গে {{selection}} যোগ করুন",
   "session.todo.title": "টোডোস",
   "session.todo.collapse": "সঙ্কুচিত",

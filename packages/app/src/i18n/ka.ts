@@ -734,9 +734,7 @@ export const dict = {
   "session.messages.loading": "იტვირთება შეტყობინებები...",
   "session.messages.jumpToLatest": "გადადით უახლესზე",
   "session.messages.resyncing": "Connection recovered — resyncing messages…",
-  "session.messages.history.windowed": "Older messages are not loaded",
-  "session.messages.history.loadAll": "Load full history",
-  "session.messages.history.loadingAll": "Loading full history…",
+
   "session.context.addToContext": "დაამატე {{selection}} კონტექსტში",
   "session.todo.title": "დავალებები",
   "session.todo.collapse": "ჩაკეცვა",

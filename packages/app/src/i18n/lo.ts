@@ -729,9 +729,7 @@ export const dict = {
   "session.messages.loading": "ກຳລັງໂຫຼດຂໍ້ຄວາມ...",
   "session.messages.jumpToLatest": "ຂ້າມໄປຫາຫຼ້າສຸດ",
   "session.messages.resyncing": "Connection recovered — resyncing messages…",
-  "session.messages.history.windowed": "Older messages are not loaded",
-  "session.messages.history.loadAll": "Load full history",
-  "session.messages.history.loadingAll": "Loading full history…",
+
   "session.context.addToContext": "ເພີ່ມ {{selection}} ໃສ່ບໍລິບົດ",
   "session.todo.title": "ສິ່ງທີ່ຕ້ອງເຮັດ",
   "session.todo.collapse": "ຫຍໍ້ລົງ",

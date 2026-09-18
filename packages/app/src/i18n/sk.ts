@@ -732,9 +732,7 @@ export const dict = {
   "session.messages.loading": "Načítavam správy...",
   "session.messages.jumpToLatest": "Prejsť na najnovšie",
   "session.messages.resyncing": "Connection recovered — resyncing messages…",
-  "session.messages.history.windowed": "Older messages are not loaded",
-  "session.messages.history.loadAll": "Load full history",
-  "session.messages.history.loadingAll": "Loading full history…",
+
   "session.context.addToContext": "Pridať {{selection}} do kontextu",
   "session.todo.title": "Úlohy",
   "session.todo.collapse": "Zbaliť",

@@ -168,24 +168,3 @@ export async function loadOlderTimeline(input: {
   if (input.sessionID() !== id) return
   input.after?.(true)
 }
-
-// Pages backward until the store holds the full transcript. A page that adds
-// nothing ends the loop: without that guard a stuck cursor would spin forever.
-export async function loadFullHistoryTimeline(input: {
-  sessionID: Accessor<string | undefined>
-  more: Accessor<boolean>
-  loading: Accessor<boolean>
-  loadMore: () => Promise<unknown>
-  size: Accessor<number>
-}) {
-  const id = input.sessionID()
-  if (!id) return
-  let previous = input.size()
-  while (input.sessionID() === id && input.more() && !input.loading()) {
-    await input.loadMore()
-    if (input.sessionID() !== id) return
-    const count = input.size()
-    if (count <= previous) return
-    previous = count
-  }
-}

@@ -737,9 +737,7 @@ export const dict = {
   "session.messages.loading": "Hleður skilaboð...",
   "session.messages.jumpToLatest": "Farðu í nýjasta",
   "session.messages.resyncing": "Connection recovered — resyncing messages…",
-  "session.messages.history.windowed": "Older messages are not loaded",
-  "session.messages.history.loadAll": "Load full history",
-  "session.messages.history.loadingAll": "Loading full history…",
+
   "session.context.addToContext": "Bættu {{selection}} við samhengi",
   "session.todo.title": "Verkefnalisti",
   "session.todo.collapse": "Hrun",

@@ -730,9 +730,7 @@ export const dict = {
   "session.messages.loading": "Sõnumite laadimine...",
   "session.messages.jumpToLatest": "Hüppa uusimale",
   "session.messages.resyncing": "Connection recovered — resyncing messages…",
-  "session.messages.history.windowed": "Older messages are not loaded",
-  "session.messages.history.loadAll": "Load full history",
-  "session.messages.history.loadingAll": "Loading full history…",
+
   "session.context.addToContext": "Lisage konteksti {{selection}}",
   "session.todo.title": "Ülesanded",
   "session.todo.collapse": "Ahenda",

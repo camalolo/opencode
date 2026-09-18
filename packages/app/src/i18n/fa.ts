@@ -733,9 +733,7 @@ export const dict = {
   "session.messages.loading": "در حال بارگیری پیام ها...",
   "session.messages.jumpToLatest": "پرش به آخرین",
   "session.messages.resyncing": "Connection recovered — resyncing messages…",
-  "session.messages.history.windowed": "Older messages are not loaded",
-  "session.messages.history.loadAll": "Load full history",
-  "session.messages.history.loadingAll": "Loading full history…",
+
   "session.context.addToContext": "{{selection}} را به متن اضافه کنید",
   "session.todo.title": "کارهای انجام‌دادنی",
   "session.todo.collapse": "فرو ریختن",

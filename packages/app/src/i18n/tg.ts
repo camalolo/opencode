@@ -737,9 +737,7 @@ export const dict = {
   "session.messages.loading": "Паёмҳо бор карда мешаванд...",
   "session.messages.jumpToLatest": "Ба охирин гузаред",
   "session.messages.resyncing": "Connection recovered — resyncing messages…",
-  "session.messages.history.windowed": "Older messages are not loaded",
-  "session.messages.history.loadAll": "Load full history",
-  "session.messages.history.loadingAll": "Loading full history…",
+
   "session.context.addToContext": "Ба контекст {{selection}} илова кунед",
   "session.todo.title": "Тодос",
   "session.todo.collapse": "Фурӯпошӣ",

@@ -617,9 +617,7 @@ export const dict = {
   "session.messages.loading": "Nachrichten werden geladen…",
   "session.messages.jumpToLatest": "Zur neuesten Nachricht springen",
   "session.messages.resyncing": "Verbindung wiederhergestellt – Nachrichten werden neu geladen…",
-  "session.messages.history.windowed": "Ältere Nachrichten sind nicht geladen",
-  "session.messages.history.loadAll": "Vollständigen Verlauf laden",
-  "session.messages.history.loadingAll": "Vollständiger Verlauf wird geladen…",
+
   "session.context.addToContext": "{{selection}} zum Kontext hinzufügen",
   "session.todo.title": "Aufgaben",
   "session.todo.collapse": "Einklappen",

@@ -732,9 +732,7 @@ export const dict = {
   "session.messages.loading": "Memuat mesej...",
   "session.messages.jumpToLatest": "Lompat ke terkini",
   "session.messages.resyncing": "Connection recovered — resyncing messages…",
-  "session.messages.history.windowed": "Older messages are not loaded",
-  "session.messages.history.loadAll": "Load full history",
-  "session.messages.history.loadingAll": "Loading full history…",
+
   "session.context.addToContext": "Tambah {{selection}} ke konteks",
   "session.todo.title": "Senarai Tugasan",
   "session.todo.collapse": "Runtuhkan",

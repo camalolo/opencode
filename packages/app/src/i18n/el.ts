@@ -742,9 +742,7 @@ export const dict = {
   "session.messages.loading": "Φόρτωση μηνυμάτων...",
   "session.messages.jumpToLatest": "Μετάβαση στο πιο πρόσφατο",
   "session.messages.resyncing": "Η σύνδεση αποκαταστάθηκε — επανασυγχρονισμός μηνυμάτων…",
-  "session.messages.history.windowed": "Τα παλαιότερα μηνύματα δεν έχουν φορτωθεί",
-  "session.messages.history.loadAll": "Φόρτωση ολόκληρου του ιστορικού",
-  "session.messages.history.loadingAll": "Φόρτωση ολόκληρου του ιστορικού…",
+
   "session.context.addToContext": "Προσθήκη {{selection}} στο περιβάλλον",
   "session.todo.title": "Εκκρεμότητες",
   "session.todo.collapse": "Σύμπτυξη",

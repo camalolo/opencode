@@ -734,9 +734,7 @@ export const dict = {
   "session.messages.loading": "Chargement des messages...",
   "session.messages.jumpToLatest": "Aller au message le plus récent",
   "session.messages.resyncing": "Connexion rétablie — resynchronisation des messages…",
-  "session.messages.history.windowed": "Les messages plus anciens ne sont pas chargés",
-  "session.messages.history.loadAll": "Charger tout l'historique",
-  "session.messages.history.loadingAll": "Chargement de tout l'historique…",
+
   "session.context.addToContext": "Ajouter {{selection}} au contexte",
   "session.todo.title": "Tâches",
   "session.todo.collapse": "Réduire",

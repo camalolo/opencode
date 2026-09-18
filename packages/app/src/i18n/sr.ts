@@ -735,9 +735,7 @@ export const dict = {
   "session.messages.loading": "Учитавање порука...",
   "session.messages.jumpToLatest": "Скочи на најновије",
   "session.messages.resyncing": "Connection recovered — resyncing messages…",
-  "session.messages.history.windowed": "Older messages are not loaded",
-  "session.messages.history.loadAll": "Load full history",
-  "session.messages.history.loadingAll": "Loading full history…",
+
   "session.context.addToContext": "Додајте {{selection}} у контекст",
   "session.todo.title": "Тодос",
   "session.todo.collapse": "Скупи",

@@ -700,9 +700,6 @@ export const dict = {
   "session.messages.loading": "Loading messages...",
   "session.messages.jumpToLatest": "Jump to latest",
   "session.messages.resyncing": "Connection recovered — resyncing messages…",
-  "session.messages.history.windowed": "Older messages are not loaded",
-  "session.messages.history.loadAll": "Load full history",
-  "session.messages.history.loadingAll": "Loading full history…",
 
   "session.context.addToContext": "Add {{selection}} to context",
   "session.todo.title": "Todos",

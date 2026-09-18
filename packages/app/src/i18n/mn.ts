@@ -740,9 +740,7 @@ export const dict = {
   "session.messages.loading": "Мессежүүдийг ачаалж байна...",
   "session.messages.jumpToLatest": "Сүүлийнх рүү шилжих",
   "session.messages.resyncing": "Connection recovered — resyncing messages…",
-  "session.messages.history.windowed": "Older messages are not loaded",
-  "session.messages.history.loadAll": "Load full history",
-  "session.messages.history.loadingAll": "Loading full history…",
+
   "session.context.addToContext": "Контекст {{selection}} нэмнэ үү",
   "session.todo.title": "Тодос",
   "session.todo.collapse": "Нурах",

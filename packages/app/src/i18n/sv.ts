@@ -739,9 +739,7 @@ export const dict = {
   "session.messages.loading": "Läser in meddelanden...",
   "session.messages.jumpToLatest": "Hoppa till senaste",
   "session.messages.resyncing": "Anslutningen återställd — synkroniserar om meddelanden…",
-  "session.messages.history.windowed": "Äldre meddelanden är inte inlästa",
-  "session.messages.history.loadAll": "Läs in hela historiken",
-  "session.messages.history.loadingAll": "Läser in hela historiken…",
+
   "session.context.addToContext": "Lägg till {{selection}} i kontexten",
   "session.todo.title": "Att göra",
   "session.todo.collapse": "Fäll ihop",

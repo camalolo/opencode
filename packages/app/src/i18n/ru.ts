@@ -776,9 +776,6 @@ export const dict = {
   "session.messages.loading": "Загрузка сообщений...",
   "session.messages.jumpToLatest": "Перейти к последнему",
   "session.messages.resyncing": "Соединение восстановлено — повторная синхронизация сообщений…",
-  "session.messages.history.windowed": "Более старые сообщения не загружены",
-  "session.messages.history.loadAll": "Загрузить всю историю",
-  "session.messages.history.loadingAll": "Загрузка всей истории…",
 
   "session.context.addToContext": "Добавить {{selection}} в контекст",
   "session.todo.title": "Задачи",

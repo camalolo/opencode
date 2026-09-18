@@ -724,9 +724,7 @@ export const dict = {
   "session.messages.loading": "Carregando mensagens...",
   "session.messages.jumpToLatest": "Ir para a mais recente",
   "session.messages.resyncing": "Conexão restabelecida — ressincronizando mensagens…",
-  "session.messages.history.windowed": "Mensagens mais antigas não estão carregadas",
-  "session.messages.history.loadAll": "Carregar histórico completo",
-  "session.messages.history.loadingAll": "Carregando histórico completo…",
+
   "session.context.addToContext": "Adicionar {{selection}} ao contexto",
   "session.todo.title": "Tarefas",
   "session.todo.collapse": "Recolher",

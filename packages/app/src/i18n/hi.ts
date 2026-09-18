@@ -744,9 +744,7 @@ export const dict = {
   "session.messages.loading": "संदेश लोड हो रहे हैं...",
   "session.messages.jumpToLatest": "नवीनतम पर जाएं",
   "session.messages.resyncing": "कनेक्शन पुनःप्राप्त — संदेश फिर से सिंक हो रहे हैं…",
-  "session.messages.history.windowed": "पुराने संदेश लोड नहीं हैं",
-  "session.messages.history.loadAll": "पूरा इतिहास लोड करें",
-  "session.messages.history.loadingAll": "पूरा इतिहास लोड हो रहा है…",
+
   "session.context.addToContext": "{{selection}} को कॉन्टेक्स्ट में जोड़ें",
   "session.todo.title": "कार्य सूची",
   "session.todo.collapse": "संकुचित करें",

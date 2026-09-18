@@ -743,9 +743,7 @@ export const dict = {
   "session.messages.loading": "سنیہے لوڈ ہو رۓ...",
   "session.messages.jumpToLatest": "تازہ ترین تے جاؤ",
   "session.messages.resyncing": "Connection recovered — resyncing messages…",
-  "session.messages.history.windowed": "Older messages are not loaded",
-  "session.messages.history.loadAll": "Load full history",
-  "session.messages.history.loadingAll": "Loading full history…",
+
   "session.context.addToContext": "سیاق و سباق چ {{selection}} شامل کرو",
   "session.todo.title": "ٹوڈوس",
   "session.todo.collapse": "سمیٹو",

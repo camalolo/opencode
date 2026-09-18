@@ -2,7 +2,6 @@ import { describe, expect, test } from "bun:test"
 import type { AssistantMessage, Message, UserMessage } from "@opencode-ai/sdk/v2"
 import {
   isTimelineReady,
-  loadFullHistoryTimeline,
   loadOlderTimeline,
   selectUserMessages,
   selectVisibleUserMessages,
@@ -100,81 +99,3 @@ describe("timeline model", () => {
   })
 })
 
-describe("full history loader", () => {
-  const harness = (pages: number[], sessionID = "ses_test") => {
-    let index = 0
-    let size = pages[0] ?? 0
-    const calls: Array<number | undefined> = []
-    return {
-      calls,
-      size: () => size,
-      input: {
-        sessionID: () => sessionID,
-        more: () => index < pages.length - 1,
-        loading: () => false,
-        size: () => size,
-        loadMore: async () => {
-          calls.push(index)
-          index++
-          size = pages[Math.min(index, pages.length - 1)]
-        },
-      },
-    }
-  }
-
-  test("pages until more() reports the transcript is complete", async () => {
-    const state = harness([20, 220, 313])
-    await loadFullHistoryTimeline(state.input)
-    expect(state.calls).toEqual([0, 1])
-  })
-
-  test("stops when a page adds no messages", async () => {
-    const state = harness([20, 20, 20])
-    await loadFullHistoryTimeline(state.input)
-    expect(state.calls).toEqual([0])
-  })
-
-  test("stops when the session changes mid-load", async () => {
-    let sessionID = "ses_old"
-    let calls = 0
-    await loadFullHistoryTimeline({
-      sessionID: () => sessionID,
-      more: () => true,
-      loading: () => false,
-      size: () => 20,
-      loadMore: async () => {
-        calls++
-        sessionID = "ses_new"
-      },
-    })
-    expect(calls).toBe(1)
-  })
-
-  test("does nothing without a session", async () => {
-    let calls = 0
-    await loadFullHistoryTimeline({
-      sessionID: () => undefined,
-      more: () => true,
-      loading: () => false,
-      size: () => 0,
-      loadMore: async () => {
-        calls++
-      },
-    })
-    expect(calls).toBe(0)
-  })
-
-  test("propagates load failures", async () => {
-    await expect(
-      loadFullHistoryTimeline({
-        sessionID: () => "ses_test",
-        more: () => true,
-        loading: () => false,
-        size: () => 20,
-        loadMore: async () => {
-          throw new Error("page failed")
-        },
-      }),
-    ).rejects.toThrow("page failed")
-  })
-})

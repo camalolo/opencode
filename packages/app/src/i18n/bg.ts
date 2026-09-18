@@ -740,9 +740,7 @@ export const dict = {
   "session.messages.loading": "Съобщенията се зареждат...",
   "session.messages.jumpToLatest": "Преминете към най-новото",
   "session.messages.resyncing": "Връзката е възстановена — повторна синхронизация на съобщенията…",
-  "session.messages.history.windowed": "По-старите съобщения не са заредени",
-  "session.messages.history.loadAll": "Зареждане на цялата история",
-  "session.messages.history.loadingAll": "Зареждане на цялата история…",
+
   "session.context.addToContext": "Добавете {{selection}} към контекста",
   "session.todo.title": "Задачи",
   "session.todo.collapse": "Свиване",

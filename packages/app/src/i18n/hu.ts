@@ -741,9 +741,7 @@ export const dict = {
   "session.messages.loading": "Üzenetek betöltése...",
   "session.messages.jumpToLatest": "Ugrás a legújabbra",
   "session.messages.resyncing": "Kapcsolat helyreállt — üzenetek újraszinkronizálása…",
-  "session.messages.history.windowed": "A régebbi üzenetek nincsenek betöltve",
-  "session.messages.history.loadAll": "Teljes előzmények betöltése",
-  "session.messages.history.loadingAll": "Teljes előzmények betöltése…",
+
   "session.context.addToContext": "Adja hozzá a {{selection}}-t a kontextushoz",
   "session.todo.title": "Feladatok",
   "session.todo.collapse": "Összeomlás",

@@ -801,9 +801,6 @@ export const dict = {
   "session.messages.loading": "Memuat pesan...",
   "session.messages.jumpToLatest": "Lompat ke pesan terbaru",
   "session.messages.resyncing": "Koneksi dipulihkan — menyinkronkan ulang pesan…",
-  "session.messages.history.windowed": "Pesan yang lebih lama belum dimuat",
-  "session.messages.history.loadAll": "Muat seluruh riwayat",
-  "session.messages.history.loadingAll": "Memuat seluruh riwayat…",
 
   "session.context.addToContext": "Tambahkan {{selection}} ke konteks",
   "session.todo.title": "Tugas",

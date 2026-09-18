@@ -723,9 +723,7 @@ export const dict = {
   "session.messages.loading": "Ładowanie wiadomości...",
   "session.messages.jumpToLatest": "Przejdź do najnowszych",
   "session.messages.resyncing": "Połączenie przywrócone — ponowna synchronizacja wiadomości…",
-  "session.messages.history.windowed": "Starsze wiadomości nie są załadowane",
-  "session.messages.history.loadAll": "Wczytaj całą historię",
-  "session.messages.history.loadingAll": "Wczytywanie całej historii…",
+
   "session.context.addToContext": "Dodaj {{selection}} do kontekstu",
   "session.todo.title": "Zadania",
   "session.todo.collapse": "Zwiń",

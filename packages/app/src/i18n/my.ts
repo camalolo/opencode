@@ -742,9 +742,7 @@ export const dict = {
   "session.messages.loading": "မက်ဆေ့ချ်များကို ဖွင့်နေသည်...",
   "session.messages.jumpToLatest": "နောက်ဆုံးသို့ ခုန်ပါ။",
   "session.messages.resyncing": "Connection recovered — resyncing messages…",
-  "session.messages.history.windowed": "Older messages are not loaded",
-  "session.messages.history.loadAll": "Load full history",
-  "session.messages.history.loadingAll": "Loading full history…",
+
   "session.context.addToContext": "{{selection}} ကို ဆက်စပ်အကြောင်းအရာထဲ ထည့်ပါ။",
   "session.todo.title": "လုပ်စရာများ",
   "session.todo.collapse": "ခေါက်သိမ်းပါ။",
