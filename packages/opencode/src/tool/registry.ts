@@ -12,6 +12,7 @@ import { SearchSessionsTool } from "./search-sessions"
 import { ReadTool } from "./read"
 import { TaskTool } from "./task"
 import { Database } from "@opencode-ai/core/database/database"
+import { SearchIndex } from "@opencode-ai/core/session/search-index"
 import { TodoWriteTool } from "./todo"
 import { WebFetchTool } from "./webfetch"
 import { WriteTool } from "./write"
@@ -448,6 +449,7 @@ export const node = LayerNode.make({
     MCP.node,
     Database.node,
     Ripgrep.node,
+    SearchIndex.node,
   ],
 })
 

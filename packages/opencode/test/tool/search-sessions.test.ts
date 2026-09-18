@@ -2,6 +2,7 @@ import { describe, expect } from "bun:test"
 import { Database } from "@opencode-ai/core/database/database"
 import { LayerNode } from "@opencode-ai/core/effect/layer-node"
 import { SessionProjector } from "@opencode-ai/core/session/projector"
+import { SearchIndex } from "@opencode-ai/core/session/search-index"
 import { SessionV1 } from "@opencode-ai/core/v1/session"
 import { Effect } from "effect"
 import { Session as SessionNs } from "@/session/session"
@@ -15,7 +16,9 @@ import { testEffect } from "../lib/effect"
 import type * as Tool from "../../src/tool/tool"
 
 const it = testEffect(
-  LayerNode.compile(LayerNode.group([SessionNs.node, SessionProjector.node, Database.node, Truncate.node, Agent.node])),
+  LayerNode.compile(
+    LayerNode.group([SessionNs.node, SessionProjector.node, SearchIndex.node, Database.node, Truncate.node, Agent.node]),
+  ),
 )
 
 const ctx: Tool.Context = {
@@ -273,6 +276,49 @@ describe("tool.search_sessions", () => {
       expect(result.metadata.matches).toBe(3)
       expect(result.metadata.truncated).toBe(true)
       expect(result.output).toContain("Showing 3 of 8 matches")
+    }),
+  )
+
+  it.instance("falls back to the table scan for queries the trigram index cannot serve", () =>
+    Effect.gen(function* () {
+      const session = yield* SessionNs.Service
+      const past = yield* session.create({ title: "Short" })
+      yield* addMessage(past.id, "user", [text("the qx marker is unique")])
+
+      const result = yield* run({ query: "qx" })
+      expect(result.metadata.matches).toBe(1)
+      expect(result.output).toContain("**qx**")
+    }),
+  )
+
+  it.instance("keeps repeated searches stable while the indexer syncs", () =>
+    Effect.gen(function* () {
+      const session = yield* SessionNs.Service
+      const past = yield* session.create({ title: "Stable" })
+      yield* addMessage(past.id, "user", [text("indexing must not duplicate this")])
+
+      const first = yield* run({ query: "indexing must not duplicate" })
+      const second = yield* run({ query: "indexing must not duplicate" })
+      expect(second.metadata.matches).toBe(first.metadata.matches)
+      expect(second.metadata.matches).toBe(1)
+    }),
+  )
+
+  it.instance("picks up text edited after it was indexed", () =>
+    Effect.gen(function* () {
+      const session = yield* SessionNs.Service
+      const past = yield* session.create({ title: "Editing" })
+      const messageID = yield* addMessage(past.id, "user", [])
+      const partID = PartID.ascending()
+      const part = { id: partID, sessionID: past.id, messageID, type: "text", text: "original phrasing" } as SessionV1.Part
+      yield* session.updatePart(part)
+
+      expect((yield* run({ query: "original phrasing" })).metadata.matches).toBe(1)
+
+      yield* session.updatePart({ ...part, text: "revised phrasing now" })
+
+      expect((yield* run({ query: "revised phrasing now" })).metadata.matches).toBe(1)
+      expect((yield* run({ query: "original phrasing" })).metadata.matches).toBe(0)
     }),
   )
 })

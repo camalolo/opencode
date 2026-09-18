@@ -1,6 +1,7 @@
 import { and, desc, eq, inArray, ne, or, sql, type SQL } from "drizzle-orm"
 import { Effect, Schema } from "effect"
 import { Database } from "@opencode-ai/core/database/database"
+import { SearchIndex } from "@opencode-ai/core/session/search-index"
 import { MessageTable, PartTable, SessionTable } from "@opencode-ai/core/session/sql"
 import type { SessionV1 } from "@opencode-ai/core/v1/session"
 import { InstanceState } from "@/effect/instance-state"
@@ -33,10 +34,10 @@ export const Parameters = Schema.Struct({
   }),
 })
 
-type Source = "user" | "assistant" | "reasoning" | "tools"
-type Field = { source: Source; label: string; text: string }
+type Source = SearchIndex.Source
 type Hit = { start: number; length: number }
 type PartData = SessionV1.Part
+type IndexedRow = { session_id: string; source: Source; label: string; time_created: number; text: string }
 type Summary = { id: string; title: string; directory: string; time_updated: number }
 
 const LIKE_ESCAPE = "\u0001"
@@ -46,6 +47,7 @@ export const SearchSessionsTool = Tool.define(
   "search_sessions",
   Effect.gen(function* () {
     const database = yield* Database.Service
+    const index = yield* SearchIndex.Service
     return {
       description: DESCRIPTION,
       parameters: Parameters,
@@ -68,50 +70,122 @@ export const SearchSessionsTool = Tool.define(
                 `so the search cannot be narrowed. Add a literal substring (e.g. "deploy.*failed") or pass session_id.`,
             )
 
-          const { db } = database
-          const filters: SQL[] = [
-            and(
-              ...clauses.map(
-                (clause) =>
-                  or(
-                    ...clause.map(
-                      (term) =>
-                        sql`${PartTable.data} LIKE ${`%${escapeLike(jsonEscape(term))}%`} ESCAPE ${LIKE_ESCAPE}`,
-                    ),
-                  )!,
-              ),
-            )!,
-          ]
-          if (sessionID) filters.push(eq(PartTable.session_id, sessionID))
-          else {
-            filters.push(ne(PartTable.session_id, ctx.sessionID))
-            if (scope === "project")
-              filters.push(
-                // Keeping the project as an IN subquery lets SQLite drive the
-                // scan from the project's own parts instead of reading every
-                // stored transcript on the machine.
-                inArray(
-                  PartTable.session_id,
-                  db
-                    .select({ id: SessionTable.id })
-                    .from(SessionTable)
-                    .where(eq(SessionTable.project_id, instance.project.id)),
-                ),
-              )
-          }
+          // Catch up on recently written parts so very fresh sessions are searchable.
+          yield* index.sync({ budget: 250 })
 
-          // The LIKE prefilter runs inside SQLite and rowid DESC walks newest
-          // parts first, so the planner stops scanning once the candidate
-          // budget is used up instead of reading every stored transcript.
+          const { db } = database
           const candidateLimit = Math.min(Math.max(limit * 30, 300), 1500)
-          const rows = yield* db
-            .select()
-            .from(PartTable)
-            .where(and(...filters))
-            .orderBy(sql`rowid DESC`)
-            .limit(candidateLimit)
-            .all()
-            .pipe(Effect.orDie)
+
+          // Preferred path: the trigram index narrows candidates in SQLite and
+          // the JS matcher below only confirms a few hundred rows. The scan
+          // fallback keeps working for queries the trigram index cannot serve
+          // (literals under three characters).
+          const fts = ftsQuery(clauses, caseSensitive)
+          let hits: Map<string, { label: string; time: number; snippet: string }[]>
+          let scanned: number
+          if (fts) {
+            // An explicit session_id may target the current session; otherwise skip it.
+            const conditions: SQL[] = [sql`part_search MATCH ${fts}`]
+            if (sessionID) {
+              conditions.push(sql`s.session_id = ${sessionID}`)
+            } else {
+              conditions.push(sql`s.session_id <> ${ctx.sessionID}`)
+              if (scope === "project") conditions.push(sql`s.project_id = ${instance.project.id}`)
+            }
+            if (sources)
+              conditions.push(sql`s.source IN (${sql.join([...sources].map((item) => sql`${item}`), sql`, `)})`)
+            const rows = yield* db
+              .all<IndexedRow>(sql`
+                SELECT s.session_id AS session_id, s.source AS source, s.label AS label,
+                       s.time_created AS time_created, s.text AS text
+                FROM part_search
+                JOIN part_search_text s ON s.rowid = part_search.rowid
+                WHERE ${sql.join(conditions, sql` AND `)}
+                ORDER BY s.time_created DESC
+                LIMIT ${candidateLimit}
+              `)
+              .pipe(Effect.orDie)
+            scanned = rows.length
+            hits = new Map()
+            for (const row of rows) {
+              const hit = match(row.text)
+              if (!hit) continue
+              const list = hits.get(row.session_id) ?? []
+              list.push({ label: row.label, time: row.time_created, snippet: snippet(row.text, hit) })
+              hits.set(row.session_id, list)
+            }
+          } else {
+            const filters: SQL[] = [
+              and(
+                ...clauses.map(
+                  (clause) =>
+                    or(
+                      ...clause.map(
+                        (term) =>
+                          sql`${PartTable.data} LIKE ${`%${escapeLike(jsonEscape(term))}%`} ESCAPE ${LIKE_ESCAPE}`,
+                      ),
+                    )!,
+                ),
+              )!,
+            ]
+            if (sessionID) filters.push(eq(PartTable.session_id, sessionID))
+            else {
+              filters.push(ne(PartTable.session_id, ctx.sessionID))
+              if (scope === "project")
+                filters.push(
+                  // Keeping the project as an IN subquery lets SQLite drive the
+                  // scan from the project's own parts instead of reading every
+                  // stored transcript on the machine.
+                  inArray(
+                    PartTable.session_id,
+                    db
+                      .select({ id: SessionTable.id })
+                      .from(SessionTable)
+                      .where(eq(SessionTable.project_id, instance.project.id)),
+                  ),
+                )
+            }
+
+            // The LIKE prefilter runs inside SQLite and rowid DESC walks newest
+            // parts first, so the planner stops scanning once the candidate
+            // budget is used up instead of reading every stored transcript.
+            const rows = yield* db
+              .select()
+              .from(PartTable)
+              .where(and(...filters))
+              .orderBy(sql`rowid DESC`)
+              .limit(candidateLimit)
+              .all()
+              .pipe(Effect.orDie)
+            scanned = rows.length
+
+            const messageIDs = [...new Set(rows.map((row) => row.message_id))]
+            const roles = new Map<string, string>()
+            if (messageIDs.length > 0) {
+              const found = yield* db
+                .select({
+                  id: MessageTable.id,
+                  role: sql<string>`json_extract(${MessageTable.data}, '$.role')`,
+                })
+                .from(MessageTable)
+                .where(inArray(MessageTable.id, messageIDs))
+                .all()
+                .pipe(Effect.orDie)
+              for (const row of found) roles.set(row.id, row.role)
+            }
+
+            hits = new Map()
+            for (const row of rows) {
+              for (const field of SearchIndex.extractFields(row.data as PartData, roles.get(row.message_id))) {
+                if (sources && !sources.has(field.source)) continue
+                const hit = match(field.text)
+                if (!hit) continue
+                const list = hits.get(row.session_id) ?? []
+                list.push({ label: field.label, time: row.time_created, snippet: snippet(field.text, hit) })
+                hits.set(row.session_id, list)
+              }
+            }
+          }
 
           const sessionFilters: SQL[] = []
           if (sessionID) sessionFilters.push(eq(SessionTable.id, sessionID))
@@ -133,33 +207,6 @@ export const SearchSessionsTool = Tool.define(
             .all()
             .pipe(Effect.orDie)
 
-          const messageIDs = [...new Set(rows.map((row) => row.message_id))]
-          const roles = new Map<string, string>()
-          if (messageIDs.length > 0) {
-            const found = yield* db
-              .select({
-                id: MessageTable.id,
-                role: sql<string>`json_extract(${MessageTable.data}, '$.role')`,
-              })
-              .from(MessageTable)
-              .where(inArray(MessageTable.id, messageIDs))
-              .all()
-              .pipe(Effect.orDie)
-            for (const row of found) roles.set(row.id, row.role)
-          }
-
-          const hits = new Map<string, { label: string; time: number; snippet: string }[]>()
-          for (const row of rows) {
-            for (const field of fields(row.data as PartData, roles.get(row.message_id))) {
-              if (sources && !sources.has(field.source)) continue
-              const hit = match(field.text)
-              if (!hit) continue
-              const list = hits.get(row.session_id) ?? []
-              list.push({ label: field.label, time: row.time_created, snippet: snippet(field.text, hit) })
-              hits.set(row.session_id, list)
-            }
-          }
-
           const titleMatches = new Set(summaries.filter((row) => match(row.title)).map((row) => row.id))
           // Keep a few matches per session so one busy session cannot fill the
           // whole result, but stay deep when only one or two sessions matched.
@@ -180,12 +227,12 @@ export const SearchSessionsTool = Tool.define(
             count += selected.length
           }
 
-          const candidates = rows.length >= candidateLimit
+          const candidates = scanned >= candidateLimit
           const total = [...hits.values()].reduce((sum, list) => sum + list.length, 0)
           const lines: string[] = []
           if (shown.length === 0)
             lines.push(
-              `No matches for ${JSON.stringify(query)} (${scope} scope, ${rows.length} transcript parts scanned).`,
+              `No matches for ${JSON.stringify(query)} (${scope} scope, ${scanned} transcript parts scanned).`,
             )
           else {
             const action = dropped ? `Showing ${count} of ${total} matches` : `Found ${count} matches`
@@ -438,45 +485,34 @@ function quantifierAt(source: string, index: number): { optional: boolean; lengt
   return { optional: (match[1] ? Number(match[1]) : 0) === 0, length: match[0].length }
 }
 
-/** Extracts the searchable text of a part so matches can be labelled and shown with context. */
-function fields(part: PartData, role: string | undefined): Field[] {
-  switch (part.type) {
-    case "text":
-      return [{ source: role === "user" ? "user" : "assistant", label: role ?? "text", text: part.text }]
-    case "reasoning":
-      return [{ source: "reasoning", label: "reasoning", text: part.text }]
-    case "subtask":
-      return [
-        { source: "user", label: "subtask", text: part.prompt },
-        { source: "user", label: "subtask description", text: part.description },
-      ]
-    case "tool": {
-      const result: Field[] = [{ source: "tools", label: `tool ${part.tool} input`, text: flatten(part.state.input) }]
-      if (part.state.status === "completed")
-        result.push({ source: "tools", label: `tool ${part.tool} output`, text: part.state.output })
-      if (part.state.status === "error")
-        result.push({ source: "tools", label: `tool ${part.tool} error`, text: part.state.error })
-      return result
+/**
+ * Builds the FTS5 MATCH expression for the trigram index: one group of
+ * alternative phrases per required clause, joined by AND. Returns undefined
+ * when some literal is shorter than three code points, because the trigram
+ * tokenizer cannot represent it, in which case the caller falls back to the
+ * table scan. The JS matcher stays authoritative for case and regex details;
+ * the index only narrows candidates.
+ */
+function ftsQuery(clauses: string[][], caseSensitive: boolean): string | undefined {
+  const groups: string[] = []
+  for (const clause of clauses) {
+    const terms = new Set<string>()
+    for (const literal of clause) {
+      if ([...literal].length < 3) return undefined
+      for (const variant of caseVariants(literal, caseSensitive)) terms.add(variant)
     }
-    case "patch":
-      return [{ source: "tools", label: "patch files", text: part.files.join("\n") }]
-    case "file":
-      return [
-        {
-          source: "tools",
-          label: "attached file",
-          text: [part.filename, part.url].filter(Boolean).join("\n"),
-        },
-      ]
-    default:
-      return []
+    groups.push(`(${[...terms].map(ftsPhrase).join(" OR ")})`)
   }
+  return groups.join(" AND ")
 }
 
-function flatten(input: Record<string, unknown>) {
-  return Object.entries(input)
-    .map(([key, value]) => `${key}: ${typeof value === "string" ? value : JSON.stringify(value)}`)
-    .join("\n")
+/** LIKE already folds ASCII case; only non-ASCII letters need explicit variants. */
+function caseVariants(literal: string, caseSensitive: boolean) {
+  return caseSensitive || !/[^\x00-\x7F]/.test(literal) ? [literal] : [literal, literal.toLowerCase(), literal.toUpperCase()]
+}
+
+function ftsPhrase(literal: string) {
+  return `"${literal.replaceAll('"', '""')}"`
 }
 
 /** One highlighted line around the match, with whitespace collapsed. */
