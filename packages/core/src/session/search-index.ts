@@ -213,6 +213,20 @@ const layer = Layer.effect(
         yield* db
           .transaction((tx) =>
             Effect.gen(function* () {
+              // Another sync loop (a second layer build in this process, or
+              // another process sharing the database) may have indexed parts
+              // of this range already. Replace its rows so the unique
+              // (part_id, ordinal) guard never trips and FTS stays exact.
+              const prior = yield* tx
+                .select({ rowid: sql<number>`rowid`, text: PartSearchTextTable.text })
+                .from(PartSearchTextTable)
+                .where(and(gt(PartSearchTextTable.part_rowid, frontier), lte(PartSearchTextTable.part_rowid, last)))
+                .all()
+                .pipe(Effect.orDie)
+              yield* ftsDelete(tx, prior)
+              yield* tx.run(
+                sql`DELETE FROM part_search_text WHERE part_rowid > ${frontier} AND part_rowid <= ${last}`,
+              )
               for (const batch of chunks(values, 400)) yield* tx.insert(PartSearchTextTable).values(batch).run()
               const inserted = yield* tx
                 .select({ rowid: sql<number>`rowid`, text: PartSearchTextTable.text })
