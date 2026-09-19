@@ -261,6 +261,11 @@ export function MessageTimeline(props: {
   userMessages: UserMessage[]
   resyncing?: () => boolean
   anchor: (id: string) => string
+  onTimelineUnmount?: () => void
+  // Anchoring decision snapshotted by the parent when the timeline gate flips,
+  // so a re-created instance anchors to the bottom even when the live
+  // `shouldAnchorBottom` still carries a dying instance's scroll state.
+  mountAnchorBottom?: () => boolean
   setRevealMessage?: (fn: (id: string) => void) => void
   setScrollToEnd?: (fn: () => void) => void
   setHistoryAnchor?: (handlers: { capture: () => void; restore: (done: boolean) => void }) => void
@@ -280,7 +285,11 @@ export function MessageTimeline(props: {
   const ownerSessionKey = sessionKey()
   const cached = timelineCache.get(ownerSessionKey)
   const initialMeasurements = cached?.measurements
-  const coldBottomMount = !initialMeasurements?.length && props.shouldAnchorBottom()
+  // Mount-time anchoring decision, captured once: this instance either opens
+  // at the bottom or it doesn't — the live flag may flip under it later, but
+  // it must not retroactively change how the instance was created.
+  const mountedAnchored = () => props.mountAnchorBottom?.() ?? props.shouldAnchorBottom()
+  const coldBottomMount = !initialMeasurements?.length && mountedAnchored()
   const platform = usePlatform()
 
   const [listRoot, setListRoot] = createSignal<HTMLDivElement>()
@@ -445,7 +454,7 @@ export function MessageTimeline(props: {
     },
     getScrollElement: () => listRoot() ?? null,
     observeElementOffset: observeElementOffsetReconnectAware,
-    initialOffset: () => (props.shouldAnchorBottom() ? Number.MAX_SAFE_INTEGER : 0),
+    initialOffset: () => (mountedAnchored() ? Number.MAX_SAFE_INTEGER : 0),
     initialMeasurementsCache: initialMeasurements,
     estimateSize: () => timelineFallbackItemSize,
     scrollToFn: (offset, options, instance) => {
@@ -531,7 +540,7 @@ export function MessageTimeline(props: {
   queueMicrotask(() =>
     diag({
       type: "mount",
-      anchored: props.shouldAnchorBottom(),
+      anchored: mountedAnchored(),
       cold: !initialMeasurements?.length,
       offset: Math.round(listRoot()?.scrollTop ?? -1),
     }),
@@ -592,6 +601,12 @@ export function MessageTimeline(props: {
     props.setRevealMessage?.(() => {})
     props.setScrollToEnd?.(() => {})
     props.setHistoryAnchor?.({ capture: () => {}, restore: () => {} })
+    // A replaced timeline instance leaves no scroll position behind: drop the
+    // follow-suppression flag so the next mount (session switch, or a
+    // messagesReady flicker re-creating this same session's timeline) anchors
+    // to the bottom instead of inheriting "the user scrolled" from a dead
+    // instance and parking at the top of the first message.
+    props.onTimelineUnmount?.()
   })
 
   const [title, setTitle] = createStore({

@@ -944,6 +944,9 @@ export default function Page() {
       () => {
         setStore(sessionViewState())
         setUi("pendingMessage", undefined)
+        // Follow state belongs to one timeline instance; a new session must
+        // not inherit "the user scrolled" from the previous one.
+        autoScroll.reset()
       },
       { defer: true },
     ),
@@ -1500,6 +1503,27 @@ export default function Page() {
     working: () => true,
     overflowAnchor: "none",
   })
+  // Whether a (re)mounting timeline should open anchored to the bottom. Only
+  // deep-link state may suppress it: the live `autoScroll.userScrolled` flag
+  // must not participate, because it belongs to a dying instance (or picks up
+  // the virtualizer's own scroll corrections), and a fresh instance has no
+  // scroll position to preserve. Computed so the value is fresh in the same
+  // propagation wave that re-creates the timeline, before its setup reads it.
+  const [mountAnchorBottom, setMountAnchorBottom] = createSignal(true)
+  createComputed(() => {
+    void (messagesReady() ? params.id : undefined)
+    setMountAnchorBottom(!location.hash && !store.messageId && !ui.pendingMessage)
+  })
+  // Follow-suppression belongs to one timeline instance. A replaced instance
+  // (session switch, or messagesReady flicker re-creating the same session's
+  // timeline) leaves no scroll position behind — drop it eagerly so the live
+  // flag stays sane after the swap.
+  createComputed(
+    on(
+      () => [sessionKey(), messagesReady() ? params.id : undefined] as const,
+      () => autoScroll.reset(),
+    ),
+  )
   createEffect(
     on(
       () => params.id,
@@ -2104,6 +2128,7 @@ export default function Page() {
                   shouldAnchorBottom={() =>
                     !location.hash && !store.messageId && !ui.pendingMessage && !autoScroll.userScrolled()
                   }
+                  mountAnchorBottom={mountAnchorBottom}
                   centered={centered()}
                   setContentRef={(el) => {
                     content = el
@@ -2118,6 +2143,7 @@ export default function Page() {
                     restoreHistoryAnchor = handlers.restore
                   }}
                   anchor={anchor}
+                  onTimelineUnmount={() => autoScroll.reset()}
                   setRevealMessage={(fn) => {
                     revealMessage = fn
                   }}

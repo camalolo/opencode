@@ -232,6 +232,12 @@ export function createAutoScroll(options: AutoScrollOptions) {
     },
     scrollToBottom: () => scrollToBottom(false),
     forceScrollToBottom: () => scrollToBottom(true),
+    // Drop follow-suppression without scrolling: a timeline instance that is
+    // being replaced has no scroll position worth preserving, and a fresh
+    // instance must read a clean `userScrolled` or it mounts anchored to top.
+    reset: () => {
+      if (store.userScrolled) setStore("userScrolled", false)
+    },
     userScrolled: () => store.userScrolled,
   }
 }
