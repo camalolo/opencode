@@ -53,11 +53,13 @@ interface Exec {
     query: string,
     params: ReadonlyArray<unknown>,
     safeIntegers: boolean | undefined,
+    txDepth: number,
   ): Effect.Effect<Array<Record<string, unknown>>, SqlError>
   values(
     query: string,
     params: ReadonlyArray<unknown>,
     safeIntegers: boolean | undefined,
+    txDepth: number,
   ): Effect.Effect<Array<unknown[]>, SqlError>
   readonly export: Effect.Effect<Uint8Array, SqlError>
   readonly loadExtension: (path: string) => Effect.Effect<void, SqlError>
@@ -117,36 +119,46 @@ const makeSyncExec = (native: Database): Exec => ({
 const workerExecs = new Map<string, Exec>()
 
 /**
- * Runs the connection inside a Worker thread: statement execution leaves the
+ * Runs the connection inside Worker threads: statement execution leaves the
  * main event loop untouched, so long SQLite work (index batches, migrations,
- * big reads) cannot stall HTTP, SSE, or JS. Requests are answered in FIFO
- * order over one message queue, which preserves the exact semantics of the
- * single in-thread connection this replaces.
+ * big reads) cannot stall HTTP, SSE, or JS.
+ *
+ * Each database gets two workers over the same file (WAL): a writer that owns
+ * the read/write connection and receives every message in FIFO order, and a
+ * reader for plain SELECTs issued outside transactions while no write is in
+ * flight. That bypass condition is what keeps sequential consistency: a read
+ * may only skip the writer queue when every write ordered before it has
+ * already committed, so it can never observe stale data.
  */
 const makeWorkerExec = (options: Config) =>
   Effect.gen(function* () {
-    let worker: Worker | null = null
-    let alive = false
-    let seq = 0
-    const pending = new Map<number, { resolve: (value: unknown) => void; reject: (error: SqlError) => void }>()
+    const workers = { writer: null as Worker | null, reader: null as Worker | null }
+    const alive = { writer: false, reader: false }
+    const seq = { writer: 0, reader: 0 }
+    const pending = {
+      writer: new Map<number, { resolve: (value: unknown) => void; reject: (error: SqlError) => void }>(),
+      reader: new Map<number, { resolve: (value: unknown) => void; reject: (error: SqlError) => void }>(),
+    }
+    let writesInFlight = 0
 
-    const failAll = (message: string) => {
-      if (!alive) return
-      alive = false
+    const failAll = (target: "writer" | "reader", message: string) => {
+      if (!alive[target]) return
+      alive[target] = false
       const cause = new Error(message)
-      for (const entry of pending.values())
+      for (const entry of pending[target].values())
         entry.reject(new SqlError({ reason: classifySqliteError(cause, { message, operation: "execute" }) }))
-      pending.clear()
+      pending[target].clear()
     }
 
-    const spawn = () => {
-      worker = new Worker(new URL("./sqlite.worker.ts", import.meta.url))
-      alive = true
+    const spawn = (target: "writer" | "reader") => {
+      const worker = new Worker(new URL("./sqlite.worker.ts", import.meta.url))
+      workers[target] = worker
+      alive[target] = true
       worker.onmessage = (event: MessageEvent) => {
         const message = event.data as SqliteWorkerResponse
-        const entry = pending.get(message.id)
+        const entry = pending[target].get(message.id)
         if (!entry) return
-        pending.delete(message.id)
+        pending[target].delete(message.id)
         if (message.ok) entry.resolve(message.result)
         else
           entry.reject(
@@ -158,14 +170,15 @@ const makeWorkerExec = (options: Config) =>
             }),
           )
       }
-      worker.onerror = (event: ErrorEvent) => failAll(event.message || "sqlite worker error")
+      worker.onerror = (event: ErrorEvent) => failAll(target, event.message || "sqlite worker error")
       const exitable = worker as unknown as { onexit?: ((event: unknown) => void) | null }
-      exitable.onexit = () => failAll("sqlite worker exited")
+      exitable.onexit = () => failAll(target, "sqlite worker exited")
     }
 
-    const send = <A>(message: RequestInput): Effect.Effect<A, SqlError> =>
+    const send = <A>(target: "writer" | "reader", message: RequestInput, countsAsWrite = false): Effect.Effect<A, SqlError> =>
       Effect.callback<A, SqlError>((resume) => {
-        if (!worker || !alive) {
+        const worker = workers[target]
+        if (!worker || !alive[target]) {
           resume(
             Effect.fail(
               new SqlError({
@@ -178,31 +191,70 @@ const makeWorkerExec = (options: Config) =>
           )
           return
         }
-        const id = ++seq
+        const id = ++seq[target]
         worker.postMessage({ ...message, id })
-        pending.set(id, {
-          resolve: (value) => resume(Effect.succeed(value as A)),
-          reject: (error) => resume(Effect.fail(error)),
+        if (countsAsWrite) writesInFlight += 1
+        pending[target].set(id, {
+          resolve: (value) => {
+            if (countsAsWrite) writesInFlight -= 1
+            resume(Effect.succeed(value as A))
+          },
+          reject: (error) => {
+            if (countsAsWrite) writesInFlight -= 1
+            resume(Effect.fail(error))
+          },
         })
       })
 
-    spawn()
-    yield* send<undefined>({
+    spawn("writer")
+    yield* send<undefined>(
+      "writer",
+      {
+        op: "open",
+        filename: options.filename,
+        readonly: options.readonly,
+        create: options.create,
+        disableWAL: options.disableWAL,
+      },
+    )
+    spawn("reader")
+    yield* send<undefined>("reader", {
       op: "open",
       filename: options.filename,
       readonly: options.readonly,
-      create: options.create,
+      create: options.create ?? true,
       disableWAL: options.disableWAL,
     })
 
+    // SELECTs outside transactions may use the reader; everything else - and
+    // any statement racing an in-flight write - must use the writer queue.
+    const isRead = (sql: string) => /^\s*select\b/i.test(sql)
+    const target = (sql: string, txDepth: number): "writer" | "reader" => {
+      if (txDepth > 0 || !isRead(sql)) return "writer"
+      if (writesInFlight > 0 || !alive.reader) return "writer"
+      return "reader"
+    }
+
     return identity<Exec>({
-      run: (query, params, safeIntegers) =>
-        send<Array<Record<string, unknown>>>({ op: "run", sql: query, params: [...params], safeIntegers: !!safeIntegers }),
-      values: (query, params, safeIntegers) =>
-        send<Array<unknown[]>>({ op: "values", sql: query, params: [...params], safeIntegers: !!safeIntegers }),
-      export: send<Uint8Array>({ op: "export" }),
-      loadExtension: (path) => send<void>({ op: "loadExtension", path }),
-      close: send<void>({ op: "close" }),
+      run: (query, params, safeIntegers, txDepth) => {
+        const to = target(query, txDepth)
+        return send<Array<Record<string, unknown>>>(
+          to,
+          { op: "run", sql: query, params: [...params], safeIntegers: !!safeIntegers },
+          to === "writer",
+        )
+      },
+      values: (query, params, safeIntegers, txDepth) => {
+        const to = target(query, txDepth)
+        return send<Array<unknown[]>>(
+          to,
+          { op: "values", sql: query, params: [...params], safeIntegers: !!safeIntegers },
+          to === "writer",
+        )
+      },
+      export: send<Uint8Array>("writer", { op: "export" }, true),
+      loadExtension: (path) => send<void>("writer", { op: "loadExtension", path }, true),
+      close: Effect.andThen(send<void>("reader", { op: "close" }), send<void>("writer", { op: "close" }, true)),
     })
   })
 
@@ -216,14 +268,19 @@ const make = (options: Config) =>
       ? Statement.defaultTransforms(options.transformResultNames).array
       : undefined
 
+    // Depth of the open transaction holding the semaphore; statements issued
+    // inside it (including interleaved ones from other fibers, matching the
+    // shared-connection behavior this replaces) must run on the writer.
+    let txDepth = 0
+
     const run = (query: string, params: ReadonlyArray<unknown> = []) =>
       Effect.withFiber<Array<Record<string, unknown>>, SqlError>((fiber) =>
-        exec.run(query, params, Context.get(fiber.context, Client.SafeIntegers)),
+        exec.run(query, params, Context.get(fiber.context, Client.SafeIntegers), txDepth),
       )
 
     const runValues = (query: string, params: ReadonlyArray<unknown> = []) =>
       Effect.withFiber<Array<unknown[]>, SqlError>((fiber) =>
-        exec.values(query, params, Context.get(fiber.context, Client.SafeIntegers)),
+        exec.values(query, params, Context.get(fiber.context, Client.SafeIntegers), txDepth),
       )
 
     const connection = identity<SqliteConnection>({
@@ -252,7 +309,18 @@ const make = (options: Config) =>
       const fiber = Fiber.getCurrent()!
       const scope = Context.getUnsafe(fiber.context, Scope.Scope)
       return Effect.as(
-        Effect.tap(restore(semaphore.take(1)), () => Scope.addFinalizer(scope, semaphore.release(1))),
+        Effect.tap(restore(semaphore.take(1)), () => {
+          txDepth += 1
+          return Scope.addFinalizer(
+            scope,
+            Effect.andThen(
+              Effect.sync(() => {
+                txDepth -= 1
+              }),
+              semaphore.release(1),
+            ),
+          )
+        }),
         connection,
       )
     })
