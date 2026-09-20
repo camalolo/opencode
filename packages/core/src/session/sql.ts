@@ -97,6 +97,9 @@ export const PartTable = sqliteTable(
   (table) => [
     index("part_message_id_id_idx").on(table.message_id, table.id),
     index("part_session_idx").on(table.session_id),
+    // Search-index refresh re-reads the recent window by time; without this
+    // that query full-scans part on every tick and blocks the event loop.
+    index("part_time_created_idx").on(table.time_created),
   ],
 )
 
