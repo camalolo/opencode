@@ -1,6 +1,6 @@
 export * as SearchIndex from "./search-index"
 
-import { and, asc, desc, eq, gt, inArray, lte, sql } from "drizzle-orm"
+import { and, asc, eq, gt, inArray, lte, sql } from "drizzle-orm"
 import { Cause, Context, Duration, Effect, Exit, Layer, Semaphore } from "effect"
 import type { EffectDrizzleSqlite } from "@opencode-ai/effect-drizzle-sqlite"
 import { Database } from "../database/database"
@@ -20,8 +20,14 @@ export type Field = { source: Source; label: string; text: string }
 /** Long tool outputs are truncated in the index; searches beyond this miss. */
 const FIELD_LIMIT = 512 * 1024
 
-/** Parts newer than this are re-read on every sync so streaming text stays fresh. */
+/** On boot, parts updated within this window are refreshed to re-index
+ * streaming text; afterwards a time_updated cursor picks up exactly the parts
+ * that changed since the last tick. */
 const REFRESH_WINDOW = 30 * 60 * 1000
+
+/** The cursor never advances into the last few seconds of wall clock, so a
+ * write that commits just after a scan is still picked up by a later tick. */
+const REFRESH_GRACE = 5 * 1000
 
 /**
  * The sync loop yields to session work: batches grow only while ticks keep
@@ -34,7 +40,7 @@ const BATCH_MIN = 50
 const BATCH_MAX = 500
 
 export interface Interface {
-  /** Brings the index up to date: new parts, changed recent parts, orphan cleanup. */
+  /** Brings the index up to date: new parts, changed parts, orphan cleanup. */
   sync: (options?: { budget?: number; refresh?: number; sweep?: boolean }) => Effect.Effect<void>
 }
 
@@ -99,6 +105,7 @@ const partSelection = {
   message_id: PartTable.message_id,
   session_id: PartTable.session_id,
   time_created: PartTable.time_created,
+  time_updated: PartTable.time_updated,
   data: PartTable.data,
 }
 
@@ -174,6 +181,7 @@ const layer = Layer.effect(
     let caughtUp = frontier > 0
     let tickMs = TICK_MS
     let batch = BATCH_MIN
+    let refreshedThrough = Date.now() - REFRESH_WINDOW
     let sweepSessionCursor = ""
     let sweepRowCursor = 0
 
@@ -252,17 +260,29 @@ const layer = Layer.effect(
         frontier = last
       })
 
-    /** Re-reads recent parts so text that kept streaming after indexing gets refreshed. */
+    /** Re-indexes parts whose data changed since the last tick so text that
+     * kept streaming after indexing stays fresh. The time_updated cursor
+     * walks oldest-first, so a backlog drains over ticks and every write is
+     * seen exactly once; the compare below keeps re-reads cheap. */
     const refresh = (budget: number) =>
       Effect.gen(function* () {
+        // A zero budget is a pacing no-op from the loop; it must not scan and
+        // must not advance the cursor, or skipped-tick changes would be lost.
+        if (budget <= 0) return
+        const since = refreshedThrough - REFRESH_GRACE
         const rows = yield* db
           .select(partSelection)
           .from(PartTable)
-          .where(and(gt(PartTable.time_created, Date.now() - REFRESH_WINDOW), sql`rowid <= ${frontier}`))
-          .orderBy(desc(PartTable.time_created))
+          .where(and(gt(PartTable.time_updated, since), sql`rowid <= ${frontier}`))
+          .orderBy(asc(PartTable.time_updated))
           .limit(budget)
           .all()
           .pipe(Effect.orDie)
+        const scannedThrough = Math.min(
+          rows.length > 0 ? rows[rows.length - 1]!.time_updated : Number.MAX_SAFE_INTEGER,
+          Date.now() - REFRESH_GRACE,
+        )
+        refreshedThrough = Math.max(refreshedThrough, scannedThrough)
         if (rows.length === 0) return
         const [roles, projects] = yield* Effect.all([
           rolesFor(rows.map((row) => row.message_id)),
@@ -375,7 +395,6 @@ const layer = Layer.effect(
         .select({
           rowid: sql<number>`rowid`,
           part_id: PartSearchTextTable.part_id,
-          text: PartSearchTextTable.text,
         })
         .from(PartSearchTextTable)
         .where(gt(PartSearchTextTable.part_rowid, sweepRowCursor))
@@ -398,7 +417,15 @@ const layer = Layer.effect(
       const known = new Set(alive.map((row) => row.id))
       const missing = ids.filter((id) => !known.has(id))
       if (missing.length === 0) return
-      const doomed = rows.filter((row) => missing.includes(row.part_id))
+      // External-content FTS deletes need the stored text, but only for the
+      // doomed rows; scanning text for every row would dominate the pass once
+      // large tool outputs accumulate.
+      const doomed = yield* search
+        .select({ rowid: sql<number>`rowid`, text: PartSearchTextTable.text })
+        .from(PartSearchTextTable)
+        .where(inArray(PartSearchTextTable.part_id, missing))
+        .all()
+        .pipe(Effect.orDie)
       yield* search
         .transaction((tx) =>
           Effect.gen(function* () {

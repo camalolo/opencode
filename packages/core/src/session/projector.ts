@@ -319,7 +319,9 @@ const layer = Layer.effectDiscard(
         yield* db
           .insert(PartTable)
           .values({ id, message_id: messageID, session_id: sessionID, time_created: event.data.time, data })
-          .onConflictDoUpdate({ target: PartTable.id, set: { data } })
+          // Explicit bump: the search index's refresh cursor depends on
+          // time_updated moving on every rewrite of a streaming part.
+          .onConflictDoUpdate({ target: PartTable.id, set: { data, time_updated: event.data.time } })
           .run()
           .pipe(Effect.orDie)
         const previous = row && usage(row.data)

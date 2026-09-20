@@ -82,6 +82,10 @@ export const SearchSessionsTool = Tool.define(
           // the JS matcher below only confirms a few hundred rows. The scan
           // fallback keeps working for queries the trigram index cannot serve
           // (literals under three characters).
+          // Ordering by docid (part_search.rowid, which ascends with
+          // insertion) lets FTS5 serve the order natively; sorting by
+          // time_created instead materializes every match before LIMIT,
+          // which measured ~20x slower on common terms for the same recency.
           const fts = ftsQuery(clauses, caseSensitive)
           let hits: Map<string, { label: string; time: number; snippet: string }[]>
           let scanned: number
@@ -103,7 +107,7 @@ export const SearchSessionsTool = Tool.define(
                 FROM part_search
                 JOIN part_search_text s ON s.rowid = part_search.rowid
                 WHERE ${sql.join(conditions, sql` AND `)}
-                ORDER BY s.time_created DESC
+                ORDER BY part_search.rowid DESC
                 LIMIT ${candidateLimit}
               `)
               .pipe(Effect.orDie)
