@@ -37,7 +37,10 @@ const REFRESH_GRACE = 5 * 1000
 const TICK_MS = 1000
 const TICK_MAX_MS = 60_000
 const BATCH_MIN = 50
-const BATCH_MAX = 500
+// Batch size doubles as the event-loop stall budget per tick: a 500-field
+// trigram batch measured 194-550ms of synchronous SQLite work, so the cap
+// keeps worst-case ticks well under that.
+const BATCH_MAX = 200
 
 export interface Interface {
   /** Brings the index up to date: new parts, changed parts, orphan cleanup. */

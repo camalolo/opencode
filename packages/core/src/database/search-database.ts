@@ -83,6 +83,12 @@ const layer = Layer.effect(
         sql`CREATE VIRTUAL TABLE IF NOT EXISTS part_search USING fts5(text, content='part_search_text', content_rowid='rowid', tokenize='trigram')`,
       )
       .pipe(Effect.orDie)
+    // Indexer batches write tens of thousands of trigram rows per transaction;
+    // with automerge enabled those transactions periodically absorb a segment
+    // merge and block the event loop for hundreds of ms (measured batch p95
+    // 439ms with merges on vs 213ms off). Queries barely notice unmerged
+    // segments; 'optimize' can still collapse them if that ever changes.
+    yield* db.run(sql`INSERT INTO part_search(part_search, rank) VALUES('automerge', 0)`).pipe(Effect.orDie)
 
     return { db }
   }).pipe(Effect.orDie),
