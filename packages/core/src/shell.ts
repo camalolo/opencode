@@ -96,9 +96,12 @@ function resolve(file: string) {
 }
 
 function win() {
+  // Git Bash first: spawning bash is ~5-8x faster than pwsh per tool call and
+  // matches the POSIX semantics the shell tool promises. PowerShell remains the
+  // fallback when Git (and therefore bash.exe) is absent.
   return Array.from(
     new Set(
-      [which("pwsh"), which("powershell"), gitbash(), process.env.COMSPEC || "cmd.exe"]
+      [gitbash(), which("pwsh"), which("powershell"), process.env.COMSPEC || "cmd.exe"]
         .filter((item): item is string => Boolean(item))
         .map(full),
     ),
