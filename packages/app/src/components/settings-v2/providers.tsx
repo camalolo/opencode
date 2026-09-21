@@ -95,7 +95,6 @@ export const SettingsProvidersV2: Component<{
   }
 
   const disableProvider = async (providerID: string, name: string) => {
-    if (protocol() !== "v1") return
     const before = serverSync().data.config.disabled_providers ?? []
     const next = before.includes(providerID) ? before : [...before, providerID]
     serverSync().set("config", "disabled_providers", next)
