@@ -217,43 +217,50 @@ export const DialogManageModelsV2: Component = () => {
                 }
               >
                 <For each={list.grouped.latest}>
-                  {(group) => (
-                    <div class="settings-v2-section" data-component="settings-models-provider">
-                      <div class="settings-v2-models-group-header justify-between">
-                        <div class="flex min-w-0 items-center gap-2">
-                          <ProviderIcon id={group.category} width={16} height={16} class="ml-4 shrink-0" />
-                          <h3 class="settings-v2-section-title">{group.items[0].provider.name}</h3>
+                  {(group) => {
+                    // A provider with its checkbox off collapses completely:
+                    // its rows are the only thing it contributes to the list.
+                    const expanded = () => providerVisible(group.category)
+                    return (
+                      <div class="settings-v2-section" data-component="settings-models-provider">
+                        <div class="settings-v2-models-group-header justify-between">
+                          <div class="flex min-w-0 items-center gap-2">
+                            <ProviderIcon id={group.category} width={16} height={16} class="ml-4 shrink-0" />
+                            <h3 class="settings-v2-section-title">{group.items[0].provider.name}</h3>
+                          </div>
+                          <div>
+                            <SwitchV2
+                              class="mr-6"
+                              checked={providerVisible(group.category)}
+                              onChange={(checked) => setProviderVisibility(group.category, checked)}
+                              hideLabel
+                            >
+                              {group.items[0].provider.name}
+                            </SwitchV2>
+                          </div>
                         </div>
-                        <div>
-                          <SwitchV2
-                            class="mr-6"
-                            checked={providerVisible(group.category)}
-                            onChange={(checked) => setProviderVisibility(group.category, checked)}
-                            hideLabel
-                          >
-                            {group.items[0].provider.name}
-                          </SwitchV2>
-                        </div>
+                        <Show when={expanded()}>
+                          <SettingsListV2>
+                            <For each={group.items}>
+                              {(item) => (
+                                <SettingsRowV2 title={item.name} description="">
+                                  <div>
+                                    <SwitchV2
+                                      checked={local.model.visible({ modelID: item.id, providerID: item.provider.id })}
+                                      onChange={(checked) => setModelVisibility(item, checked)}
+                                      hideLabel
+                                    >
+                                      {item.name}
+                                    </SwitchV2>
+                                  </div>
+                                </SettingsRowV2>
+                              )}
+                            </For>
+                          </SettingsListV2>
+                        </Show>
                       </div>
-                      <SettingsListV2>
-                        <For each={group.items}>
-                          {(item) => (
-                            <SettingsRowV2 title={item.name} description="">
-                              <div>
-                                <SwitchV2
-                                  checked={local.model.visible({ modelID: item.id, providerID: item.provider.id })}
-                                  onChange={(checked) => setModelVisibility(item, checked)}
-                                  hideLabel
-                                >
-                                  {item.name}
-                                </SwitchV2>
-                              </div>
-                            </SettingsRowV2>
-                          )}
-                        </For>
-                      </SettingsListV2>
-                    </div>
-                  )}
+                    )
+                  }}
                 </For>
               </Show>
             </Show>
