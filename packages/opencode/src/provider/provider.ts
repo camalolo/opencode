@@ -36,15 +36,58 @@ import { ProviderError } from "./error"
 
 const OPENAI_HEADER_TIMEOUT_DEFAULT = 300_000
 
-// Conservative capabilities for models discovered from a provider /models
-// endpoint: nothing is assumed beyond text chat, mirroring the config-driven
-// default where undeclared metadata stays off (images would otherwise be
-// silently stripped by capability checks downstream).
-function discoveredModel(input: { providerID: ProviderV2.ID; modelID: string; baseURL: string }): Model {
+// Metadata mapping for models discovered from a provider /models endpoint.
+// OpenAI-compatible /models only guarantees `id`, but rich proxies expose
+// capability + limit + pricing fields; everything optional maps when present
+// and stays conservative otherwise (text chat only, no reasoning).
+type DiscoveredEntry = Record<string, unknown>
+
+function asNumber(v: unknown): number | undefined {
+  return typeof v === "number" && Number.isFinite(v) ? v : undefined
+}
+
+function asStrings(v: unknown): string[] | undefined {
+  return Array.isArray(v) ? v.filter((s): s is string => typeof s === "string") : undefined
+}
+
+function discoveredCost(entry: DiscoveredEntry): { input: number; output: number } {
+  let input = 0
+  let output = 0
+  const properties = entry.properties
+  if (!Array.isArray(properties)) return { input, output }
+  for (const prop of properties) {
+    const id = (prop as { property_id?: unknown } | null)?.property_id
+    const value = (prop as { value?: unknown } | null)?.value
+    if (id !== "price" || !Array.isArray(value)) continue
+    for (const item of value) {
+      const unit = (item as { unit?: unknown } | null)?.unit
+      const price = (item as { price?: unknown } | null)?.price
+      if (typeof price !== "number" || !Number.isFinite(price)) continue
+      if (unit === "per M input tokens") input = price
+      if (unit === "per M output tokens") output = price
+    }
+  }
+  return { input, output }
+}
+
+function discoveredModel(input: {
+  providerID: ProviderV2.ID
+  modelID: string
+  baseURL: string
+  entry: DiscoveredEntry
+}): Model {
+  const inputs = asStrings(input.entry.input_modalities) ?? ["text"]
+  const has = (modality: string) => inputs.includes(modality)
+  const reasoningLevels = asStrings(input.entry.reasoning_levels) ?? []
+  const reasoning = input.entry.can_reason === true || reasoningLevels.length > 0
+  const cost = discoveredCost(input.entry)
+  const variants: Record<string, { reasoningEffort: string }> = {}
+  for (const level of reasoningLevels) variants[level] = { reasoningEffort: level }
+  const name = typeof input.entry.name === "string" && input.entry.name.trim() ? input.entry.name : input.modelID
   const model: Model = {
     id: ModelV2.ID.make(input.modelID),
     providerID: input.providerID,
-    name: input.modelID,
+    name,
     family: "",
     api: {
       id: input.modelID,
@@ -54,21 +97,57 @@ function discoveredModel(input: { providerID: ProviderV2.ID; modelID: string; ba
     status: "active",
     headers: {},
     options: {},
-    cost: { input: 0, output: 0, cache: { read: 0, write: 0 } },
-    limit: { context: 0, output: 0 },
+    cost: { input: cost.input, output: cost.output, cache: { read: 0, write: 0 } },
+    limit: {
+      context: asNumber(input.entry.context_length) ?? asNumber(input.entry.context_window) ?? 0,
+      output:
+        asNumber(input.entry.max_completion_tokens) ??
+        asNumber(input.entry.max_output_length) ??
+        asNumber(input.entry.default_max_tokens) ??
+        0,
+    },
     capabilities: {
       temperature: false,
-      reasoning: false,
+      reasoning,
       attachment: false,
       toolcall: true,
-      input: { text: true, audio: false, image: false, video: false, pdf: false },
+      input: {
+        text: true,
+        audio: has("audio"),
+        image: has("image"),
+        video: has("video"),
+        pdf: has("pdf"),
+      },
       output: { text: true, audio: false, image: false, video: false, pdf: false },
       interleaved: false,
     },
     release_date: "",
-    variants: {},
+    variants,
   }
   return { ...model, variants: mapValues(ProviderTransform.variants(model), (v) => v) }
+}
+
+// Normalized view of one /models entry: the fields discovery consumes, used
+// both for model construction and as the change-detection signature (so a
+// metadata edit on the proxy counts as a change even when ids do not).
+function normalizeDiscoveredEntry(entry: DiscoveredEntry) {
+  const inputs = asStrings(entry.input_modalities) ?? ["text"]
+  const cost = discoveredCost(entry)
+  return {
+    id: typeof entry.id === "string" ? entry.id : undefined,
+    name: typeof entry.name === "string" && entry.name.trim() ? entry.name : undefined,
+    context: asNumber(entry.context_length) ?? asNumber(entry.context_window) ?? 0,
+    output:
+      asNumber(entry.max_completion_tokens) ??
+      asNumber(entry.max_output_length) ??
+      asNumber(entry.default_max_tokens) ??
+      0,
+    inputs: [...inputs].sort(),
+    reasoning: entry.can_reason === true || (asStrings(entry.reasoning_levels)?.length ?? 0) > 0,
+    levels: asStrings(entry.reasoning_levels) ?? [],
+    costInput: cost.input,
+    costOutput: cost.output,
+  }
 }
 
 function discoverModelsFromEndpoint(input: {
@@ -83,17 +162,29 @@ function discoverModelsFromEndpoint(input: {
   return input.http.execute(request).pipe(
     Effect.flatMap((res) => res.text),
     Effect.map((text) => {
-      const json = JSON.parse(text) as { data?: Array<{ id?: unknown }> } | Array<{ id?: unknown }>
+      const json = JSON.parse(text) as { data?: Array<DiscoveredEntry> } | Array<DiscoveredEntry>
       const list = Array.isArray(json) ? json : (json.data ?? [])
       const models: Record<string, Model> = {}
-      const ids: string[] = []
-      for (const item of list) {
-        const id = typeof item?.id === "string" ? item.id : undefined
+      const normalized: Array<ReturnType<typeof normalizeDiscoveredEntry> & { id: string }> = []
+      for (const raw of list) {
+        const entry = normalizeDiscoveredEntry(raw)
+        const id = entry.id
+        // Non-chat outputs (speech, transcription) and explicitly inactive
+        // entries are not chat models; declared ids are already known.
         if (!id || input.known.has(id) || models[id]) continue
-        ids.push(id)
-        models[id] = discoveredModel({ providerID: input.providerID, modelID: id, baseURL: input.baseURL })
+        if (raw.active === false) continue
+        const outputs = asStrings(raw.output_modalities)
+        if (outputs && !outputs.includes("text")) continue
+        normalized.push(entry as (typeof normalized)[number])
+        models[id] = discoveredModel({
+          providerID: input.providerID,
+          modelID: id,
+          baseURL: input.baseURL,
+          entry: raw,
+        })
       }
-      return { signature: JSON.stringify(ids.sort()), models }
+      normalized.sort((a, b) => a.id.localeCompare(b.id))
+      return { signature: JSON.stringify(normalized), models }
     }),
     Effect.timeout(Duration.seconds(10)),
     Effect.catch(() => Effect.succeed(undefined)),
@@ -1695,6 +1786,13 @@ const layer = Layer.effect(
             const apiKey = providerCfg.options?.apiKey
             const whitelist = providerCfg.whitelist
             const blacklist = providerCfg.blacklist
+            // Declared/catalog ids are never touched by discovery; entries this
+            // loop added are tracked so their metadata can be refreshed.
+            const declared = new Set([
+              ...Object.keys(providerCfg.models ?? {}),
+              ...Object.keys(database[providerID]?.models ?? {}),
+            ])
+            const mine = new Set<string>()
             const stored = yield* auth.get(providerID).pipe(Effect.catch(() => Effect.succeed(undefined)))
             const storedKey = stored && stored.type === "api" && typeof stored.key === "string" ? stored.key : undefined
             let signature: string | undefined
@@ -1703,26 +1801,33 @@ const layer = Layer.effect(
               refresh: Effect.gen(function* () {
                 const current = providers[providerID]
                 if (!current) return false
-                const known = new Set(Object.keys(current.models))
                 const result = yield* discoverModelsFromEndpoint({
                   http,
                   providerID,
                   baseURL,
                   apiKey: apiKey ?? storedKey,
-                  known,
+                  known: declared,
                 })
                 if (!result || result.signature === signature) return false
                 signature = result.signature
-                let added = 0
+                let changed = 0
                 const models = { ...current.models }
                 for (const [modelID, model] of Object.entries(result.models)) {
-                  if (models[modelID]) continue
+                  if (models[modelID]) {
+                    // Metadata refresh only for models this discovery added;
+                    // declared/catalog models are never touched.
+                    if (!mine.has(modelID)) continue
+                    models[modelID] = model
+                    changed++
+                    continue
+                  }
                   if (whitelist && !whitelist.includes(modelID)) continue
                   if (blacklist?.includes(modelID)) continue
                   models[modelID] = model
-                  added++
+                  mine.add(modelID)
+                  changed++
                 }
-                if (!added) return false
+                if (!changed) return false
                 providers[providerID] = { ...current, models }
                 return true
               }),
