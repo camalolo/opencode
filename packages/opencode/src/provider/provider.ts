@@ -150,6 +150,42 @@ function normalizeDiscoveredEntry(entry: DiscoveredEntry) {
   }
 }
 
+// Merges one discovery result into the provider's current models. Adds unknown
+// ids (whitelist/blacklist respected), refreshes metadata for ids this
+// discovery previously added, and trims ids that vanished upstream — declared
+// and catalog models are never touched.
+export function applyDiscoveredModels(input: {
+  current: Record<string, Model>
+  upstream: Record<string, Model>
+  whitelist?: string[]
+  blacklist?: string[]
+  mine: Set<string>
+}): { models: Record<string, Model>; changed: number } {
+  const models = { ...input.current }
+  let changed = 0
+  for (const [modelID, model] of Object.entries(input.upstream)) {
+    if (models[modelID]) {
+      if (!input.mine.has(modelID)) continue
+      models[modelID] = model
+      changed++
+      continue
+    }
+    if (input.whitelist && !input.whitelist.includes(modelID)) continue
+    if (input.blacklist?.includes(modelID)) continue
+    models[modelID] = model
+    input.mine.add(modelID)
+    changed++
+  }
+  const upstream = new Set(Object.keys(input.upstream))
+  for (const modelID of input.mine) {
+    if (upstream.has(modelID)) continue
+    delete models[modelID]
+    input.mine.delete(modelID)
+    changed++
+  }
+  return { models, changed }
+}
+
 function discoverModelsFromEndpoint(input: {
   http: HttpClient.HttpClient
   providerID: ProviderV2.ID
@@ -1810,23 +1846,13 @@ const layer = Layer.effect(
                 })
                 if (!result || result.signature === signature) return false
                 signature = result.signature
-                let changed = 0
-                const models = { ...current.models }
-                for (const [modelID, model] of Object.entries(result.models)) {
-                  if (models[modelID]) {
-                    // Metadata refresh only for models this discovery added;
-                    // declared/catalog models are never touched.
-                    if (!mine.has(modelID)) continue
-                    models[modelID] = model
-                    changed++
-                    continue
-                  }
-                  if (whitelist && !whitelist.includes(modelID)) continue
-                  if (blacklist?.includes(modelID)) continue
-                  models[modelID] = model
-                  mine.add(modelID)
-                  changed++
-                }
+                const { models, changed } = applyDiscoveredModels({
+                  current: current.models,
+                  upstream: result.models,
+                  whitelist,
+                  blacklist,
+                  mine,
+                })
                 if (!changed) return false
                 providers[providerID] = { ...current, models }
                 return true
