@@ -27,7 +27,7 @@ export const SettingsModelsV2: Component = () => {
   const serverSync = useServerSync()
   const [store, setStore] = persisted(
     Persist.serverGlobal(serverSdk().scope, "settings-v2.models.providers"),
-    createStore({ collapsed: {} as Record<string, boolean> }),
+    createStore({ expanded: {} as Record<string, boolean> }),
   )
 
   // Disabled providers keep their models out of the list entirely: they cannot
@@ -110,7 +110,10 @@ export const SettingsModelsV2: Component = () => {
             <For each={list.grouped.latest.filter((group) => !disabled().has(group.category))}>
               {(group) => {
                 const searching = () => list.filter().length > 0
-                const expanded = () => searching() || !store.collapsed[group.category]
+                // Groups start collapsed — dozens of provider rows bury the
+                // providers the user actually enables. Expansion is explicit
+                // and persisted; searching expands everything.
+                const expanded = () => searching() || store.expanded[group.category] === true
 
                 return (
                   <div
@@ -124,7 +127,7 @@ export const SettingsModelsV2: Component = () => {
                         class="settings-v2-models-group-trigger"
                         aria-expanded={expanded()}
                         disabled={searching()}
-                        onClick={() => setStore("collapsed", group.category, expanded())}
+                        onClick={() => setStore("expanded", group.category, !expanded())}
                       >
                         <span class="settings-v2-models-group-chevron">
                           <Show
