@@ -42,6 +42,17 @@ export function createScrollPreservation(options: {
       observer = undefined
     },
     handleResize,
+    // Programmatic scrolls by the virtualizer (resize compensation, bottom
+    // re-anchoring, follow corrections) are deliberate content-stabilizing
+    // moves, not clamps. Adopt them as the trusted offset: `trackScroll`
+    // deliberately ignores non-gesture jumps, so without this the trusted
+    // position goes stale and restoration fights the virtualizer, bouncing
+    // the viewport between the two writers on every row re-measure.
+    markTrusted: (top: number) => {
+      const root = options.viewport()
+      const maxTop = root ? Math.max(0, root.scrollHeight - root.clientHeight) : Number.MAX_SAFE_INTEGER
+      stableTop = Math.max(0, Math.min(top, maxTop))
+    },
     // A huge displacement without a user gesture during churn is a clamp
     // artifact, not a position the user chose — keep the trusted offset.
     trackScroll: (top: number, jumped: boolean, stale: boolean) => {

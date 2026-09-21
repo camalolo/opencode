@@ -460,6 +460,13 @@ export function MessageTimeline(props: {
     scrollToFn: (offset, options, instance) => {
       // Expose the computed range before core writes an anchor correction so the browser does not clamp it to the old height.
       if (virtualContent) virtualContent.style.height = `${instance.getTotalSize()}px`
+      // The virtualizer's own corrections (resize compensation, bottom
+      // re-anchor) are deliberate content-stabilizing moves: adopt them as
+      // the preservation-trusted offset. `trackScroll` ignores non-gesture
+      // jumps, so without this the preservation restores its lagging position
+      // on top of every correction and the two writers bounce the viewport
+      // while a replay re-measures rows.
+      scrollPreservation.markTrusted(offset)
       elementScroll(offset, options, instance)
     },
     get getItemKey() {
