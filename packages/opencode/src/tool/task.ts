@@ -23,10 +23,10 @@ export interface TaskPromptOps {
 
 const id = "task"
 const BACKGROUND_DESCRIPTION = [
-  "Background mode: background=true launches the subagent asynchronously and returns immediately.",
-  "Foreground is the default; use it when you need the result before continuing.",
+  "Background mode: background=true launches the subagent asynchronously and returns immediately, so you can keep working in the main conversation while it runs.",
+  "Foreground is the default and blocks the main conversation until the agent finishes; use it when you need the result before continuing.",
   "Use background only for independent work that can run while you continue elsewhere.",
-  "You will be notified automatically when it finishes.",
+  "You will be notified automatically when a background task finishes.",
 ].join(" ")
 const BACKGROUND_STARTED = [
   "The task is working in the background. You will be notified automatically when it finishes.",
