@@ -45,6 +45,7 @@ export const providerHandlers = HttpApiBuilder.group(InstanceHttpApi, "provider"
       config: unknown
       all: unknown
       connected: unknown
+      revision: number
       json: Uint8Array
     } | undefined
 
@@ -57,6 +58,7 @@ export const providerHandlers = HttpApiBuilder.group(InstanceHttpApi, "provider"
       for (const [key, value] of Object.entries(all)) {
         if ((enabled ? enabled.has(key) : true) && !disabled.has(key)) filtered[key] = value
       }
+      const revision = yield* provider.revision()
       const connected = yield* provider.list()
       const providers = Object.assign(
         mapValues(filtered, (item) => Provider.fromModelsDevProvider(item)),
@@ -68,19 +70,21 @@ export const providerHandlers = HttpApiBuilder.group(InstanceHttpApi, "provider"
         connected: Object.keys(connected),
       }
       const json = new TextEncoder().encode(JSON.stringify(result))
-      listCache = { config, all, connected, json }
+      listCache = { config, all, connected, revision, json }
       return json
     })
 
     const list = Effect.fn("ProviderHttpApi.list")(function* () {
       const config = yield* cfg.get()
       const all = yield* ModelsDev.Service.use((s) => s.get())
+      const revision = yield* provider.revision()
       const connected = yield* provider.list()
       const hit =
         listCache !== undefined &&
         listCache.config === config &&
         listCache.all === all &&
-        listCache.connected === connected
+        listCache.connected === connected &&
+        listCache.revision === revision
           ? listCache.json
           : undefined
       const json = hit ?? (yield* computeList())

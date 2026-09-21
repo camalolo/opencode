@@ -1,4 +1,5 @@
 import { LayerNode } from "@opencode-ai/core/effect/layer-node"
+import { httpClient } from "@opencode-ai/core/effect/app-node-platform"
 import os from "os"
 import { ConfigV1 } from "@opencode-ai/core/v1/config/config"
 import fuzzysort from "fuzzysort"
@@ -18,7 +19,8 @@ import { iife } from "@/util/iife"
 import { Global } from "@opencode-ai/core/global"
 import path from "path"
 import { pathToFileURL } from "url"
-import { Effect, Layer, Context, Schema, Types } from "effect"
+import { Duration, Effect, Layer, Context, Schedule, Schema, Types } from "effect"
+import { HttpClient, HttpClientRequest } from "effect/unstable/http"
 import { EffectBridge } from "@/effect/bridge"
 import { InstanceState } from "@/effect/instance-state"
 import { EffectPromise } from "@/effect/promise"
@@ -33,6 +35,70 @@ import { RuntimeFlags } from "@/effect/runtime-flags"
 import { ProviderError } from "./error"
 
 const OPENAI_HEADER_TIMEOUT_DEFAULT = 300_000
+
+// Conservative capabilities for models discovered from a provider /models
+// endpoint: nothing is assumed beyond text chat, mirroring the config-driven
+// default where undeclared metadata stays off (images would otherwise be
+// silently stripped by capability checks downstream).
+function discoveredModel(input: { providerID: ProviderV2.ID; modelID: string; baseURL: string }): Model {
+  const model: Model = {
+    id: ModelV2.ID.make(input.modelID),
+    providerID: input.providerID,
+    name: input.modelID,
+    family: "",
+    api: {
+      id: input.modelID,
+      npm: "@ai-sdk/openai-compatible",
+      url: input.baseURL,
+    },
+    status: "active",
+    headers: {},
+    options: {},
+    cost: { input: 0, output: 0, cache: { read: 0, write: 0 } },
+    limit: { context: 0, output: 0 },
+    capabilities: {
+      temperature: false,
+      reasoning: false,
+      attachment: false,
+      toolcall: true,
+      input: { text: true, audio: false, image: false, video: false, pdf: false },
+      output: { text: true, audio: false, image: false, video: false, pdf: false },
+      interleaved: false,
+    },
+    release_date: "",
+    variants: {},
+  }
+  return { ...model, variants: mapValues(ProviderTransform.variants(model), (v) => v) }
+}
+
+function discoverModelsFromEndpoint(input: {
+  http: HttpClient.HttpClient
+  providerID: ProviderV2.ID
+  baseURL: string
+  apiKey?: string
+  known: ReadonlySet<string>
+}): Effect.Effect<{ signature: string; models: Record<string, Model> } | undefined> {
+  let request = HttpClientRequest.get(`${input.baseURL.replace(/\/+$/, "")}/models`)
+  if (input.apiKey) request = HttpClientRequest.setHeader("Authorization", `Bearer ${input.apiKey}`)(request)
+  return input.http.execute(request).pipe(
+    Effect.flatMap((res) => res.text),
+    Effect.map((text) => {
+      const json = JSON.parse(text) as { data?: Array<{ id?: unknown }> } | Array<{ id?: unknown }>
+      const list = Array.isArray(json) ? json : (json.data ?? [])
+      const models: Record<string, Model> = {}
+      const ids: string[] = []
+      for (const item of list) {
+        const id = typeof item?.id === "string" ? item.id : undefined
+        if (!id || input.known.has(id) || models[id]) continue
+        ids.push(id)
+        models[id] = discoveredModel({ providerID: input.providerID, modelID: id, baseURL: input.baseURL })
+      }
+      return { signature: JSON.stringify(ids.sort()), models }
+    }),
+    Effect.timeout(Duration.seconds(10)),
+    Effect.catch(() => Effect.succeed(undefined)),
+  )
+}
 
 function wrapSSE(res: Response, ms: number, ctl: AbortController) {
   if (typeof ms !== "number" || ms <= 0) return res
@@ -1152,6 +1218,8 @@ export type Error = ModelNotFoundError | InitError | NoProvidersError | NoModels
 
 export interface Interface {
   readonly list: () => Effect.Effect<Record<ProviderV2.ID, Info>>
+  readonly revision: () => Effect.Effect<number>
+  readonly refreshDiscovered: () => Effect.Effect<number>
   readonly getProvider: (providerID: ProviderV2.ID) => Effect.Effect<Info>
   readonly getModel: (providerID: ProviderV2.ID, modelID: ModelV2.ID) => Effect.Effect<Model, ModelNotFoundError>
   readonly getLanguage: (model: Model) => Effect.Effect<LanguageModelV3, ModelNotFoundError>
@@ -1170,6 +1238,17 @@ interface State {
   sdk: Map<string, BundledSDK>
   modelLoaders: Record<string, CustomModelLoader>
   varsLoaders: Record<string, CustomVarsLoader>
+  discoveries: ProviderDiscovery[]
+  revision: { value: number }
+}
+
+// Opt-in per provider via provider.<id>.discover: re-fetches the provider's
+// /models endpoint and merges unknown model ids. The refresh is intentionally
+// frugal: one small GET per discover-enabled provider per interval, and the
+// merge is skipped entirely when the reported id list is unchanged.
+type ProviderDiscovery = {
+  providerID: ProviderV2.ID
+  refresh: Effect.Effect<boolean>
 }
 
 export class Service extends Context.Service<Service, Interface>()("@opencode/Provider") {}
@@ -1339,6 +1418,7 @@ const layer = Layer.effect(
     const plugin = yield* Plugin.Service
     const modelsDevSvc = yield* ModelsDev.Service
     const runtimeFlags = yield* RuntimeFlags.Service
+    const http = HttpClient.filterStatusOk(yield* HttpClient.HttpClient)
 
     const state = yield* InstanceState.make<State>(() =>
       Effect.gen(function* () {
@@ -1360,6 +1440,8 @@ const layer = Layer.effect(
         const discoveryLoaders: {
           [providerID: string]: CustomDiscoverModels
         } = {}
+        const discoveries: ProviderDiscovery[] = []
+        const revision = { value: 0 }
         const dep = {
           auth: (id: string) => auth.get(id).pipe(Effect.orDie),
           config: () => config.get(),
@@ -1594,6 +1676,81 @@ const layer = Layer.effect(
           mergeProvider(providerID, partial)
         }
 
+        // Config-discovered models (opt-in via provider.<id>.discover): fetch
+        // the provider's /models endpoint and merge unknown ids with
+        // conservative capabilities; config-declared models always win. Runs
+        // before the filter loop below so whitelist/blacklist/status apply to
+        // discovered models exactly like declared ones.
+        if (http && configProviders.length > 0) {
+          for (const [id, providerCfg] of configProviders) {
+            if (providerCfg.discover !== true) continue
+            const providerID = ProviderV2.ID.make(id)
+            if (!isProviderAllowed(providerID)) continue
+            const provider = providers[providerID]
+            if (!provider) continue
+            const npm = providerCfg.npm ?? modelsDev[providerID]?.npm ?? "@ai-sdk/openai-compatible"
+            if (npm !== "@ai-sdk/openai-compatible") continue
+            const baseURL = providerCfg.options?.baseURL
+            if (typeof baseURL !== "string" || !baseURL) continue
+            const apiKey = providerCfg.options?.apiKey
+            const whitelist = providerCfg.whitelist
+            const blacklist = providerCfg.blacklist
+            const stored = yield* auth.get(providerID).pipe(Effect.catch(() => Effect.succeed(undefined)))
+            const storedKey = stored && stored.type === "api" && typeof stored.key === "string" ? stored.key : undefined
+            let signature: string | undefined
+            discoveries.push({
+              providerID,
+              refresh: Effect.gen(function* () {
+                const current = providers[providerID]
+                if (!current) return false
+                const known = new Set(Object.keys(current.models))
+                const result = yield* discoverModelsFromEndpoint({
+                  http,
+                  providerID,
+                  baseURL,
+                  apiKey: apiKey ?? storedKey,
+                  known,
+                })
+                if (!result || result.signature === signature) return false
+                signature = result.signature
+                let added = 0
+                const models = { ...current.models }
+                for (const [modelID, model] of Object.entries(result.models)) {
+                  if (models[modelID]) continue
+                  if (whitelist && !whitelist.includes(modelID)) continue
+                  if (blacklist?.includes(modelID)) continue
+                  models[modelID] = model
+                  added++
+                }
+                if (!added) return false
+                providers[providerID] = { ...current, models }
+                return true
+              }),
+            })
+          }
+
+          if (discoveries.length > 0) {
+            // Initial discovery: awaited so the first provider list is complete.
+            yield* Effect.forEach(discoveries, (discovery) => discovery.refresh, { discard: true }).pipe(
+              Effect.ignore,
+            )
+            // TTL refresh: one small GET per discover-enabled provider per
+            // interval; the signature check makes unchanged proxies a no-op.
+            const refreshAll = Effect.gen(function* () {
+              for (const discovery of discoveries) {
+                const changed = yield* discovery.refresh
+                if (changed) revision.value++
+              }
+            }).pipe(
+              Effect.catchCause((cause) => Effect.logError("provider discovery refresh failed", { cause })),
+              Effect.delay(Duration.minutes(10)),
+              Effect.repeat(Schedule.spaced(Duration.minutes(10))),
+              Effect.ignore,
+            )
+            yield* Effect.forkScoped(refreshAll)
+          }
+        }
+
         const gitlab = ProviderV2.ID.make("gitlab")
         if (discoveryLoaders[gitlab] && providers[gitlab] && isProviderAllowed(gitlab)) {
           yield* Effect.promise(async () => {
@@ -1664,11 +1821,33 @@ const layer = Layer.effect(
           sdk,
           modelLoaders,
           varsLoaders,
+          discoveries,
+          revision,
         }
       }),
     )
 
     const list = Effect.fn("Provider.list")(() => InstanceState.use(state, (s) => s.providers))
+
+    // Bumped whenever discovered models change; consumers (e.g. the HTTP
+    // provider list cache) key on it to invalidate memoized payloads.
+    const revision = Effect.fn("Provider.revision")(function* () {
+      const s = yield* InstanceState.get(state)
+      return s.revision.value
+    })
+
+    const refreshDiscovered = Effect.fn("Provider.refreshDiscovered")(function* () {
+      const s = yield* InstanceState.get(state)
+      let updated = 0
+      for (const discovery of s.discoveries) {
+        const changed = yield* discovery.refresh
+        if (changed) {
+          s.revision.value++
+          updated++
+        }
+      }
+      return updated
+    })
 
     async function resolveSDK(model: Model, s: State, envs: Record<string, string | undefined>) {
       try {
@@ -1979,7 +2158,17 @@ const layer = Layer.effect(
       }
     })
 
-    return Service.of({ list, getProvider, getModel, getLanguage, closest, getSmallModel, defaultModel })
+    return Service.of({
+      list,
+      getProvider,
+      getModel,
+      getLanguage,
+      closest,
+      getSmallModel,
+      defaultModel,
+      revision,
+      refreshDiscovered,
+    })
   }),
 )
 
@@ -2005,7 +2194,7 @@ export function parseModel(model: string) {
 export const node = LayerNode.make({
   service: Service,
   layer: layer,
-  deps: [FSUtil.node, Config.node, Auth.node, Env.node, Plugin.node, ModelsDev.node, RuntimeFlags.node],
+  deps: [FSUtil.node, Config.node, Auth.node, Env.node, Plugin.node, ModelsDev.node, RuntimeFlags.node, httpClient],
 })
 
 export * as Provider from "./provider"

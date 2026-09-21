@@ -87,6 +87,12 @@ export const Info = Schema.Struct({
   npm: Schema.optional(Schema.String),
   whitelist: Schema.optional(Schema.mutable(Schema.Array(Schema.String))),
   blacklist: Schema.optional(Schema.mutable(Schema.Array(Schema.String))),
+  discover: Schema.optional(Schema.Boolean).annotate({
+    description:
+      "Discover models from this provider's /models endpoint (OpenAI-compatible providers only). " +
+      "Config-declared models always take precedence; discovered models get conservative capabilities " +
+      "(no attachments, no reasoning). Requires at least one config-declared model so the provider loads.",
+  }),
   options: Schema.optional(
     Schema.StructWithRest(
       Schema.Struct({
