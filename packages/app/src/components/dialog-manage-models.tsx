@@ -12,6 +12,7 @@ import { Switch as SwitchV2 } from "@opencode-ai/ui/v2/switch-v2"
 import { ProviderIcon } from "@opencode-ai/ui/provider-icon"
 import { useFilteredList } from "@opencode-ai/ui/hooks"
 import { For, Show, type Component } from "solid-js"
+import { createStore } from "solid-js/store"
 import { useLocal } from "@/context/local"
 import { popularProviders } from "@/hooks/use-providers"
 import { useLanguage } from "@/context/language"
@@ -126,13 +127,18 @@ export const DialogManageModelsV2: Component = () => {
     void dialog.show(() => <DialogConnectProvider directory={directory} />)
   }
   const providerList = (providerID: string) => local.model.list().filter((x) => x.provider.id === providerID)
-  const providerVisible = (providerID: string) =>
-    providerList(providerID).every((x) => local.model.visible({ modelID: x.id, providerID: x.provider.id }))
+  // A provider is active as soon as one of its models is enabled. The list
+  // collapses exactly when no model is enabled; checking the provider on a
+  // collapsed group only reveals the rows so the first model can be picked
+  // without bulk-enabling everything.
+  const providerActive = (providerID: string) =>
+    providerList(providerID).some((x) => local.model.visible({ modelID: x.id, providerID: x.provider.id }))
   const setProviderVisibility = (providerID: string, checked: boolean) => {
     providerList(providerID).forEach((x) => {
       local.model.setVisibility({ modelID: x.id, providerID: x.provider.id }, checked)
     })
   }
+  const [revealed, setRevealed] = createStore({} as Record<string, boolean>)
   const setModelVisibility = (item: ModelItem, checked: boolean) => {
     local.model.setVisibility({ modelID: item.id, providerID: item.provider.id }, checked)
   }
@@ -218,9 +224,7 @@ export const DialogManageModelsV2: Component = () => {
               >
                 <For each={list.grouped.latest}>
                   {(group) => {
-                    // A provider with its checkbox off collapses completely:
-                    // its rows are the only thing it contributes to the list.
-                    const expanded = () => providerVisible(group.category)
+                    const expanded = () => providerActive(group.category) || !!revealed[group.category]
                     return (
                       <div class="settings-v2-section" data-component="settings-models-provider">
                         <div class="settings-v2-models-group-header justify-between">
@@ -231,8 +235,15 @@ export const DialogManageModelsV2: Component = () => {
                           <div>
                             <SwitchV2
                               class="mr-6"
-                              checked={providerVisible(group.category)}
-                              onChange={(checked) => setProviderVisibility(group.category, checked)}
+                              checked={expanded()}
+                              onChange={(checked) => {
+                                if (checked) {
+                                  setRevealed(group.category, true)
+                                  return
+                                }
+                                setRevealed(group.category, false)
+                                setProviderVisibility(group.category, false)
+                              }}
                               hideLabel
                             >
                               {group.items[0].provider.name}
