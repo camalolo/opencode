@@ -4,12 +4,11 @@ import { Switch } from "@opencode-ai/ui/v2/switch-v2"
 import { Icon as IconV2 } from "@opencode-ai/ui/v2/icon"
 import { IconButtonV2 } from "@opencode-ai/ui/v2/icon-button-v2"
 import { TextInputV2 } from "@opencode-ai/ui/v2/text-input-v2"
-import { type Component, For, Show, createMemo } from "solid-js"
+import { type Component, For, Show } from "solid-js"
 import { createStore } from "solid-js/store"
 import { useLanguage } from "@/context/language"
 import { useModels } from "@/context/models"
 import { useServerSDK } from "@/context/server-sdk"
-import { useServerSync } from "@/context/server-sync"
 import { popularProviders } from "@/hooks/use-providers"
 import { Persist, persisted } from "@/utils/persist"
 import { SettingsListV2 } from "./parts/list"
@@ -24,15 +23,10 @@ export const SettingsModelsV2: Component = () => {
   const language = useLanguage()
   const models = useModels()
   const serverSdk = useServerSDK()
-  const serverSync = useServerSync()
   const [store, setStore] = persisted(
     Persist.serverGlobal(serverSdk().scope, "settings-v2.models.providers"),
-    createStore({ expanded: {} as Record<string, boolean> }),
+    createStore({ collapsed: {} as Record<string, boolean> }),
   )
-
-  // Disabled providers keep their models out of the list entirely: they cannot
-  // be used, so their rows would only bury the enabled providers.
-  const disabled = createMemo(() => new Set(serverSync().data.config.disabled_providers ?? []))
 
   const list = useFilteredList<ModelItem>({
     items: (_filter) => models.list(),
@@ -107,13 +101,10 @@ export const SettingsModelsV2: Component = () => {
               </div>
             }
           >
-            <For each={list.grouped.latest.filter((group) => !disabled().has(group.category))}>
+            <For each={list.grouped.latest}>
               {(group) => {
                 const searching = () => list.filter().length > 0
-                // Groups start collapsed — dozens of provider rows bury the
-                // providers the user actually enables. Expansion is explicit
-                // and persisted; searching expands everything.
-                const expanded = () => searching() || store.expanded[group.category] === true
+                const expanded = () => searching() || !store.collapsed[group.category]
 
                 return (
                   <div
@@ -127,7 +118,7 @@ export const SettingsModelsV2: Component = () => {
                         class="settings-v2-models-group-trigger"
                         aria-expanded={expanded()}
                         disabled={searching()}
-                        onClick={() => setStore("expanded", group.category, !expanded())}
+                        onClick={() => setStore("collapsed", group.category, expanded())}
                       >
                         <span class="settings-v2-models-group-chevron">
                           <Show
