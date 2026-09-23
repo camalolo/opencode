@@ -199,6 +199,7 @@ export const dict: Record<string, string> = {
   "ui.message.forkMessage": "Fork to new session",
   "ui.message.revertMessage": "Revert message",
   "ui.message.copyResponse": "Copy response",
+  "ui.message.copyResponseHtml": "Copy response as HTML",
   "ui.message.copied": "Copied",
   "ui.message.duration.seconds": "{{count}}s",
   "ui.message.duration.minutesSeconds": "{{minutes}}m {{seconds}}s",

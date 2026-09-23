@@ -45,6 +45,7 @@ import { ToolErrorCard } from "./tool-error-card"
 import { Checkbox } from "@opencode-ai/ui/checkbox"
 import { DiffChanges } from "@opencode-ai/ui/diff-changes"
 import { Markdown } from "./markdown"
+import { getCachedMarkdown, preloadMarkdown } from "./markdown-cache"
 import { ImagePreview } from "@opencode-ai/ui/image-preview"
 import { getDirectory as _getDirectory, getFilename } from "@opencode-ai/core/util/path"
 import { AttachmentCardV2 } from "../v2/components/attachment-card-v2"
@@ -89,6 +90,26 @@ async function writeClipboard(text: string): Promise<boolean> {
     () => true,
     () => false,
   )
+}
+
+// Writes both flavors so email clients and rich-text editors pick up the HTML
+// while plain-text targets still get the raw markdown.
+async function writeClipboardHtml(html: string, text: string): Promise<boolean> {
+  const clipboard = typeof navigator === "undefined" ? undefined : navigator.clipboard
+  if (clipboard?.write && typeof ClipboardItem !== "undefined") {
+    try {
+      await clipboard.write([
+        new ClipboardItem({
+          "text/html": new Blob([html], { type: "text/html" }),
+          "text/plain": new Blob([text], { type: "text/plain" }),
+        }),
+      ])
+      return true
+    } catch {
+      // Clipboard write can fail on missing permission or unsupported flavors; plain text still works.
+    }
+  }
+  return writeClipboard(text)
 }
 
 function ShellSubmessage(props: { text: string; animate?: boolean }) {
@@ -207,19 +228,20 @@ export interface MessagePartProps {
 
 function MessageActionButton(
   props: Pick<ComponentProps<"button">, "disabled" | "onMouseDown" | "onClick" | "aria-label"> & {
-    icon: "check" | "copy" | "reset"
+    icon: "check" | "copy" | "copy-html" | "reset"
     label: JSX.Element
     useV2?: boolean
   },
 ) {
-  const icon = () => (props.icon === "copy" ? "outline-copy" : props.icon)
+  const icon = () =>
+    props.icon === "copy" ? "outline-copy" : props.icon === "copy-html" ? "outline-copy-code" : props.icon
   return (
     <Show
       when={props.useV2}
       fallback={
         <Tooltip value={props.label} placement="top" gutter={4}>
           <IconButton
-            icon={props.icon}
+            icon={props.icon === "copy-html" ? "code" : props.icon}
             size="normal"
             variant="ghost"
             disabled={props.disabled}
@@ -1718,6 +1740,7 @@ PART_MAPPING["text"] = function TextPartDisplay(props) {
     return isLastTextPart()
   })
   const [copied, setCopied] = createSignal(false)
+  const [copiedHtml, setCopiedHtml] = createSignal(false)
 
   const handleCopy = async () => {
     const content = text()
@@ -1725,6 +1748,23 @@ PART_MAPPING["text"] = function TextPartDisplay(props) {
     if (await writeClipboard(content)) {
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
+    }
+  }
+
+  const handleCopyHtml = async () => {
+    const content = text()
+    if (!content) return
+    let html = ""
+    try {
+      await preloadMarkdown(content, part().id)
+      html = getCachedMarkdown(`${part().id}:0:full`)?.html ?? ""
+    } catch {
+      html = ""
+    }
+    const wrote = html ? await writeClipboardHtml(html, content) : await writeClipboard(content)
+    if (wrote) {
+      setCopiedHtml(true)
+      setTimeout(() => setCopiedHtml(false), 2000)
     }
   }
 
@@ -1743,6 +1783,14 @@ PART_MAPPING["text"] = function TextPartDisplay(props) {
               onMouseDown={(event) => event.preventDefault()}
               onClick={handleCopy}
               aria-label={copied() ? i18n.t("ui.message.copied") : i18n.t("ui.message.copyResponse")}
+            />
+            <MessageActionButton
+              icon={copiedHtml() ? "check" : "copy-html"}
+              label={copiedHtml() ? i18n.t("ui.message.copied") : i18n.t("ui.message.copyResponseHtml")}
+              useV2={props.useV2Actions}
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={handleCopyHtml}
+              aria-label={copiedHtml() ? i18n.t("ui.message.copied") : i18n.t("ui.message.copyResponseHtml")}
             />
             <Show when={meta()}>
               <span data-slot="text-part-meta" class="text-12-regular text-text-weak cursor-default">
