@@ -1502,6 +1502,7 @@ export function MessageTimeline(props: {
       </div>
       <ScrollView
         viewportRef={bindListRoot}
+        data-timeline-scroll=""
         onWheel={handleListWheel}
         onTouchStart={handleListTouchStart}
         onTouchMove={handleListTouchMove}

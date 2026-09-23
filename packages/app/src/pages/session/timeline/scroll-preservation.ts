@@ -10,6 +10,32 @@
 //
 // Bottom anchoring owns the position when active, and an active user gesture
 // always wins: restoration is skipped in both cases.
+//
+// ---
+//
+// Scroll writer inventory for the timeline viewport — every scrollTop change
+// must be attributable to one of these. Diagnose against this list before
+// adding any new scroll mechanism.
+//
+// 1. Virtualizer (virtual-core): end anchoring (`anchorTo: "end"` +
+//    `followOnAppend`), wasAtEnd resize compensation, scrollToIndex/ToEnd
+//    reconcile. Owns bottom follow and measurement-churn compensation. Its
+//    writes pass through the app's scrollToFn, which pre-writes the sizer
+//    height (clamp guard) and adopts the offset here via markTrusted.
+// 2. This preserver: undoes genuine clamps after content-height collapses
+//    (skipped while bottom-anchored or gesturing). Emits the `clamp-restore`
+//    diag event; if that never fires in real usage, this module can be
+//    retired.
+// 3. The user: wheel/touch/pointer/key gestures, adopted via trackScroll.
+// 4. The browser clamp itself: reduces scrollTop when scrollHeight drops
+//    below the viewport bottom. Not a writer we control — (2) undoes it.
+// 5. NOT native browser scroll anchoring: the timeline viewport opts out via
+//    `overflow-anchor: none` (index.css, `[data-timeline-scroll]`). Before
+//    that opt-out, Chrome compensated the same DOM height changes the
+//    virtualizer already compensated and silently re-picked anchor nodes as
+//    virtualized rows unmounted — a hidden writer that doubled corrections
+//    and threw the viewport up/down during resync replays and turn
+//    completion (the "jumping up and down on reconnect" report).
 
 export function createScrollPreservation(options: {
   viewport: () => HTMLElement | null | undefined

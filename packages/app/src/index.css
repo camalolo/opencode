@@ -327,4 +327,14 @@
       animation-range: 0 0.1px;
     }
   }
+
+  /* The virtual timeline owns scroll compensation for its own measurement
+     churn (end anchoring, resize adjustments, scroll preservation). Chrome's
+     native scroll anchoring would compensate the same DOM height changes a
+     second time and silently re-pick anchor nodes whenever virtualized rows
+     unmount, throwing the viewport up and down during resync replays and
+     turn completion. */
+  [data-timeline-scroll] > .scroll-view__viewport {
+    overflow-anchor: none;
+  }
 }
