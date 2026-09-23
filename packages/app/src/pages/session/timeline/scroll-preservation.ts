@@ -29,13 +29,12 @@
 // 3. The user: wheel/touch/pointer/key gestures, adopted via trackScroll.
 // 4. The browser clamp itself: reduces scrollTop when scrollHeight drops
 //    below the viewport bottom. Not a writer we control — (2) undoes it.
-// 5. NOT native browser scroll anchoring: the timeline viewport opts out via
-//    `overflow-anchor: none` (index.css, `[data-timeline-scroll]`). Before
-//    that opt-out, Chrome compensated the same DOM height changes the
-//    virtualizer already compensated and silently re-picked anchor nodes as
-//    virtualized rows unmounted — a hidden writer that doubled corrections
-//    and threw the viewport up/down during resync replays and turn
-//    completion (the "jumping up and down on reconnect" report).
+// 5. NOT native browser scroll anchoring — the session's auto-scroll hook
+//    hard-disables it on the timeline viewport (inline `overflow-anchor:
+//    "none"`), so it was never a writer here. The "sent to the top on
+//    reconnect" report traced to a project-list echo store write landing in
+//    the reconnect resync window (see project-list-sync.ts applyServerList),
+//    not to any scroll writer.
 
 export function createScrollPreservation(options: {
   viewport: () => HTMLElement | null | undefined

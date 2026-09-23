@@ -48,9 +48,20 @@ export function installProjectListSync(input: {
     return result
   }
 
-  // Apply a server-provided list. Echoes of our own optimistic writes are
-  // harmless: the entries already match, so the store write is a no-op.
-  const applyServerList = (entries: WebEntry[]) => input.replace(entries)
+  // Apply a server-provided list. Skip the write when the entries already
+  // match: a fresh array re-renders every consumer even when the content is
+  // identical, and on reconnect that lands in the same flush as the forced
+  // session resync — the combination threw open chats to the top of the
+  // timeline (seen as "sent to the start on reconnect").
+  const applyServerList = (entries: WebEntry[]) => {
+    const current = input.localEntries()
+    if (
+      current.length === entries.length &&
+      current.every((entry, index) => entry.worktree === entries[index].worktree && entry.expanded === entries[index].expanded)
+    )
+      return
+    input.replace(entries)
+  }
 
   const fetchServerList = async (): Promise<WebEntry[] | undefined> => {
     const response = await client.project.webList()
