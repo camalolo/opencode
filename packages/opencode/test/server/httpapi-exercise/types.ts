@@ -58,6 +58,9 @@ export type ScenarioContext = {
   session: (input?: { title?: string; parentID?: SessionID }) => Effect.Effect<SessionInfo>
   sessionGet: (sessionID: SessionID) => Effect.Effect<SessionInfo | undefined>
   project: () => Effect.Effect<Project.Info>
+  // Fills the global web UI project list by opening directories in order;
+  // each open prepends, so the stored order is the reverse of the input.
+  seedWebList: (directories: string[]) => Effect.Effect<void>
   message: (sessionID: SessionID, input?: { text?: string }) => Effect.Effect<MessageSeed>
   messages: (sessionID: SessionID) => Effect.Effect<SessionV1.WithParts[]>
   todos: (sessionID: SessionID, todos: TodoInfo[]) => Effect.Effect<void>

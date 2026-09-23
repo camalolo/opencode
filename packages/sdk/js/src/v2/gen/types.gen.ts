@@ -79,6 +79,7 @@ export type Event =
   | EventMcpBrowserOpenFailed
   | EventCommandExecuted
   | EventProjectUpdated
+  | EventProjectListUpdated
   | EventSessionStatus
   | EventSessionIdle
   | EventQuestionAsked
@@ -1492,6 +1493,13 @@ export type GlobalEvent = {
       }
     | {
         id: string
+        type: "project.list.updated"
+        properties: {
+          projects: Array<ProjectWebEntry>
+        }
+      }
+    | {
+        id: string
         type: "session.status"
         properties: {
           sessionID: string
@@ -1741,6 +1749,7 @@ export type ProviderConfig = {
   npm?: string
   whitelist?: Array<string>
   blacklist?: Array<string>
+  discover?: boolean
   options?: {
     apiKey?: string
     baseURL?: string
@@ -2927,6 +2936,7 @@ export type V2Event =
   | McpBrowserOpenFailed
   | CommandExecuted
   | ProjectUpdated
+  | ProjectListUpdated
   | SessionStatus2
   | SessionIdle
   | QuestionAsked
@@ -3181,6 +3191,11 @@ export type ProjectTime = {
   created: number
   updated: number
   initialized?: number
+}
+
+export type ProjectWebEntry = {
+  worktree: string
+  expanded: boolean
 }
 
 export type EventServerInstanceDisposed = {
@@ -5910,6 +5925,23 @@ export type ProjectUpdated = {
   }
 }
 
+export type ProjectListUpdated = {
+  id: string
+  metadata?: {
+    [key: string]: unknown
+  }
+  type: "project.list.updated"
+  durable?: {
+    aggregateID: string
+    seq: number
+    version: number
+  }
+  location?: LocationRef
+  data: {
+    projects: Array<ProjectWebEntry>
+  }
+}
+
 export type SessionIdle = {
   id: string
   metadata?: {
@@ -6925,6 +6957,14 @@ export type EventProjectUpdated = {
     commands?: ProjectCommands
     time: ProjectTime
     sandboxes: Array<string>
+  }
+}
+
+export type EventProjectListUpdated = {
+  id: string
+  type: "project.list.updated"
+  properties: {
+    projects: Array<ProjectWebEntry>
   }
 }
 
@@ -8853,6 +8893,171 @@ export type ProjectDirectoriesResponses = {
 }
 
 export type ProjectDirectoriesResponse = ProjectDirectoriesResponses[keyof ProjectDirectoriesResponses]
+
+export type ProjectWebListData = {
+  body?: never
+  path?: never
+  query?: never
+  url: "/project/web"
+}
+
+export type ProjectWebListErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type ProjectWebListError = ProjectWebListErrors[keyof ProjectWebListErrors]
+
+export type ProjectWebListResponses = {
+  /**
+   * Web UI project list
+   */
+  200: Array<ProjectWebEntry>
+}
+
+export type ProjectWebListResponse = ProjectWebListResponses[keyof ProjectWebListResponses]
+
+export type ProjectWebOpenData = {
+  body?: {
+    directory: string
+  }
+  path?: never
+  query?: never
+  url: "/project/web/open"
+}
+
+export type ProjectWebOpenErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type ProjectWebOpenError = ProjectWebOpenErrors[keyof ProjectWebOpenErrors]
+
+export type ProjectWebOpenResponses = {
+  /**
+   * Updated web UI project list
+   */
+  200: Array<ProjectWebEntry>
+}
+
+export type ProjectWebOpenResponse = ProjectWebOpenResponses[keyof ProjectWebOpenResponses]
+
+export type ProjectWebCloseData = {
+  body?: {
+    directory: string
+  }
+  path?: never
+  query?: never
+  url: "/project/web/close"
+}
+
+export type ProjectWebCloseErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type ProjectWebCloseError = ProjectWebCloseErrors[keyof ProjectWebCloseErrors]
+
+export type ProjectWebCloseResponses = {
+  /**
+   * Updated web UI project list
+   */
+  200: Array<ProjectWebEntry>
+}
+
+export type ProjectWebCloseResponse = ProjectWebCloseResponses[keyof ProjectWebCloseResponses]
+
+export type ProjectWebExpandData = {
+  body?: {
+    directory: string
+    expanded: boolean
+  }
+  path?: never
+  query?: never
+  url: "/project/web/expand"
+}
+
+export type ProjectWebExpandErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type ProjectWebExpandError = ProjectWebExpandErrors[keyof ProjectWebExpandErrors]
+
+export type ProjectWebExpandResponses = {
+  /**
+   * Updated web UI project list
+   */
+  200: Array<ProjectWebEntry>
+}
+
+export type ProjectWebExpandResponse = ProjectWebExpandResponses[keyof ProjectWebExpandResponses]
+
+export type ProjectWebReorderData = {
+  body?: {
+    directory: string
+    index: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+  }
+  path?: never
+  query?: never
+  url: "/project/web/reorder"
+}
+
+export type ProjectWebReorderErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type ProjectWebReorderError = ProjectWebReorderErrors[keyof ProjectWebReorderErrors]
+
+export type ProjectWebReorderResponses = {
+  /**
+   * Updated web UI project list
+   */
+  200: Array<ProjectWebEntry>
+}
+
+export type ProjectWebReorderResponse = ProjectWebReorderResponses[keyof ProjectWebReorderResponses]
+
+export type ProjectWebSeedData = {
+  body?: {
+    projects: Array<{
+      worktree: string
+      expanded?: boolean
+    }>
+  }
+  path?: never
+  query?: never
+  url: "/project/web/seed"
+}
+
+export type ProjectWebSeedErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type ProjectWebSeedError = ProjectWebSeedErrors[keyof ProjectWebSeedErrors]
+
+export type ProjectWebSeedResponses = {
+  /**
+   * Web UI project list after seeding
+   */
+  200: Array<ProjectWebEntry>
+}
+
+export type ProjectWebSeedResponse = ProjectWebSeedResponses[keyof ProjectWebSeedResponses]
 
 export type ExperimentalProjectCopyGenerateNameData = {
   body?: {

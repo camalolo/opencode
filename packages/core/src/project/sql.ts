@@ -33,3 +33,16 @@ export const ProjectDirectoryTable = sqliteTable(
   },
   (table) => [primaryKey({ columns: [table.project_id, table.directory] })],
 )
+
+// Server-maintained list of projects opened from the web UI. Kept separate
+// from ProjectTable: rows there are auto-created whenever any instance opens
+// a directory (CLI/TUI included), while this list only tracks what web
+// clients explicitly opened. Array position is the sidebar order.
+export const ProjectListTable = sqliteTable("project_list", {
+  worktree: DatabasePath.absoluteColumn().primaryKey(),
+  position: integer().notNull(),
+  expanded: integer({ mode: "boolean" })
+    .notNull()
+    .$default(() => true),
+  ...Timestamps,
+})

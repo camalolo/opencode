@@ -222,6 +222,130 @@ const scenarios: Scenario[] = [
       headers: ctx.headers(),
     }))
     .json(200, array, "status"),
+  http.protected.get("/project/web", "project.webList").json(200, array, "status"),
+  http.protected
+    .post("/project/web/open", "project.webOpen")
+    .mutating()
+    .inProject()
+    .at((ctx) => ({ path: "/project/web/open", headers: ctx.headers(), body: { directory: ctx.directory } }))
+    .json(
+      200,
+      (body, ctx) => {
+        array(body)
+        const entries = body as Array<{ worktree: string; expanded: boolean }>
+        check(entries.length > 0, "web open should return a non-empty list")
+        check(entries[0].worktree === ctx.directory, "web open should prepend the opened directory")
+        check(entries[0].expanded === true, "web open should mark the entry expanded")
+      },
+      "status",
+    ),
+  http.protected
+    .post("/project/web/expand", "project.webExpand")
+    .mutating()
+    .inProject()
+    .seeded((ctx) => {
+      if (!ctx.directory) throw new Error("scenario needs a project directory")
+      return ctx.seedWebList([ctx.directory])
+    })
+    .at((ctx) => ({
+      path: "/project/web/expand",
+      headers: ctx.headers(),
+      body: { directory: ctx.directory, expanded: false },
+    }))
+    .json(
+      200,
+      (body, ctx) => {
+        array(body)
+        const entries = body as Array<{ worktree: string; expanded: boolean }>
+        const entry = entries.find((item) => item.worktree === ctx.directory)
+        check(entry !== undefined, "web expand should keep the entry in the list")
+        check(entry?.expanded === false, "web expand should collapse the entry")
+      },
+      "status",
+    ),
+  http.protected
+    .post("/project/web/reorder", "project.webReorder")
+    .mutating()
+    .inProject()
+    .seeded((ctx) => {
+      if (!ctx.directory) throw new Error("scenario needs a project directory")
+      // Two consecutive opens leave [sibling, directory]; the request below
+      // moves the directory back to index 0. The global list may carry rows
+      // from earlier scenarios (reset is best-effort), so only relative order
+      // is asserted.
+      return ctx.seedWebList([ctx.directory, `${ctx.directory}-web-sibling`])
+    })
+    .at((ctx) => ({
+      path: "/project/web/reorder",
+      headers: ctx.headers(),
+      body: { directory: ctx.directory, index: 0 },
+    }))
+    .json(
+      200,
+      (body, ctx) => {
+        array(body)
+        const entries = body as Array<{ worktree: string }>
+        check(
+          entries.some((item) => item.worktree === `${ctx.directory}-web-sibling`),
+          "web reorder should keep every entry",
+        )
+        check(entries[0].worktree === ctx.directory, "web reorder should move the directory to index 0")
+      },
+      "status",
+    ),
+  http.protected
+    .post("/project/web/close", "project.webClose")
+    .mutating()
+    .inProject()
+    .seeded((ctx) => {
+      if (!ctx.directory) throw new Error("scenario needs a project directory")
+      return ctx.seedWebList([ctx.directory, `${ctx.directory}-web-sibling`])
+    })
+    .at((ctx) => ({ path: "/project/web/close", headers: ctx.headers(), body: { directory: ctx.directory } }))
+    .json(
+      200,
+      (body, ctx) => {
+        array(body)
+        const entries = body as Array<{ worktree: string }>
+        check(entries.every((item) => item.worktree !== ctx.directory), "web close should drop the closed directory")
+        check(
+          entries.some((item) => item.worktree === `${ctx.directory}-web-sibling`),
+          "web close should keep the other entries",
+        )
+      },
+      "status",
+    ),
+  http.protected
+    .post("/project/web/seed", "project.webSeed")
+    .mutating()
+    .inProject()
+    .at((ctx) => ({
+      path: "/project/web/seed",
+      headers: ctx.headers(),
+      body: {
+        projects: [
+          { worktree: ctx.directory, expanded: false },
+          { worktree: `${ctx.directory}-web-sibling` },
+        ],
+      },
+    }))
+    .json(
+      200,
+      (body, ctx) => {
+        array(body)
+        const entries = body as Array<{ worktree: string; expanded: boolean }>
+        const first = entries.find((item) => item.worktree === ctx.directory)
+        const second = entries.find((item) => item.worktree === `${ctx.directory}-web-sibling`)
+        check(first !== undefined && second !== undefined, "web seed should append unknown directories")
+        check(
+          entries.indexOf(first!) < entries.indexOf(second!),
+          "web seed should append in payload order",
+        )
+        check(first?.expanded === false, "web seed should honor the expanded flag")
+        check(second?.expanded === true, "web seed should default expanded to true")
+      },
+      "status",
+    ),
   http.protected
     .post("/experimental/project/{projectID}/copy/generate-name", "experimental.projectCopy.generateName")
     .seeded((ctx) => ctx.project())

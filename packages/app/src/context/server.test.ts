@@ -197,6 +197,95 @@ describe("createServerProjects", () => {
       dispose()
     })
   })
+
+  test("mutations push to the resolved sync hooks; replace and remove stay local", () => {
+    createRoot((dispose) => {
+      const [scope, setScope] = createSignal<ServerScope>(ServerScope.local)
+      const [store, setStore] = createStore({ projects: {}, lastProject: {}, recentlyClosed: {} })
+      const pushed: string[] = []
+      const syncFor = (serverScope: ServerScope) => {
+        if (serverScope !== ServerScope.local) return undefined
+        return {
+          open: (directory: string) => pushed.push(`open:${directory}`),
+          close: (directory: string) => pushed.push(`close:${directory}`),
+          expand: (directory: string, expanded: boolean) => pushed.push(`expand:${directory}:${expanded}`),
+          move: (directory: string, toIndex: number) => pushed.push(`move:${directory}:${toIndex}`),
+        }
+      }
+      const projects = createServerProjects({ scope, store, setStore, resolveSync: syncFor })
+
+      projects.open("/a")
+      projects.open("/b")
+      projects.expand("/a")
+      projects.collapse("/a")
+      projects.move("/b", 1)
+      projects.close("/b")
+      // remove() is internal normalization: no server push
+      projects.open("/repo/subdir")
+      projects.remove("/repo/subdir")
+      // lastProject stays a per-device concern
+      projects.touch("/a")
+
+      expect(pushed).toEqual([
+        "open:/a",
+        "open:/b",
+        "expand:/a:true",
+        "expand:/a:false",
+        "move:/b:1",
+        "close:/b",
+        "open:/repo/subdir",
+      ])
+
+      // Scope-following instances stop pushing when the active server has no hooks
+      setScope("https://debian.example" as ServerScope)
+      projects.open("/remote")
+      expect(pushed).toEqual([
+        "open:/a",
+        "open:/b",
+        "expand:/a:true",
+        "expand:/a:false",
+        "move:/b:1",
+        "close:/b",
+        "open:/repo/subdir",
+      ])
+      dispose()
+    })
+  })
+
+  test("replace overwrites the scope list without touching recently closed", () => {
+    createRoot((dispose) => {
+      const [scope] = createSignal(ServerScope.local)
+      const [store, setStore] = createStore({ projects: {}, lastProject: {}, recentlyClosed: {} })
+      const pushed: string[] = []
+      const projects = createServerProjects({
+        scope,
+        store,
+        setStore,
+        resolveSync: () => ({
+          open: (directory) => pushed.push(directory),
+          close: () => {},
+          expand: () => {},
+          move: () => {},
+        }),
+      })
+
+      projects.open("/a")
+      projects.close("/b")
+      expect(projects.recentlyClosed()).toEqual(["/b"])
+
+      projects.replace([
+        { worktree: "/x", expanded: false },
+        { worktree: "/y", expanded: true },
+      ])
+      expect(projects.list()).toEqual([
+        { worktree: "/x", expanded: false },
+        { worktree: "/y", expanded: true },
+      ])
+      expect(projects.recentlyClosed()).toEqual(["/b"])
+      expect(pushed).toEqual(["/a"])
+      dispose()
+    })
+  })
 })
 
 describe("migrateCanonicalLocalServerState", () => {

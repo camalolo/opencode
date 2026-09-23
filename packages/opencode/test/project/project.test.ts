@@ -5,7 +5,7 @@ import path from "path"
 import { tmpdirScoped } from "../fixture/fixture"
 import { GlobalBus } from "../../src/bus/global"
 import { Database } from "@opencode-ai/core/database/database"
-import { ProjectTable } from "@opencode-ai/core/project/sql"
+import { ProjectTable, ProjectListTable } from "@opencode-ai/core/project/sql"
 import { SessionTable } from "@opencode-ai/core/session/sql"
 import { WorkspaceTable } from "@opencode-ai/core/control-plane/workspace.sql"
 import { eq } from "drizzle-orm"
@@ -803,6 +803,135 @@ describe("Project.fromDirectory with bare repos", () => {
 
       const correctCache = path.join(barePath, "opencode")
       expect(yield* Effect.promise(() => Bun.file(correctCache).exists())).toBe(true)
+    }),
+  )
+})
+
+describe("Project web list", () => {
+  // The web list is global table state; clear it so ordering assertions hold
+  // regardless of test execution order.
+  const clearWebList = Effect.gen(function* () {
+    const { db } = yield* Database.Service
+    yield* db.delete(ProjectListTable).run().pipe(Effect.orDie)
+  })
+
+  it.live("open prepends, dedupes, and reports expanded state", () =>
+    Effect.gen(function* () {
+      yield* clearWebList
+      const project = yield* Project.Service
+
+      const first = yield* project.webOpen("/tmp/web-a")
+      expect(first.map((entry) => entry.worktree)).toEqual(["/tmp/web-a"])
+      expect(first[0]?.expanded).toBe(true)
+
+      const second = yield* project.webOpen("/tmp/web-b")
+      expect(second.map((entry) => entry.worktree)).toEqual(["/tmp/web-b", "/tmp/web-a"])
+
+      const duplicate = yield* project.webOpen("/tmp/web-a")
+      expect(duplicate.map((entry) => entry.worktree)).toEqual(["/tmp/web-b", "/tmp/web-a"])
+    }),
+  )
+
+  it.live("close removes only the requested entry and ignores unknown ones", () =>
+    Effect.gen(function* () {
+      yield* clearWebList
+      const project = yield* Project.Service
+      yield* project.webOpen("/tmp/web-a")
+      yield* project.webOpen("/tmp/web-b")
+
+      const closed = yield* project.webClose("/tmp/web-a")
+      expect(closed.map((entry) => entry.worktree)).toEqual(["/tmp/web-b"])
+
+      const missing = yield* project.webClose("/tmp/web-unknown")
+      expect(missing.map((entry) => entry.worktree)).toEqual(["/tmp/web-b"])
+    }),
+  )
+
+  it.live("expand stores the flag and ignores unknown entries", () =>
+    Effect.gen(function* () {
+      yield* clearWebList
+      const project = yield* Project.Service
+      yield* project.webOpen("/tmp/web-a")
+
+      const collapsed = yield* project.webExpand({ directory: "/tmp/web-a", expanded: false })
+      expect(collapsed).toEqual([{ worktree: "/tmp/web-a", expanded: false }])
+
+      const expanded = yield* project.webExpand({ directory: "/tmp/web-a", expanded: true })
+      expect(expanded).toEqual([{ worktree: "/tmp/web-a", expanded: true }])
+
+      const missing = yield* project.webExpand({ directory: "/tmp/web-unknown", expanded: false })
+      expect(missing).toEqual([{ worktree: "/tmp/web-a", expanded: true }])
+    }),
+  )
+
+  it.live("reorder moves entries and clamps the index", () =>
+    Effect.gen(function* () {
+      yield* clearWebList
+      const project = yield* Project.Service
+      yield* project.webOpen("/tmp/web-a")
+      yield* project.webOpen("/tmp/web-b")
+      yield* project.webOpen("/tmp/web-c")
+      // opens prepend: current order is [c, b, a]
+
+      const moved = yield* project.webReorder({ directory: "/tmp/web-a", index: 0 })
+      expect(moved.map((entry) => entry.worktree)).toEqual(["/tmp/web-a", "/tmp/web-c", "/tmp/web-b"])
+
+      const clamped = yield* project.webReorder({ directory: "/tmp/web-a", index: 99 })
+      expect(clamped.map((entry) => entry.worktree)).toEqual(["/tmp/web-c", "/tmp/web-b", "/tmp/web-a"])
+
+      const unknown = yield* project.webReorder({ directory: "/tmp/web-unknown", index: 0 })
+      expect(unknown.map((entry) => entry.worktree)).toEqual(["/tmp/web-c", "/tmp/web-b", "/tmp/web-a"])
+    }),
+  )
+
+  it.live("seed appends only entries the server does not know yet", () =>
+    Effect.gen(function* () {
+      yield* clearWebList
+      const project = yield* Project.Service
+      yield* project.webOpen("/tmp/web-a")
+
+      const seeded = yield* project.webSeed({
+        projects: [
+          { worktree: "/tmp/web-a", expanded: false },
+          { worktree: "/tmp/web-b" },
+          { worktree: "/tmp/web-c", expanded: false },
+        ],
+      })
+      // existing entry keeps its position, unknown ones are appended in order
+      expect(seeded.map((entry) => entry.worktree)).toEqual(["/tmp/web-a", "/tmp/web-b", "/tmp/web-c"])
+      expect(seeded.map((entry) => entry.expanded)).toEqual([true, true, false])
+
+      const again = yield* project.webSeed({ projects: [{ worktree: "/tmp/web-b" }] })
+      expect(again.map((entry) => entry.worktree)).toEqual(["/tmp/web-a", "/tmp/web-b", "/tmp/web-c"])
+    }),
+  )
+
+  it.live("mutations publish project.list.updated on the global bus", () =>
+    Effect.gen(function* () {
+      yield* clearWebList
+      const project = yield* Project.Service
+      const events: { directory?: string; payload: { type: string; properties?: unknown } }[] = []
+      const listener = (event: (typeof events)[number]) => events.push(event)
+
+      yield* Effect.scoped(
+        Effect.acquireRelease(
+          Effect.sync(() => GlobalBus.on("event", listener as never)),
+          () => Effect.sync(() => GlobalBus.off("event", listener as never)),
+        ).pipe(
+          Effect.flatMap(() =>
+            Effect.gen(function* () {
+              yield* project.webOpen("/tmp/web-a")
+              yield* project.webClose("/tmp/web-a")
+            }),
+          ),
+        ),
+      )
+
+      const updates = events.filter((event) => event.payload.type === Project.Event.ListUpdated.type)
+      expect(updates.length).toBe(2)
+      expect(updates.every((event) => event.directory === "global")).toBe(true)
+      const properties = updates[1]?.payload.properties as { projects: Project.WebEntry[] }
+      expect(properties.projects).toEqual([])
     }),
   )
 })

@@ -1,9 +1,9 @@
 {
   "version": "7",
   "dialect": "sqlite",
-  "id": "2e9d4ca0-14fa-4036-a123-bc94df56fab9",
+  "id": "2ca66d68-43df-423b-9c26-f94240c66be3",
   "prevIds": [
-    "bb829233-587a-4a3b-a072-26f48ddbaf0f"
+    "751068ba-6c31-4263-85a1-4af7a1cda204"
   ],
   "ddl": [
     {
@@ -44,6 +44,10 @@
     },
     {
       "name": "project_directory",
+      "entityType": "tables"
+    },
+    {
+      "name": "project_list",
       "entityType": "tables"
     },
     {
@@ -651,6 +655,56 @@
       "name": "time_created",
       "entityType": "columns",
       "table": "project_directory"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "worktree",
+      "entityType": "columns",
+      "table": "project_list"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "position",
+      "entityType": "columns",
+      "table": "project_list"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "expanded",
+      "entityType": "columns",
+      "table": "project_list"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "time_created",
+      "entityType": "columns",
+      "table": "project_list"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "time_updated",
+      "entityType": "columns",
+      "table": "project_list"
     },
     {
       "type": "text",
@@ -1781,6 +1835,15 @@
     },
     {
       "columns": [
+        "worktree"
+      ],
+      "nameExplicit": false,
+      "name": "project_list_pk",
+      "table": "project_list",
+      "entityType": "pks"
+    },
+    {
+      "columns": [
         "id"
       ],
       "nameExplicit": false,
@@ -1964,6 +2027,34 @@
       "where": null,
       "origin": "manual",
       "name": "part_session_idx",
+      "entityType": "indexes",
+      "table": "part"
+    },
+    {
+      "columns": [
+        {
+          "value": "time_created",
+          "isExpression": false
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "origin": "manual",
+      "name": "part_time_created_idx",
+      "entityType": "indexes",
+      "table": "part"
+    },
+    {
+      "columns": [
+        {
+          "value": "time_updated",
+          "isExpression": false
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "origin": "manual",
+      "name": "part_time_updated_idx",
       "entityType": "indexes",
       "table": "part"
     },

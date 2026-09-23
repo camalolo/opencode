@@ -74,6 +74,13 @@ export const pathColumn = customType<{
   },
 })
 
+// Renders any absolute path in the same canonical form the database columns
+// above return, so request-supplied paths compare equal to stored rows
+// regardless of which separator style the client sent.
+export function toPlatformPath(input: string) {
+  return toPlatform(storagePath(input))
+}
+
 export const absoluteArrayColumn = customType<{
   data: AbsolutePath[]
   driverData: string

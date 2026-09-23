@@ -180,6 +180,14 @@ function withContext<A, E>(
           worktree: (input) => run(modules.Worktree.Service.use((svc) => svc.create(input).pipe(Effect.orDie))),
           worktreeRemove: (directory) =>
             run(modules.Worktree.Service.use((svc) => svc.remove({ directory })).pipe(Effect.ignore)),
+          seedWebList: (directories) =>
+            run(
+              modules.Project.Service.use((svc) =>
+                Effect.forEach(directories, (directory) => svc.webOpen(directory), { concurrency: 1 }).pipe(
+                  Effect.asVoid,
+                ),
+              ).pipe(Effect.orDie),
+            ),
           llmText: (value) => Effect.suspend(() => llm().text(value)),
           llmWait: (count) => Effect.suspend(() => llm().wait(count)),
           tuiRequest: (request) => Effect.sync(() => modules.Tui.submitTuiRequest(request)),

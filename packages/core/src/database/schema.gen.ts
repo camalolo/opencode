@@ -109,6 +109,15 @@ export default {
         );
       `)
       yield* tx.run(`
+        CREATE TABLE \`project_list\` (
+          \`worktree\` text PRIMARY KEY,
+          \`position\` integer NOT NULL,
+          \`expanded\` integer NOT NULL,
+          \`time_created\` integer NOT NULL,
+          \`time_updated\` integer NOT NULL
+        );
+      `)
+      yield* tx.run(`
         CREATE TABLE \`project\` (
           \`id\` text PRIMARY KEY,
           \`worktree\` text NOT NULL,
@@ -246,6 +255,8 @@ export default {
       )
       yield* tx.run(`CREATE INDEX \`part_message_id_id_idx\` ON \`part\` (\`message_id\`,\`id\`);`)
       yield* tx.run(`CREATE INDEX \`part_session_idx\` ON \`part\` (\`session_id\`);`)
+      yield* tx.run(`CREATE INDEX \`part_time_created_idx\` ON \`part\` (\`time_created\`);`)
+      yield* tx.run(`CREATE INDEX \`part_time_updated_idx\` ON \`part\` (\`time_updated\`);`)
       yield* tx.run(
         `CREATE INDEX \`session_input_session_pending_delivery_seq_idx\` ON \`session_input\` (\`session_id\`,\`promoted_seq\`,\`delivery\`,\`admitted_seq\`);`,
       )

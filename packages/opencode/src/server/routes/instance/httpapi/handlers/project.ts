@@ -59,5 +59,11 @@ export const projectHandlers = HttpApiBuilder.group(InstanceHttpApi, "project", 
       .handle("initGit", initGit)
       .handle("update", update)
       .handle("directories", directories)
+      .handle("webList", () => svc.webList())
+      .handle("webOpen", (ctx) => svc.webOpen(ctx.payload.directory))
+      .handle("webClose", (ctx) => svc.webClose(ctx.payload.directory))
+      .handle("webExpand", (ctx) => svc.webExpand(ctx.payload))
+      .handle("webReorder", (ctx) => svc.webReorder(ctx.payload))
+      .handle("webSeed", (ctx) => svc.webSeed(ctx.payload))
   }),
 )

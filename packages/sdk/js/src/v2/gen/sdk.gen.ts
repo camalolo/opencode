@@ -142,6 +142,18 @@ import type {
   ProjectListResponses,
   ProjectUpdateErrors,
   ProjectUpdateResponses,
+  ProjectWebCloseErrors,
+  ProjectWebCloseResponses,
+  ProjectWebExpandErrors,
+  ProjectWebExpandResponses,
+  ProjectWebListErrors,
+  ProjectWebListResponses,
+  ProjectWebOpenErrors,
+  ProjectWebOpenResponses,
+  ProjectWebReorderErrors,
+  ProjectWebReorderResponses,
+  ProjectWebSeedErrors,
+  ProjectWebSeedResponses,
   PromptInput,
   ProviderAuthErrors,
   ProviderAuthResponses,
@@ -2690,6 +2702,163 @@ export class Project extends HeyApiClient {
       url: "/project/{projectID}/directories",
       ...options,
       ...params,
+    })
+  }
+
+  /**
+   * List web UI projects
+   *
+   * Get the server-maintained list of projects opened from the web UI, in sidebar order. Shared by every client of this server.
+   */
+  public webList<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
+    return (options?.client ?? this.client).get<ProjectWebListResponses, ProjectWebListErrors, ThrowOnError>({
+      url: "/project/web",
+      ...options,
+    })
+  }
+
+  /**
+   * Open a project in the web UI list
+   *
+   * Prepend a directory to the web UI project list and publish the updated list.
+   */
+  public webOpen<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "body", key: "directory" }] }])
+    return (options?.client ?? this.client).post<ProjectWebOpenResponses, ProjectWebOpenErrors, ThrowOnError>({
+      url: "/project/web/open",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Remove a project from the web UI list
+   *
+   * Remove a directory from the web UI project list and publish the updated list.
+   */
+  public webClose<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "body", key: "directory" }] }])
+    return (options?.client ?? this.client).post<ProjectWebCloseResponses, ProjectWebCloseErrors, ThrowOnError>({
+      url: "/project/web/close",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Set web UI project expansion
+   *
+   * Set the sidebar expansion state of a web UI project and publish the updated list.
+   */
+  public webExpand<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      expanded?: boolean
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "body", key: "directory" },
+            { in: "body", key: "expanded" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<ProjectWebExpandResponses, ProjectWebExpandErrors, ThrowOnError>({
+      url: "/project/web/expand",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Reorder the web UI project list
+   *
+   * Move a directory to a new index in the web UI project list and publish the updated list.
+   */
+  public webReorder<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      index?: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "body", key: "directory" },
+            { in: "body", key: "index" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<ProjectWebReorderResponses, ProjectWebReorderErrors, ThrowOnError>({
+      url: "/project/web/reorder",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Seed the web UI project list
+   *
+   * Append directories the server does not know yet to the web UI project list. Used to migrate a client's locally stored list.
+   */
+  public webSeed<ThrowOnError extends boolean = false>(
+    parameters?: {
+      projects?: Array<{
+        worktree: string
+        expanded?: boolean
+      }>
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "body", key: "projects" }] }])
+    return (options?.client ?? this.client).post<ProjectWebSeedResponses, ProjectWebSeedErrors, ThrowOnError>({
+      url: "/project/web/seed",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
     })
   }
 }

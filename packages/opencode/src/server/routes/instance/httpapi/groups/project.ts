@@ -14,6 +14,13 @@ const UpdatePayload = Schema.Struct({
   icon: Schema.optional(Project.Info.fields.icon),
   commands: Schema.optional(Project.Info.fields.commands),
 })
+const WebOpenPayload = Schema.Struct({ directory: Schema.String })
+const WebClosePayload = Schema.Struct({ directory: Schema.String })
+const WebExpandPayload = Schema.Struct({ directory: Schema.String, expanded: Schema.Boolean })
+const WebReorderPayload = Schema.Struct({ directory: Schema.String, index: Schema.Number })
+const WebSeedPayload = Schema.Struct({
+  projects: Schema.Array(Schema.Struct({ worktree: Schema.String, expanded: Schema.optional(Schema.Boolean) })),
+})
 
 export const ProjectApi = HttpApi.make("project")
   .add(
@@ -71,6 +78,67 @@ export const ProjectApi = HttpApi.make("project")
             identifier: "project.directories",
             summary: "List project directories",
             description: "List known local absolute directories for a project.",
+          }),
+        ),
+        HttpApiEndpoint.get("webList", `${root}/web`, {
+          success: described(Schema.Array(Project.WebEntry), "Web UI project list"),
+        }).annotateMerge(
+          OpenApi.annotations({
+            identifier: "project.webList",
+            summary: "List web UI projects",
+            description:
+              "Get the server-maintained list of projects opened from the web UI, in sidebar order. Shared by every client of this server.",
+          }),
+        ),
+        HttpApiEndpoint.post("webOpen", `${root}/web/open`, {
+          payload: WebOpenPayload,
+          success: described(Schema.Array(Project.WebEntry), "Updated web UI project list"),
+        }).annotateMerge(
+          OpenApi.annotations({
+            identifier: "project.webOpen",
+            summary: "Open a project in the web UI list",
+            description: "Prepend a directory to the web UI project list and publish the updated list.",
+          }),
+        ),
+        HttpApiEndpoint.post("webClose", `${root}/web/close`, {
+          payload: WebClosePayload,
+          success: described(Schema.Array(Project.WebEntry), "Updated web UI project list"),
+        }).annotateMerge(
+          OpenApi.annotations({
+            identifier: "project.webClose",
+            summary: "Remove a project from the web UI list",
+            description: "Remove a directory from the web UI project list and publish the updated list.",
+          }),
+        ),
+        HttpApiEndpoint.post("webExpand", `${root}/web/expand`, {
+          payload: WebExpandPayload,
+          success: described(Schema.Array(Project.WebEntry), "Updated web UI project list"),
+        }).annotateMerge(
+          OpenApi.annotations({
+            identifier: "project.webExpand",
+            summary: "Set web UI project expansion",
+            description: "Set the sidebar expansion state of a web UI project and publish the updated list.",
+          }),
+        ),
+        HttpApiEndpoint.post("webReorder", `${root}/web/reorder`, {
+          payload: WebReorderPayload,
+          success: described(Schema.Array(Project.WebEntry), "Updated web UI project list"),
+        }).annotateMerge(
+          OpenApi.annotations({
+            identifier: "project.webReorder",
+            summary: "Reorder the web UI project list",
+            description: "Move a directory to a new index in the web UI project list and publish the updated list.",
+          }),
+        ),
+        HttpApiEndpoint.post("webSeed", `${root}/web/seed`, {
+          payload: WebSeedPayload,
+          success: described(Schema.Array(Project.WebEntry), "Web UI project list after seeding"),
+        }).annotateMerge(
+          OpenApi.annotations({
+            identifier: "project.webSeed",
+            summary: "Seed the web UI project list",
+            description:
+              "Append directories the server does not know yet to the web UI project list. Used to migrate a client's locally stored list.",
           }),
         ),
       )

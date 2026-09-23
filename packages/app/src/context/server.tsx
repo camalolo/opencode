@@ -12,6 +12,15 @@ type ServerProjectState = {
   lastProject: Record<string, string>
   recentlyClosed: Record<string, string[]>
 }
+// Server-side push hooks for the web UI project list. Implementations fire the
+// matching project.web* API call; the local store write always happens first
+// so the UI stays optimistic when the server is unreachable.
+export type ServerProjectsSync = {
+  open(directory: string): void
+  close(directory: string): void
+  expand(directory: string, expanded: boolean): void
+  move(directory: string, toIndex: number): void
+}
 const HEALTH_POLL_INTERVAL_MS = 10_000
 // The store retains more history than is displayed. Consumers filter recently closed entries
 // against the live project list (dropping deleted projects) and then cap the visible count via
@@ -80,10 +89,14 @@ export function createServerProjects<T extends ServerProjectState>(input: {
   scope: Accessor<ServerScope>
   store: Store<T>
   setStore: SetStoreFunction<T>
+  // Resolved at mutation time so scope-following instances (ServerProvider's
+  // `projects`) route writes to whichever server is currently active.
+  resolveSync?: (scope: ServerScope) => ServerProjectsSync | undefined
 }) {
   const setStore = input.setStore as unknown as SetStoreFunction<ServerProjectState>
   const current = () => input.store.projects[input.scope()] ?? []
   const currentClosed = () => input.store.recentlyClosed?.[input.scope()] ?? []
+  const sync = () => input.resolveSync?.(input.scope())
   const remove = (directory: string) => {
     setStore(
       "projects",
@@ -95,6 +108,11 @@ export function createServerProjects<T extends ServerProjectState>(input: {
     list: current,
     recentlyClosed: currentClosed,
     remove,
+    // Server-authoritative replacement of the open list. Does not touch
+    // recentlyClosed/lastProject and does not push back to the server.
+    replace(entries: Array<{ worktree: string; expanded: boolean }>) {
+      setStore("projects", input.scope(), entries.map((entry) => ({ worktree: entry.worktree, expanded: entry.expanded })))
+    },
     open(directory: string) {
       const scope = input.scope()
       const key = pathKey(directory)
@@ -108,11 +126,14 @@ export function createServerProjects<T extends ServerProjectState>(input: {
       }
       if (current().some((project) => project.worktree === directory)) return
       setStore("projects", scope, [{ worktree: directory, expanded: true }, ...current()])
+      sync()?.open(directory)
     },
     // User-initiated close: removes the project and records it in recently closed.
     // Internal, non-user removals (e.g. sandbox/worktree normalization) should use remove().
     close(directory: string) {
+      const existed = current().some((project) => project.worktree === directory)
       remove(directory)
+      if (existed) sync()?.close(directory)
       const key = pathKey(directory)
       const closed = [directory, ...currentClosed().filter((worktree) => pathKey(worktree) !== key)].slice(
         0,
@@ -122,11 +143,17 @@ export function createServerProjects<T extends ServerProjectState>(input: {
     },
     expand(directory: string) {
       const index = current().findIndex((project) => project.worktree === directory)
-      if (index !== -1) setStore("projects", input.scope(), index, "expanded", true)
+      if (index !== -1) {
+        setStore("projects", input.scope(), index, "expanded", true)
+        sync()?.expand(directory, true)
+      }
     },
     collapse(directory: string) {
       const index = current().findIndex((project) => project.worktree === directory)
-      if (index !== -1) setStore("projects", input.scope(), index, "expanded", false)
+      if (index !== -1) {
+        setStore("projects", input.scope(), index, "expanded", false)
+        sync()?.expand(directory, false)
+      }
     },
     move(directory: string, toIndex: number) {
       const fromIndex = current().findIndex((project) => project.worktree === directory)
@@ -135,6 +162,7 @@ export function createServerProjects<T extends ServerProjectState>(input: {
       const [item] = next.splice(fromIndex, 1)
       next.splice(toIndex, 0, item)
       setStore("projects", input.scope(), next)
+      sync()?.move(directory, toIndex)
     },
     last() {
       return input.store.lastProject[input.scope()]
@@ -318,12 +346,27 @@ export const { use: useServer, provider: ServerProvider } = createSimpleContext(
     )
 
     const scope = (key = state.active) => ServerScope.fromServerKey(key, props.canonicalLocalServer)
-    const projects = createServerProjects({ scope, store, setStore })
+    // Per-server project-list sync hooks, registered by the bridge that owns
+    // the server's SDK context. Keyed by scope so both the scope-following
+    // instance below and the per-server instances resolve the same hooks.
+    const projectSyncs = new Map<ServerScope, ServerProjectsSync>()
+    const resolveSyncProject = (serverScope: ServerScope) => projectSyncs.get(serverScope)
+    const resolveProjectSync = (key: ServerConnection.Key, syncHooks: ServerProjectsSync | undefined) => {
+      const serverScope = scope(key)
+      if (syncHooks) projectSyncs.set(serverScope, syncHooks)
+      else projectSyncs.delete(serverScope)
+    }
+    const projects = createServerProjects({ scope, store, setStore, resolveSync: resolveSyncProject })
     const projectStores = new Map<ServerConnection.Key, ReturnType<typeof createServerProjects>>()
     const projectsForServer = (key: ServerConnection.Key) => {
       const existing = projectStores.get(key)
       if (existing) return existing
-      const next = createServerProjects({ scope: () => scope(key), store, setStore })
+      const next = createServerProjects({
+        scope: () => scope(key),
+        store,
+        setStore,
+        resolveSync: resolveSyncProject,
+      })
       projectStores.set(key, next)
       return next
     }
@@ -351,6 +394,7 @@ export const { use: useServer, provider: ServerProvider } = createSimpleContext(
       add,
       remove,
       scope,
+      setProjectSync: resolveProjectSync,
       projects: {
         ...projects,
         forServer: projectsForServer,

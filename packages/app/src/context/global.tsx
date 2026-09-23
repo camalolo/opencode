@@ -2,6 +2,7 @@ import { createSimpleContext } from "@opencode-ai/ui/context"
 import { createEffect, createMemo, createRoot } from "solid-js"
 import { createStore } from "solid-js/store"
 import { createServerProjects, RECENTLY_CLOSED_DISPLAY_LIMIT, ServerConnection, useServer } from "./server"
+import { installProjectListSync } from "./project-list-sync"
 import { pathKey } from "@/utils/path-key"
 import { useServerHealth } from "@/utils/server-health"
 import { createServerSdkContext } from "./server-sdk"
@@ -47,7 +48,16 @@ export const { use: useGlobal, provider: GlobalProvider } = createSimpleContext(
       const existing = serverCtxs.get(key)
       if (existing) return existing.serverCtx
       const root = createRoot((dispose) => {
-        const serverCtx = createServerCtx(conn, server.scope(key), server.projects.forServer(key))
+        const projects = server.projects.forServer(key)
+        const serverCtx = createServerCtx(conn, server.scope(key), projects)
+        installProjectListSync({
+          conn,
+          scope: server.scope(key),
+          sdk: serverCtx.sdk,
+          setProjectSync: server.setProjectSync,
+          localEntries: projects.list,
+          replace: projects.replace,
+        })
         return { dispose, serverCtx }
       }, owner as any)
       serverCtxs.set(key, root)

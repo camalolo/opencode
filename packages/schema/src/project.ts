@@ -40,5 +40,14 @@ export const Info = Schema.Struct({
 }).annotate({ identifier: "Project" })
 export interface Info extends Schema.Schema.Type<typeof Info> {}
 
+// Entry of the server-maintained web UI project list. Array order is the
+// sidebar order; `expanded` mirrors the per-project sidebar expansion state.
+export const WebEntry = Schema.Struct({
+  worktree: Schema.String,
+  expanded: Schema.Boolean,
+}).annotate({ identifier: "Project.WebEntry" })
+export interface WebEntry extends Schema.Schema.Type<typeof WebEntry> {}
+
 const Updated = define({ type: "project.updated", schema: Info.fields })
-export const Event = { Updated, Definitions: inventory(Updated) }
+const ListUpdated = define({ type: "project.list.updated", schema: { projects: Schema.Array(WebEntry) } })
+export const Event = { Updated, ListUpdated, Definitions: inventory(Updated, ListUpdated) }

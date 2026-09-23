@@ -1,7 +1,8 @@
 import { LayerNode } from "@opencode-ai/core/effect/layer-node"
 import { and, eq, sql } from "drizzle-orm"
 import { Database } from "@opencode-ai/core/database/database"
-import { ProjectDirectoryTable, ProjectTable } from "@opencode-ai/core/project/sql"
+import * as DatabasePath from "@opencode-ai/core/database/path"
+import { ProjectDirectoryTable, ProjectListTable, ProjectTable } from "@opencode-ai/core/project/sql"
 import { ProjectDirectories } from "@opencode-ai/core/project/directories"
 import { SessionTable } from "@opencode-ai/core/session/sql"
 import { WorkspaceTable } from "@opencode-ai/core/control-plane/workspace.sql"
@@ -26,8 +27,12 @@ import { Project } from "@opencode-ai/schema/project"
 export const Info = Project.Info
 export type Info = Types.DeepMutable<Schema.Schema.Type<typeof Info>>
 
+export const WebEntry = Project.WebEntry
+export type WebEntry = Types.DeepMutable<Schema.Schema.Type<typeof WebEntry>>
+
 export const Event = {
   Updated: Project.Event.Updated,
+  ListUpdated: Project.Event.ListUpdated,
 }
 
 type Row = typeof ProjectTable.$inferSelect
@@ -97,6 +102,19 @@ export interface Interface {
   readonly sandboxes: (id: ProjectV2.ID) => Effect.Effect<string[]>
   readonly addSandbox: (id: ProjectV2.ID, directory: string) => Effect.Effect<void>
   readonly removeSandbox: (id: ProjectV2.ID, directory: string) => Effect.Effect<void>
+  /**
+   * Server-maintained list of projects opened from the web UI. All mutating
+   * operations return the updated list and publish a `project.list.updated`
+   * event so every connected client converges.
+   */
+  readonly webList: () => Effect.Effect<WebEntry[]>
+  readonly webOpen: (directory: string) => Effect.Effect<WebEntry[]>
+  readonly webClose: (directory: string) => Effect.Effect<WebEntry[]>
+  readonly webExpand: (input: { directory: string; expanded: boolean }) => Effect.Effect<WebEntry[]>
+  readonly webReorder: (input: { directory: string; index: number }) => Effect.Effect<WebEntry[]>
+  readonly webSeed: (input: {
+    projects: ReadonlyArray<{ worktree: string; expanded?: boolean }>
+  }) => Effect.Effect<WebEntry[]>
 }
 
 export class Service extends Context.Service<Service, Interface>()("@opencode/Project") {}
@@ -447,6 +465,115 @@ const layer = Layer.effect(
       yield* emitUpdated(fromRow(result))
     })
 
+    // -------------------------------------------------------------------------
+    // Web UI project list
+    // -------------------------------------------------------------------------
+
+    type ListRow = typeof ProjectListTable.$inferSelect
+
+    // Compare and store client-supplied directories in the same canonical form
+    // the database columns return, so either separator style matches.
+    const listDirectory = (directory: string) => AbsolutePath.make(DatabasePath.toPlatformPath(directory))
+
+    const publishWebList = (entries: WebEntry[]) =>
+      Effect.sync(() =>
+        GlobalBus.emit("event", {
+          directory: "global",
+          payload: { type: Event.ListUpdated.type, properties: { projects: entries } },
+        }),
+      )
+
+    const webRows = Effect.fn("Project.webRows")(function* () {
+      return (yield* db.select().from(ProjectListTable).all().pipe(Effect.orDie)).sort((a, b) => a.position - b.position)
+    })
+
+    const toEntry = (row: ListRow): WebEntry => ({ worktree: row.worktree, expanded: row.expanded })
+
+    // Persist the desired list, renumbering positions densely, then publish so
+    // every connected client (including the initiating one) converges on it.
+    const webRewrite = Effect.fn("Project.webRewrite")(function* (rows: Array<{ worktree: string; expanded: boolean }>) {
+      const entries = rows.map((row) => ({ worktree: row.worktree, expanded: row.expanded }))
+      yield* db
+        .transaction(
+          (d) =>
+            Effect.gen(function* () {
+              yield* d.delete(ProjectListTable).run()
+              if (entries.length === 0) return
+              yield* d
+                .insert(ProjectListTable)
+                .values(
+                  entries.map((entry, index) => ({
+                    worktree: AbsolutePath.make(entry.worktree),
+                    position: index,
+                    expanded: entry.expanded,
+                  })),
+                )
+                .run()
+            }),
+          { behavior: "immediate" },
+        )
+        .pipe(Effect.orDie)
+      yield* publishWebList(entries)
+      return entries
+    })
+
+    const webList = Effect.fn("Project.webList")(function* () {
+      return (yield* webRows()).map(toEntry)
+    })
+
+    const webOpen = Effect.fn("Project.webOpen")(function* (directory: string) {
+      const worktree = listDirectory(directory)
+      const rows = yield* webRows()
+      if (rows.some((row) => row.worktree === worktree)) return rows.map(toEntry)
+      return yield* webRewrite([{ worktree, expanded: true }, ...rows.map(toEntry)])
+    })
+
+    const webClose = Effect.fn("Project.webClose")(function* (directory: string) {
+      const worktree = listDirectory(directory)
+      const rows = yield* webRows()
+      if (!rows.some((row) => row.worktree === worktree)) return rows.map(toEntry)
+      return yield* webRewrite(rows.filter((row) => row.worktree !== worktree).map(toEntry))
+    })
+
+    const webExpand = Effect.fn("Project.webExpand")(function* (input: { directory: string; expanded: boolean }) {
+      const worktree = listDirectory(input.directory)
+      const rows = yield* webRows()
+      const existing = rows.find((row) => row.worktree === worktree)
+      if (!existing || existing.expanded === input.expanded) return rows.map(toEntry)
+      return yield* webRewrite(
+        rows.map((row) => (row.worktree === worktree ? { worktree: row.worktree, expanded: input.expanded } : toEntry(row))),
+      )
+    })
+
+    const webReorder = Effect.fn("Project.webReorder")(function* (input: { directory: string; index: number }) {
+      const worktree = listDirectory(input.directory)
+      const rows = yield* webRows()
+      const fromIndex = rows.findIndex((row) => row.worktree === worktree)
+      if (fromIndex === -1) return rows.map(toEntry)
+      const toIndex = Math.max(0, Math.min(input.index, rows.length - 1))
+      if (fromIndex === toIndex) return rows.map(toEntry)
+      const next = rows.map(toEntry)
+      const [item] = next.splice(fromIndex, 1)
+      if (!item) return rows.map(toEntry)
+      next.splice(toIndex, 0, item)
+      return yield* webRewrite(next)
+    })
+
+    // Seed appends entries the server does not know yet, keeping existing
+    // order untouched: a first client migrates its local list without
+    // clobbering another client that seeded (or changed) it first.
+    const webSeed = Effect.fn("Project.webSeed")(function* (input: {
+      projects: ReadonlyArray<{ worktree: string; expanded?: boolean }>
+    }) {
+      const rows = yield* webRows()
+      const known = new Set(rows.map((row) => row.worktree))
+      const additions = input.projects
+        .filter((project) => !!project.worktree && !known.has(listDirectory(project.worktree)))
+        .map((project) => ({ worktree: listDirectory(project.worktree), expanded: project.expanded ?? true }))
+      if (additions.length === 0) return rows.map(toEntry)
+      return yield* webRewrite([...rows.map(toEntry), ...additions])
+    })
+
     return Service.of({
       init,
       fromDirectory,
@@ -459,6 +586,12 @@ const layer = Layer.effect(
       sandboxes,
       addSandbox,
       removeSandbox,
+      webList,
+      webOpen,
+      webClose,
+      webExpand,
+      webReorder,
+      webSeed,
     })
   }),
 )
