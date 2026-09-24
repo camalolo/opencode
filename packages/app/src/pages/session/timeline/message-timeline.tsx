@@ -438,15 +438,21 @@ export function MessageTimeline(props: {
   let virtualContent: HTMLDivElement | undefined
   // Shared diagnostic ring (window.__timelineDiag): resync bursts, mount
   // decisions and large scroll displacements, so an intermittent "the chat
-  // jumped" report can be traced to the exact path afterwards.
+  // jumped" report can be traced to the exact path afterwards. Set
+  // localStorage.timelineDiag = "1" to also mirror every entry to the
+  // console, so a report survives navigation and can be pasted verbatim.
   let churnResizes = 0
   let lastDiagResizes = 0
   const diag = (entry: { type: string } & Record<string, unknown>) => {
-    const w = window as unknown as { __timelineDiag?: Array<Record<string, unknown>> }
+    const w = window as unknown as { __timelineDiag?: Array<Record<string, unknown>>; localStorage?: Storage }
+    const line = { at: new Date().toISOString(), resizes: churnResizes - lastDiagResizes, hash: location.hash || undefined, ...entry }
     w.__timelineDiag ??= []
-    w.__timelineDiag.push({ at: new Date().toISOString(), resizes: churnResizes - lastDiagResizes, hash: location.hash || undefined, ...entry })
+    w.__timelineDiag.push(line)
     lastDiagResizes = churnResizes
     if (w.__timelineDiag.length > 60) w.__timelineDiag.shift()
+    try {
+      if (w.localStorage?.getItem("timelineDiag") === "1") console.info("[timeline]", JSON.stringify(line))
+    } catch {}
   }
   const virtualizer = createVirtualizer<HTMLDivElement, HTMLDivElement>({
     get count() {
