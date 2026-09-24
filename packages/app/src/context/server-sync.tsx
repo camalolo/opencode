@@ -314,9 +314,11 @@ export function createServerSyncContextInner(serverSDK: ServerSDK, queryClientOv
 
   const queryClient = queryClientOverride ?? useQueryClient()
   const homeSessions = createHomeSessionIndexCache(queryClient, ServerConnection.key(serverSDK.server))
-  // Bumped whenever a stream gap was bridged: mounted chat timelines watch it
-  // and force-resync their session store, because replayed events alone cannot
-  // be trusted to reassemble messages whose parent frames were dropped.
+  // Bumped only when the server says a replay cannot vouch for the gap
+  // (buffer overflow, restart): mounted chat timelines watch it and
+  // force-resync their session store. A complete replay (server.resumed)
+  // needs no resync — its events stream through the normal reducer below in
+  // order, exactly once, so open chats catch up from deltas alone.
   const [streamEpoch, setStreamEpoch] = createSignal(0)
   // The stream aborts dead connections and reconnects on its own; replay
   // bridges small gaps, and the listeners below revalidate every store when
@@ -330,9 +332,9 @@ export function createServerSyncContextInner(serverSDK: ServerSDK, queryClientOv
     serverSDK.onReconnect(() => {
       void queryClient.invalidateQueries({ queryKey: [serverSDK.scope] })
       void activeSessionsQuery.refetch()
-      setStreamEpoch((value) => value + 1)
     }),
   )
+  onCleanup(serverSDK.onSnapshotRequired(() => setStreamEpoch((value) => value + 1)))
   // Quiet reconnects (a gap with no events to replay, e.g. a model thinking
   // without streaming) skip the full resync above - still refresh statuses so
   // a session that started or finished a turn meanwhile is not shown inert.

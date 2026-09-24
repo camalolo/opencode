@@ -180,6 +180,7 @@ type ServerSDKBase = {
     start: () => Promise<void> | undefined
   }
   onReconnect: (listener: () => void) => () => void
+  onSnapshotRequired: (listener: () => void) => () => void
   onStatusRefresh: (listener: () => void) => () => void
   createClient: (
     opts: Omit<Parameters<typeof createSdkForServer>[0], "server" | "fetch">,
@@ -278,6 +279,10 @@ function createServerSdkContextBase(server: ServerConnection.Any, scope: ServerS
   let lastBoot: string | undefined
   let streamCheck: ReturnType<typeof setInterval> | undefined
   const reconnectListeners = new Set<() => void>()
+  // Heavy full-state resync listeners: only fired when the server says a
+  // replay cannot vouch for the gap (buffer overflow, restart) — see the
+  // server.resumed / server.snapshot-required handling below.
+  const snapshotListeners = new Set<() => void>()
   // Lightweight liveness refresh: unlike the full-refetch reconnect listeners
   // (which only fire when a gap actually had events), this runs on EVERY
   // successful (re)connect so sessions that started or finished a turn during
@@ -391,26 +396,31 @@ function createServerSdkContextBase(server: ServerConnection.Any, scope: ServerS
               if (bootChanged && pendingReconnect) {
                 pendingReconnect = false
                 for (const listener of reconnectListeners) listener()
+                for (const listener of snapshotListeners) listener()
               }
             }
             if (marker === "server.resumed") {
-              // A replay proves the connection gapped: replayed frames alone
-              // cannot reassemble state reliably (parents may be missing or
-              // already-applied), so ask listeners to revalidate their stores.
-              const resumedProps = payload.properties as { replayed?: number } | undefined
-              if ((resumedProps?.replayed ?? 0) > 0) for (const listener of reconnectListeners) listener()
+              // A complete resume (no snapshot-required) proves the ring
+              // vouches for the whole gap: every missed event is replayed
+              // below through the normal reducer, in order, exactly once —
+              // the same sequence a live connection would have delivered.
+              // Deltas apply through the store without a full refetch, so
+              // only the cheap status refresh runs here. Partial gaps are
+              // signalled separately via server.snapshot-required.
               pendingReconnect = false
               for (const listener of statusListeners) listener()
               continue
             }
             if (marker === "server.snapshot-required") {
               for (const listener of reconnectListeners) listener()
+              for (const listener of snapshotListeners) listener()
               for (const listener of statusListeners) listener()
               continue
             }
             if (pendingReconnect) {
               pendingReconnect = false
               for (const listener of reconnectListeners) listener()
+              for (const listener of snapshotListeners) listener()
             }
             if (marker === "server.connected") for (const listener of statusListeners) listener()
             if (legacy && typeof (payload as { id?: unknown }).id === "string") lastEventId = (payload as { id: string }).id
@@ -531,6 +541,10 @@ function createServerSdkContextBase(server: ServerConnection.Any, scope: ServerS
     onReconnect: (listener: () => void) => {
       reconnectListeners.add(listener)
       return () => reconnectListeners.delete(listener)
+    },
+    onSnapshotRequired: (listener: () => void) => {
+      snapshotListeners.add(listener)
+      return () => snapshotListeners.delete(listener)
     },
     onStatusRefresh: (listener: () => void) => {
       statusListeners.add(listener)
