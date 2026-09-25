@@ -315,9 +315,21 @@ export function createPromptSubmit(input: PromptSubmitInput) {
     })
   }
 
-  const handleSubmit = async (event: Event) => {
-    event.preventDefault()
+  let inFlight = false
 
+  const handleSubmit = async (event: Event) => {
+    // Always prevent the native form submission, even when a submission is already in flight.
+    event.preventDefault()
+    if (inFlight) return
+    inFlight = true
+    try {
+      await submit(event)
+    } finally {
+      inFlight = false
+    }
+  }
+
+  async function submit(event: Event) {
     const target = prompt.capture()
     const submission = createPromptSubmissionState({
       target,
