@@ -96,6 +96,7 @@ const SessionRow = (props: {
   dense?: boolean
   tint: Accessor<string | undefined>
   isWorking: Accessor<boolean>
+  isSleeping: Accessor<boolean>
   hasPermissions: Accessor<boolean>
   hasError: Accessor<boolean>
   unseenCount: Accessor<number>
@@ -117,7 +118,11 @@ const SessionRow = (props: {
         props.clearHoverProjectSoon()
       }}
     >
-      <Show when={props.isWorking() || props.hasPermissions() || props.hasError() || props.unseenCount() > 0}>
+      <Show
+        when={
+          props.isWorking() || props.isSleeping() || props.hasPermissions() || props.hasError() || props.unseenCount() > 0
+        }
+      >
         <div
           class="shrink-0 size-6 flex items-center justify-center"
           style={{ color: props.tint() ?? "var(--icon-interactive-base)" }}
@@ -125,6 +130,19 @@ const SessionRow = (props: {
           <Switch>
             <Match when={props.isWorking()}>
               <Spinner class="size-[15px]" />
+            </Match>
+            <Match when={props.isSleeping()}>
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                class="size-[13px] shrink-0"
+                aria-hidden="true"
+              >
+                <circle cx="12" cy="12" r="9" />
+                <path d="M12 7v5l3 2" stroke-linecap="round" stroke-linejoin="round" />
+              </svg>
             </Match>
             <Match when={props.hasPermissions()}>
               <div class="size-1.5 rounded-full bg-surface-warning-strong" />
@@ -167,6 +185,9 @@ export const SessionItem = (props: SessionItemProps): JSX.Element => {
     if (hasPermissions()) return false
     return serverSync().session.data.session_working(props.session.id)
   })
+  const isSleeping = createMemo(
+    () => serverSync().session.data.session_status[props.session.id]?.type === "sleeping",
+  )
 
   const tint = createMemo(() =>
     messageAgentColor(serverSync().session.data.message[props.session.id], sessionStore.agent),
@@ -205,6 +226,7 @@ export const SessionItem = (props: SessionItemProps): JSX.Element => {
       dense={props.dense}
       tint={tint}
       isWorking={isWorking}
+      isSleeping={isSleeping}
       hasPermissions={hasPermissions}
       hasError={hasError}
       unseenCount={unseenCount}
