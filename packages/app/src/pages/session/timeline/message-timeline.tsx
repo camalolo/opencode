@@ -383,6 +383,7 @@ export function MessageTimeline(props: {
   }
   const capturePrependAnchor = () => {
     prependLoading = true
+    diag({ type: "prepend-capture" })
     updatePrependAnchor()
   }
   const updatePrependAnchor = () => {
@@ -416,6 +417,7 @@ export function MessageTimeline(props: {
         ? element.getBoundingClientRect().top - root.getBoundingClientRect().top - anchor.offset
         : undefined
       if (delta !== undefined && Math.abs(delta) > 0.5) {
+        if (frames === 0) diag({ type: "prepend-restore", delta: Math.round(delta) })
         root.scrollTop += delta
         stable = 0
       } else {
@@ -423,6 +425,7 @@ export function MessageTimeline(props: {
       }
       frames += 1
       if (stable >= 30 || frames >= 180) {
+        if (frames >= 180 && stable < 30) diag({ type: "prepend-giveup" })
         if (!prependLoading) prependAnchor = undefined
         return
       }
@@ -445,7 +448,7 @@ export function MessageTimeline(props: {
   let lastDiagResizes = 0
   const diag = (entry: { type: string } & Record<string, unknown>) => {
     const w = window as unknown as { __timelineDiag?: Array<Record<string, unknown>>; localStorage?: Storage }
-    const line = { at: new Date().toISOString(), resizes: churnResizes - lastDiagResizes, hash: location.hash || undefined, ...entry }
+    const line = { at: new Date().toISOString(), resizes: churnResizes - lastDiagResizes, hash: location.hash || undefined, ...entry, ...diagMeta() }
     w.__timelineDiag ??= []
     w.__timelineDiag.push(line)
     lastDiagResizes = churnResizes
@@ -453,6 +456,12 @@ export function MessageTimeline(props: {
     try {
       if (w.localStorage?.getItem("timelineDiag") === "1") console.info("[timeline]", JSON.stringify(line))
     } catch {}
+  }
+  // Hoisted function: diag call sites all run after setup, so reading the
+  // virtualizer here is safe, and this keeps row/size context on every entry
+  // — a collapse shows up as rows or size dropping toward zero.
+  function diagMeta() {
+    return { rows: timelineRows().length, size: Math.round(virtualizer.getTotalSize()) }
   }
   const virtualizer = createVirtualizer<HTMLDivElement, HTMLDivElement>({
     get count() {
