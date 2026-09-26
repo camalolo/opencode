@@ -181,3 +181,41 @@ export const SessionContextEpochTable = sqliteTable("session_context_epoch", {
   snapshot: text({ mode: "json" }).notNull().$type<SystemContext.Snapshot>(),
   baseline_seq: integer().notNull(),
 })
+
+export const SessionSleepTable = sqliteTable(
+  "session_sleep",
+  {
+    id: text().primaryKey(),
+    session_id: text()
+      .$type<SessionSchema.ID>()
+      .notNull()
+      .references(() => SessionTable.id, { onDelete: "cascade" }),
+    condition: text().notNull(),
+    description: text().notNull(),
+    interval_ms: integer().notNull(),
+    check_timeout_ms: integer().notNull(),
+    // Epoch ms after which the trigger wakes with a timeout notice instead of
+    // silently polling forever.
+    deadline: integer().notNull(),
+    // Working directory and shell captured at arm time so later checks run in
+    // the same context even when no instance is open.
+    cwd: text().notNull(),
+    shell: text(),
+    next_check_at: integer().notNull(),
+    consecutive_failures: integer().notNull().default(0),
+    last_output: text(),
+    status: text().notNull().$type<"pending" | "fired" | "timed_out" | "failed" | "cancelled">(),
+    // Set when the trigger transitions out of `pending`; the wake message is
+    // admitted under this ID so redelivery after a crash stays idempotent.
+    message_id: text().$type<MessageID>(),
+    delivered_at: integer(),
+    deliver_attempts: integer().notNull().default(0),
+    ...Timestamps,
+    time_finished: integer(),
+  },
+  (table) => [
+    index("session_sleep_session_status_idx").on(table.session_id, table.status),
+    index("session_sleep_due_idx").on(table.status, table.next_check_at),
+    index("session_sleep_deliverable_idx").on(table.status, table.delivered_at, table.deliver_attempts),
+  ],
+)

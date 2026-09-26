@@ -3,6 +3,8 @@ import { httpClient } from "@opencode-ai/core/effect/app-node-platform"
 import { Ripgrep } from "@opencode-ai/core/ripgrep"
 import { PlanExitTool } from "./plan"
 import { Session } from "@/session/session"
+import { SessionSleepScheduler } from "@/session/sleep-scheduler"
+import { SessionStatus } from "@/session/status"
 import { QuestionTool } from "./question"
 import { ShellTool } from "./shell"
 import { EditTool } from "./edit"
@@ -19,6 +21,7 @@ import { WebFetchTool } from "./webfetch"
 import { WriteTool } from "./write"
 import { InvalidTool } from "./invalid"
 import { SkillTool } from "./skill"
+import { SleepCancelTool, SleepUntilTool } from "./sleep"
 import * as Tool from "./tool"
 import { Config } from "@/config/config"
 import { type ToolContext as PluginToolContext, type ToolDefinition } from "@opencode-ai/plugin"
@@ -113,6 +116,8 @@ const layer = Layer.effect(
     const searchSessionsTool = yield* SearchSessionsTool
     const patchtool = yield* ApplyPatchTool
     const skilltool = yield* SkillTool
+    const sleepUntilTool = yield* SleepUntilTool
+    const sleepCancelTool = yield* SleepCancelTool
     const agent = yield* Agent.Service
     const codeMode = flags.experimentalCodeMode ? yield* Effect.promise(() => import("./code-mode")) : undefined
     const codeModeTool = codeMode ? yield* codeMode.CodeModeTool : undefined
@@ -219,6 +224,8 @@ const layer = Layer.effect(
           todo: Tool.init(todo),
           search: Tool.init(websearch),
           skill: Tool.init(skilltool),
+          sleepUntil: Tool.init(sleepUntilTool),
+          sleepCancel: Tool.init(sleepCancelTool),
           patch: Tool.init(patchtool),
           question: Tool.init(question),
           lsp: Tool.init(lsptool),
@@ -243,6 +250,8 @@ const layer = Layer.effect(
             tool.todo,
             tool.search,
             tool.skill,
+            tool.sleepUntil,
+            tool.sleepCancel,
             tool.patch,
             ...(tool.execute ? [tool.execute] : []),
             ...(flags.experimentalLspTool ? [tool.lsp] : []),
@@ -436,6 +445,8 @@ export const node = LayerNode.make({
     Agent.node,
     Skill.node,
     Session.node,
+    SessionSleepScheduler.node,
+    SessionStatus.node,
     BackgroundJob.node,
     Provider.node,
     LSP.node,

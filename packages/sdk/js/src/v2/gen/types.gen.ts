@@ -2038,6 +2038,13 @@ export type Config = {
     preserve_recent_tokens?: number
     reserved?: number
   }
+  sleep?: {
+    interval_seconds?: number
+    min_interval_seconds?: number
+    timeout_minutes?: number
+    max_timeout_minutes?: number
+    check_timeout_seconds?: number
+  }
   experimental?: {
     disable_paste_summary?: boolean
     batch_tool?: boolean

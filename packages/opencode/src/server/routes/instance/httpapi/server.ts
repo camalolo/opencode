@@ -36,6 +36,8 @@ import { SessionPrompt } from "@/session/prompt"
 import { SessionRevert } from "@/session/revert"
 import { SessionRunState } from "@/session/run-state"
 import { Session } from "@/session/session"
+import { SessionSleepDelivery } from "@/session/sleep-delivery"
+import { SessionSleepScheduler } from "@/session/sleep-scheduler"
 import { SessionStatus } from "@/session/status"
 import { SessionSummary } from "@/session/summary"
 import { Todo } from "@/session/todo"
@@ -234,6 +236,8 @@ const app = LayerNode.group([
   PermissionSaved.node,
   Todo.node,
   Session.node,
+  SessionSleepDelivery.node,
+  SessionSleepScheduler.node,
   SessionProjector.node,
   SessionStatus.node,
   BackgroundJob.node,

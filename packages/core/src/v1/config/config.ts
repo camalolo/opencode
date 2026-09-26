@@ -166,6 +166,27 @@ export const Info = Schema.Struct({
       }),
     }),
   ),
+  sleep: Schema.optional(
+    Schema.Struct({
+      interval_seconds: Schema.optional(PositiveInt).annotate({
+        description: "Default seconds between condition checks for the sleep_until tool (default: 60)",
+      }),
+      min_interval_seconds: Schema.optional(PositiveInt).annotate({
+        description: "Lower bound for the check interval, guards against tight polling loops (default: 15)",
+      }),
+      timeout_minutes: Schema.optional(PositiveInt).annotate({
+        description: "Default minutes before an armed sleep trigger times out (default: 360)",
+      }),
+      max_timeout_minutes: Schema.optional(PositiveInt).annotate({
+        description: "Upper bound for the sleep trigger timeout (default: 10080, one week)",
+      }),
+      check_timeout_seconds: Schema.optional(PositiveInt).annotate({
+        description: "Seconds before an individual condition check is killed (default: 30)",
+      }),
+    }),
+  ).annotate({
+    description: "Guardrails for the sleep_until tool that wakes a session when a condition becomes true",
+  }),
   experimental: Schema.optional(
     Schema.Struct({
       disable_paste_summary: Schema.optional(Schema.Boolean),

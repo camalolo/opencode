@@ -762,6 +762,33 @@ You can control context compaction behavior through the `compaction` option.
 
 ---
 
+### Sleep
+
+You can configure the guardrails for the `sleep_until` tool through the `sleep` option. The tool lets an
+agent arm a background trigger that wakes the session automatically when a shell condition exits `0`
+(for example, a forum reply appears or a payment lands). Triggers persist across server restarts.
+
+```json title="opencode.json"
+{
+  "$schema": "https://opencode.ai/config.json",
+  "sleep": {
+    "interval_seconds": 60,
+    "min_interval_seconds": 15,
+    "timeout_minutes": 360,
+    "max_timeout_minutes": 10080,
+    "check_timeout_seconds": 30
+  }
+}
+```
+
+- `interval_seconds` - Default seconds between condition checks (default: `60`).
+- `min_interval_seconds` - Lower bound for the check interval (default: `15`).
+- `timeout_minutes` - Default minutes before an armed trigger times out and wakes the session with a notice (default: `360`).
+- `max_timeout_minutes` - Upper bound for the trigger timeout (default: `10080`, one week).
+- `check_timeout_seconds` - Seconds before an individual condition check is killed (default: `30`).
+
+---
+
 ### Watcher
 
 You can configure file watcher ignore patterns through the `watcher` option.
