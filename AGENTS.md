@@ -168,7 +168,7 @@ Three servers run this fork, all tracking `laurent-dev`:
 |------|------------|-----------------|-------|
 | local (Windows, this repo) | http://localhost:4096 | `pwsh -NoProfile -File C:/Users/camal/scripts/restart-services.ps1` | dev box; safe to restart freely |
 | `home` (ssh alias) | http://127.0.0.1:4096 (via ssh) | `systemctl --user restart opencode` | production; user runs real sessions here |
-| `m2dev-laurent` (ssh alias) | http://127.0.0.1:4096 (via ssh) | `systemctl --user restart opencode` | dev box |
+| `m2dev-laurent` (ssh alias) | http://127.0.0.1:4096 (via ssh) | `systemctl --user restart opencode` | Magento production/dev box (`app2.m2.shop.lomography.com`, 142.132.174.83). SAME HOST as `m2app2` (`ssh -J home laurent@m2app2`; the bare `m2app2` alias defaults to user `carlsen`, which has no opencode access). Real user sessions (Stripe/Magento work) run here — treat as production, check the idle rule. |
 
 ### Fleet customizations (outside this repo)
 
