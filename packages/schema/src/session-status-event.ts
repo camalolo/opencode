@@ -29,6 +29,13 @@ export const Info = Schema.Union([
   Schema.Struct({
     type: Schema.Literal("busy"),
   }),
+  Schema.Struct({
+    type: Schema.Literal("sleeping"),
+    description: Schema.String.annotate({
+      description: "What the session is waiting for, as set by the sleep_until tool",
+    }),
+    wake_at: NonNegativeInt.annotate({ description: "Epoch ms when the trigger times out" }),
+  }),
 ]).annotate({ identifier: "SessionStatus" })
 export type Info = Schema.Schema.Type<typeof Info>
 

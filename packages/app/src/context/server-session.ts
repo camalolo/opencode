@@ -205,7 +205,9 @@ export function createServerSession(
     part: {} as Record<string, Part[]>,
     part_text_accum_delta: {} as Record<string, string>,
     session_working(id: string) {
-      return (this.session_status[id]?.type ?? "idle") !== "idle"
+      const type = this.session_status[id]?.type
+      // Sleeping sessions have an armed trigger but no active work.
+      return type === "busy" || type === "retry"
     },
   })
   const requests = new Map<string, Promise<Session>>()

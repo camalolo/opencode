@@ -692,6 +692,17 @@ export type SessionStatus =
   | {
       type: "busy"
     }
+  | {
+      type: "sleeping"
+      /**
+       * What the session is waiting for, as set by the sleep_until tool
+       */
+      description: string
+      /**
+       * Epoch ms when the trigger times out
+       */
+      wake_at: number
+    }
 
 export type QuestionOption = {
   /**

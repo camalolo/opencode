@@ -247,6 +247,12 @@ describe("SessionStatus.Info", () => {
     expect(decode(input)).toEqual(input)
   })
 
+  test("sleeping carries description and wake_at", () => {
+    const input = { type: "sleeping" as const, description: "forum reply appears", wake_at: 5_000 }
+    expect(decode(input)).toEqual(input)
+    expect(() => decode({ type: "sleeping", description: "forum reply appears" })).toThrow()
+  })
+
   test("rejects unknown type", () => {
     expect(() => decode({ type: "bogus" })).toThrow()
   })

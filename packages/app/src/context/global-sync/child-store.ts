@@ -231,7 +231,8 @@ export function createChildStoreManager(input: {
             session_status: {},
             session_working(id: string) {
               const type = this.session_status[id]?.type
-              return (type ?? "idle") !== "idle"
+              // Sleeping sessions have an armed trigger but no active work.
+              return type === "busy" || type === "retry"
             },
             session_diff: {},
             todo: {},
