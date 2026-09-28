@@ -7,7 +7,7 @@ import { Identifier } from "../id/id"
 import { statics } from "../schema"
 import type { MessageID } from "../v1/session"
 import { SessionSchema } from "./schema"
-import { SessionSleepTable } from "./sql"
+import { SessionSleepTable, SessionTable } from "./sql"
 
 type DatabaseService = Database.Interface["db"]
 
@@ -131,6 +131,33 @@ export const get = Effect.fn("SessionSleep.get")(function* (db: DatabaseService,
     .get()
     .pipe(Effect.orDie)
   return row === undefined ? undefined : fromRow(row)
+})
+
+/**
+ * Armed triggers for sessions in a directory. Status endpoints overlay these
+ * over the in-memory status map so the sleeping badge survives restarts —
+ * the armed state is durable, its visibility should be too.
+ */
+export const pendingInDirectory = Effect.fn("SessionSleep.pendingInDirectory")(function* (
+  db: DatabaseService,
+  directory: string,
+) {
+  const rows = yield* db
+    .select({
+      sessionID: SessionSleepTable.session_id,
+      description: SessionSleepTable.description,
+      deadline: SessionSleepTable.deadline,
+    })
+    .from(SessionSleepTable)
+    .innerJoin(SessionTable, eq(SessionSleepTable.session_id, SessionTable.id))
+    .where(and(eq(SessionSleepTable.status, "pending"), eq(SessionTable.directory, directory)))
+    .all()
+    .pipe(Effect.orDie)
+  return rows.map((row) => ({
+    sessionID: SessionSchema.ID.make(row.sessionID),
+    description: row.description,
+    wakeAt: row.deadline,
+  }))
 })
 
 export const cancel = Effect.fn("SessionSleep.cancel")(function* (db: DatabaseService, sessionID: SessionSchema.ID) {

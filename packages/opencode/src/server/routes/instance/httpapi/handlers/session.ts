@@ -1,4 +1,6 @@
 import { PermissionV1 } from "@opencode-ai/core/v1/permission"
+import { Database } from "@opencode-ai/core/database/database"
+import { SessionSleep } from "@opencode-ai/core/session/sleep"
 import { Agent } from "@/agent/agent"
 import { SessionV1 } from "@opencode-ai/core/v1/session"
 import { EventV2Bridge } from "@/event-v2-bridge"
@@ -75,7 +77,20 @@ export const sessionHandlers = HttpApiBuilder.group(InstanceHttpApi, "session", 
     })
 
     const status = Effect.fn("SessionHttpApi.status")(function* () {
-      return Object.fromEntries(yield* statusSvc.list())
+      // Overlay armed sleep triggers from the database over the in-memory
+      // map: the armed state is durable, so its visibility survives restarts.
+      // Live busy/retry entries win — a session that is actively working is
+      // more informative than the trigger waiting underneath it.
+      const directory = yield* InstanceState.directory
+      const entries = yield* statusSvc.list()
+      const merged = new Map(entries)
+      const pending = yield* SessionSleep.pendingInDirectory((yield* Database.Service).db, directory)
+      for (const row of pending) {
+        const existing = merged.get(row.sessionID)
+        if (existing && existing.type !== "idle") continue
+        merged.set(row.sessionID, { type: "sleeping", description: row.description, wake_at: row.wakeAt })
+      }
+      return Object.fromEntries(merged)
     })
 
     const requireSession = Effect.fn("SessionHttpApi.requireSession")(function* (sessionID: SessionID) {

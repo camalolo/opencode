@@ -200,6 +200,28 @@ describe("SessionSleep", () => {
   )
 
   itDb(
+    "pendingInDirectory joins armed triggers with their session directory",
+    (db) =>
+      Effect.gen(function* () {
+        yield* insertSession(db, "ses_dir_a")
+        yield* insertSession(db, "ses_dir_b")
+        yield* insertSession(db, "ses_dir_c")
+        yield* SessionSleep.arm(db, armInput("ses_dir_a", { description: "watch alpha" }))
+        yield* SessionSleep.arm(db, armInput("ses_dir_b", { description: "watch beta" }))
+        // A fired row in the directory must not come back.
+        const spent = yield* SessionSleep.arm(db, armInput("ses_dir_c", { description: "spent" }))
+        yield* SessionSleep.finish(db, spent.id, "fired", MessageID.make(`msg_sleep_${spent.id}`))
+
+        const pending = yield* SessionSleep.pendingInDirectory(db, "/tmp/test")
+        expect(pending.map((row) => row.description).toSorted()).toEqual(["watch alpha", "watch beta"])
+        expect(pending.every((row) => typeof row.wakeAt === "number")).toBe(true)
+
+        const empty = yield* SessionSleep.pendingInDirectory(db, "/tmp/other")
+        expect(empty).toHaveLength(0)
+      }),
+  )
+
+  itDb(
     "deleting the session cascades its triggers away",
     (db) =>
       Effect.gen(function* () {
