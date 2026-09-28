@@ -222,7 +222,7 @@ export function TabNavItem(props: {
         }}
         class="flex h-full min-w-0 flex-1 flex-row items-center gap-1.5 text-[13px] font-medium text-v2-text-text-faint group-data-[active='true']:text-v2-text-text-base group-data-[editing='true']:text-v2-text-text-base [-webkit-user-drag:none]"
       >
-        <span data-slot="project-avatar-slot" class="flex size-4 shrink-0 items-center justify-center">
+        <span data-slot="project-avatar-slot" class="relative flex size-4 shrink-0 items-center justify-center">
           <Show
             when={props.session()}
             keyed
@@ -231,12 +231,32 @@ export function TabNavItem(props: {
             }
           >
             {(session) => (
-              <SessionTabAvatar
-                project={project()}
-                directory={session.directory}
-                sessionId={session.id}
-                server={props.server}
-              />
+              <>
+                <SessionTabAvatar
+                  project={project()}
+                  directory={session.directory}
+                  sessionId={session.id}
+                  server={props.server}
+                />
+                <Show when={serverCtx()?.sync.session.data.session_status[session.id]?.type === "sleeping"}>
+                  <span
+                    class="absolute -bottom-0.5 -end-0.5 flex size-2.5 items-center justify-center rounded-full bg-v2-background-background-base"
+                    data-slot="tab-sleeping-indicator"
+                  >
+                    <svg
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2.5"
+                      class="size-2 text-v2-text-text-faint"
+                      aria-hidden="true"
+                    >
+                      <circle cx="12" cy="12" r="9" />
+                      <path d="M12 7v5l3 2" stroke-linecap="round" stroke-linejoin="round" />
+                    </svg>
+                  </span>
+                </Show>
+              </>
             )}
           </Show>
         </span>
