@@ -132,17 +132,22 @@ const SessionRow = (props: {
               <Spinner class="size-[15px]" />
             </Match>
             <Match when={props.isSleeping()}>
-              <svg
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-                class="size-[13px] shrink-0"
-                aria-hidden="true"
+              <span
+                class="flex size-[15px] items-center justify-center rounded-full bg-text-diff-delete-base"
+                data-slot="session-sleeping-indicator"
               >
-                <circle cx="12" cy="12" r="9" />
-                <path d="M12 7v5l3 2" stroke-linecap="round" stroke-linejoin="round" />
-              </svg>
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="white"
+                  stroke-width="2.5"
+                  class="size-[9px]"
+                  aria-hidden="true"
+                >
+                  <circle cx="12" cy="12" r="9" />
+                  <path d="M12 7v5l3 2" stroke-linecap="round" stroke-linejoin="round" />
+                </svg>
+              </span>
             </Match>
             <Match when={props.hasPermissions()}>
               <div class="size-1.5 rounded-full bg-surface-warning-strong" />

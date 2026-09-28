@@ -240,15 +240,15 @@ export function TabNavItem(props: {
                 />
                 <Show when={serverCtx()?.sync.session.data.session_status[session.id]?.type === "sleeping"}>
                   <span
-                    class="absolute -bottom-0.5 -end-0.5 flex size-2.5 items-center justify-center rounded-full bg-v2-background-background-base"
+                    class="absolute -bottom-0.5 -end-0.5 flex size-3 items-center justify-center rounded-full bg-text-diff-delete-base ring-1 ring-v2-background-background-base"
                     data-slot="tab-sleeping-indicator"
                   >
                     <svg
                       viewBox="0 0 24 24"
                       fill="none"
-                      stroke="currentColor"
+                      stroke="white"
                       stroke-width="2.5"
-                      class="size-2 text-v2-text-text-faint"
+                      class="size-2"
                       aria-hidden="true"
                     >
                       <circle cx="12" cy="12" r="9" />
