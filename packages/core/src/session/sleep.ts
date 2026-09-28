@@ -7,7 +7,7 @@ import { Identifier } from "../id/id"
 import { statics } from "../schema"
 import type { MessageID } from "../v1/session"
 import { SessionSchema } from "./schema"
-import { SessionSleepTable, SessionTable } from "./sql"
+import { SessionSleepTable } from "./sql"
 
 type DatabaseService = Database.Interface["db"]
 
@@ -134,14 +134,14 @@ export const get = Effect.fn("SessionSleep.get")(function* (db: DatabaseService,
 })
 
 /**
- * Armed triggers for sessions in a directory. Status endpoints overlay these
- * over the in-memory status map so the sleeping badge survives restarts —
- * the armed state is durable, its visibility should be too.
+ * Armed triggers across all directories. Status endpoints overlay these over
+ * the in-memory status map so the sleeping badge survives restarts - the
+ * armed state is durable, its visibility should be too. Unscoped on purpose:
+ * status stores are sessionID-keyed and each directory view picks its own
+ * sessions, so extra entries for other directories are harmless while a
+ * missing entry leaves the badge dark.
  */
-export const pendingInDirectory = Effect.fn("SessionSleep.pendingInDirectory")(function* (
-  db: DatabaseService,
-  directory: string,
-) {
+export const pendingAll = Effect.fn("SessionSleep.pendingAll")(function* (db: DatabaseService) {
   const rows = yield* db
     .select({
       sessionID: SessionSleepTable.session_id,
@@ -149,8 +149,7 @@ export const pendingInDirectory = Effect.fn("SessionSleep.pendingInDirectory")(f
       deadline: SessionSleepTable.deadline,
     })
     .from(SessionSleepTable)
-    .innerJoin(SessionTable, eq(SessionSleepTable.session_id, SessionTable.id))
-    .where(and(eq(SessionSleepTable.status, "pending"), eq(SessionTable.directory, directory)))
+    .where(eq(SessionSleepTable.status, "pending"))
     .all()
     .pipe(Effect.orDie)
   return rows.map((row) => ({

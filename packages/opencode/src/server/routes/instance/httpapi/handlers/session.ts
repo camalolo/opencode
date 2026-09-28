@@ -79,12 +79,13 @@ export const sessionHandlers = HttpApiBuilder.group(InstanceHttpApi, "session", 
     const status = Effect.fn("SessionHttpApi.status")(function* () {
       // Overlay armed sleep triggers from the database over the in-memory
       // map: the armed state is durable, so its visibility survives restarts.
-      // Live busy/retry entries win — a session that is actively working is
-      // more informative than the trigger waiting underneath it.
-      const directory = yield* InstanceState.directory
+      // Unscoped: directory-less clients (server-level SDKs) bootstrap through
+      // this endpoint too, and scoping by the routed instance left their
+      // stores without the badge. Live busy/retry entries win - a session
+      // that is actively working is more informative than the trigger under it.
       const entries = yield* statusSvc.list()
       const merged = new Map(entries)
-      const pending = yield* SessionSleep.pendingInDirectory((yield* Database.Service).db, directory)
+      const pending = yield* SessionSleep.pendingAll((yield* Database.Service).db)
       for (const row of pending) {
         const existing = merged.get(row.sessionID)
         if (existing && existing.type !== "idle") continue

@@ -200,7 +200,7 @@ describe("SessionSleep", () => {
   )
 
   itDb(
-    "pendingInDirectory joins armed triggers with their session directory",
+    "pendingAll lists armed triggers across directories and skips terminal rows",
     (db) =>
       Effect.gen(function* () {
         yield* insertSession(db, "ses_dir_a")
@@ -208,16 +208,13 @@ describe("SessionSleep", () => {
         yield* insertSession(db, "ses_dir_c")
         yield* SessionSleep.arm(db, armInput("ses_dir_a", { description: "watch alpha" }))
         yield* SessionSleep.arm(db, armInput("ses_dir_b", { description: "watch beta" }))
-        // A fired row in the directory must not come back.
+        // A fired row must not come back.
         const spent = yield* SessionSleep.arm(db, armInput("ses_dir_c", { description: "spent" }))
         yield* SessionSleep.finish(db, spent.id, "fired", MessageID.make(`msg_sleep_${spent.id}`))
 
-        const pending = yield* SessionSleep.pendingInDirectory(db, "/tmp/test")
+        const pending = yield* SessionSleep.pendingAll(db)
         expect(pending.map((row) => row.description).toSorted()).toEqual(["watch alpha", "watch beta"])
         expect(pending.every((row) => typeof row.wakeAt === "number")).toBe(true)
-
-        const empty = yield* SessionSleep.pendingInDirectory(db, "/tmp/other")
-        expect(empty).toHaveLength(0)
       }),
   )
 
