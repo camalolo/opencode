@@ -7,6 +7,7 @@ import { Icon as IconV2 } from "@opencode-ai/ui/v2/icon"
 import { IconButtonV2 } from "@opencode-ai/ui/v2/icon-button-v2"
 import { TooltipV2 } from "@opencode-ai/ui/v2/tooltip-v2"
 import { useLanguage } from "@/context/language"
+import { useGlobal } from "@/context/global"
 import { ServerConnection } from "@/context/server"
 import { SessionTabAvatarView } from "@/pages/layout/session-tab-avatar"
 import { sessionTitle } from "@/utils/session-title"
@@ -160,6 +161,7 @@ function HomeSessionLeadingController(props: {
       isOpenTab={props.isOpenTab}
       render={(state) => (
         <HomeSessionLeading
+          server={props.server()}
           record={props.record}
           revealProjectOnHover={props.revealProjectOnHover}
           open={state.open()}
@@ -172,6 +174,7 @@ function HomeSessionLeadingController(props: {
 }
 
 function HomeSessionLeading(props: {
+  server: ServerConnection.Key
   record: HomeSessionRecord
   revealProjectOnHover: boolean
   open: boolean
@@ -197,8 +200,37 @@ function HomeSessionLeading(props: {
         unread={props.unread}
         loading={props.loading}
       />
+      <Show when={homeSessionSleeping(props.server, props.record.session.id)}>        <span
+          class="absolute -bottom-0.5 -end-0.5 flex size-3 items-center justify-center rounded-full bg-text-diff-delete-base ring-1 ring-v2-background-bg-base"
+          data-slot="home-session-sleeping-indicator"
+        >
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="white"
+            stroke-width="2.5"
+            class="size-2"
+            aria-hidden="true"
+          >
+            <circle cx="12" cy="12" r="9" />
+            <path d="M12 7v5l3 2" stroke-linecap="round" stroke-linejoin="round" />
+          </svg>
+        </span>
+      </Show>
     </div>
   )
+}
+
+// Same store the titlebar tab reads; it is the one that carries the
+// DB-derived sleeping status on every bootstrap path.
+function homeSessionSleeping(server: ServerConnection.Key, sessionId: string) {
+  const global = useGlobal()
+  return createMemo(() => {
+    const conn = global.servers.list().find((item) => ServerConnection.key(item) === server)
+    if (!conn) return false
+    const ctx = global.ensureServerCtx(conn)
+    return ctx.sync.session.data.session_status[sessionId]?.type === "sleeping"
+  })()
 }
 
 function HomeSessionSearch(props: HomeSessionsViewProps) {
