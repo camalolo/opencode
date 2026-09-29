@@ -6,6 +6,7 @@ import { BackgroundJob } from "@/background/job"
 import { Effect, Latch, Layer, Scope, Context } from "effect"
 import { Session } from "./session"
 import { SessionID } from "./schema"
+import { SessionSleepScheduler } from "./sleep-scheduler"
 import { SessionStatus } from "./status"
 
 export interface Interface {
@@ -31,6 +32,7 @@ const layer = Layer.effect(
   Effect.gen(function* () {
     const background = yield* BackgroundJob.Service
     const status = yield* SessionStatus.Service
+    const scheduler = yield* SessionSleepScheduler.Service
 
     const state = yield* InstanceState.make(
       Effect.fn("SessionRunState.state")(function* () {
@@ -59,7 +61,9 @@ const layer = Layer.effect(
       const next = Runner.make<SessionV1.WithParts>(data.scope, {
         onIdle: Effect.gen(function* () {
           data.runners.delete(sessionID)
-          yield* status.set(sessionID, { type: "idle" })
+          // Going idle must not erase an armed sleep_until trigger: re-seed the
+          // sleeping status from the durable row instead.
+          yield* SessionSleepScheduler.settleIdle(scheduler, status, sessionID)
         }),
         onBusy: status.set(sessionID, { type: "busy" }),
         onInterrupt,
@@ -79,7 +83,7 @@ const layer = Layer.effect(
       const data = yield* InstanceState.get(state)
       const existing = data.runners.get(sessionID)
       if (!existing) {
-        yield* status.set(sessionID, { type: "idle" })
+        yield* SessionSleepScheduler.settleIdle(scheduler, status, sessionID)
         return
       }
       yield* existing.cancel
@@ -146,6 +150,10 @@ function busyError(sessionID: SessionID) {
   return new Session.BusyError({ sessionID })
 }
 
-export const node = LayerNode.make({ service: Service, layer: layer, deps: [BackgroundJob.node, SessionStatus.node] })
+export const node = LayerNode.make({
+  service: Service,
+  layer: layer,
+  deps: [BackgroundJob.node, SessionSleepScheduler.node, SessionStatus.node],
+})
 
 export * as SessionRunState from "./run-state"

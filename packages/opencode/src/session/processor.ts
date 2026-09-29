@@ -16,6 +16,7 @@ import { isOverflow } from "./overflow"
 import { PartID } from "./schema"
 import type { SessionID } from "./schema"
 import { SessionRetry } from "./retry"
+import { SessionSleepScheduler } from "./sleep-scheduler"
 import { SessionStatus } from "./status"
 import { SessionSummary } from "./summary"
 import type { Provider } from "@/provider/provider"
@@ -91,6 +92,7 @@ const layer = Layer.effect(
     const summary = yield* SessionSummary.Service
     const scope = yield* Scope.Scope
     const status = yield* SessionStatus.Service
+    const sleepScheduler = yield* SessionSleepScheduler.Service
     const image = yield* Image.Service
     const events = yield* EventV2Bridge.Service
     const database = yield* Database.Service
@@ -609,7 +611,7 @@ const layer = Layer.effect(
             ctx.assistantMessage.error = error
             ctx.assistantMessage.finish = "error"
             yield* events.publish(Session.Event.Error, { sessionID: ctx.sessionID, error })
-            yield* status.set(ctx.sessionID, { type: "idle" })
+            yield* SessionSleepScheduler.settleIdle(sleepScheduler, status, ctx.sessionID)
             return
           }
           ctx.needsCompaction = true
@@ -621,7 +623,7 @@ const layer = Layer.effect(
           sessionID: ctx.assistantMessage.sessionID,
           error: ctx.assistantMessage.error,
         })
-        yield* status.set(ctx.sessionID, { type: "idle" })
+        yield* SessionSleepScheduler.settleIdle(sleepScheduler, status, ctx.sessionID)
       })
 
       const process = Effect.fn("SessionProcessor.process")(function* (streamInput: LLM.StreamInput) {
@@ -701,6 +703,7 @@ export const node = LayerNode.make({
   layer: layer,
   deps: [
     Session.node,
+    SessionSleepScheduler.node,
     Config.node,
     Snapshot.node,
     Agent.node,

@@ -8,6 +8,7 @@ import { makeGlobalNode } from "@opencode-ai/core/effect/app-node"
 import { SessionSchema } from "@opencode-ai/core/session/schema"
 import { SessionStore } from "@opencode-ai/core/session/store"
 import { SessionSleep } from "@opencode-ai/core/session/sleep"
+import { SessionStatus } from "./status"
 import { MessageID as CoreMessageID } from "@opencode-ai/core/v1/session"
 
 /** How often the scheduler scans for due checks. */
@@ -197,6 +198,29 @@ export { layer }
 function wakeMessageID(row: SessionSleep.Trigger) {
   return CoreMessageID.make(`msg_sleep_${row.id}`)
 }
+
+/**
+ * The idle transition must not clobber an armed trigger: when a session stops
+ * while a sleep_until trigger is pending, re-seed the sleeping status from the
+ * durable row instead of going idle. Callers (run-state, processor) use this
+ * wherever they would have published a plain idle status.
+ */
+export const settleIdle = Effect.fn("SessionSleepScheduler.settleIdle")(function* (
+  scheduler: Interface,
+  status: { set: (sessionID: SessionSchema.ID, status: SessionStatus.Info) => Effect.Effect<void> },
+  sessionID: SessionSchema.ID,
+) {
+  const latest = yield* scheduler.get(sessionID)
+  if (latest?.status === "pending") {
+    yield* status.set(sessionID, {
+      type: "sleeping",
+      description: latest.description,
+      wake_at: latest.deadline,
+    })
+    return
+  }
+  yield* status.set(sessionID, { type: "idle" })
+})
 
 export const node = makeGlobalNode({
   service: Service,
