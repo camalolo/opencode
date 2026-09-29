@@ -23,7 +23,7 @@ import { SessionSleepScheduler } from "@/session/sleep-scheduler"
 import { SessionStatus } from "@/session/status"
 import { Truncate } from "@/tool/truncate"
 import { Agent } from "@/agent/agent"
-import { SleepCancelTool, SleepUntilTool } from "@/tool/sleep"
+import { SleepCancelTool, SleepStatusTool, SleepUntilTool } from "@/tool/sleep"
 import { pollWithTimeout, testEffect } from "../lib/effect"
 
 const insertSession = (db: Database.Interface["db"], sessionID: string) =>
@@ -445,6 +445,20 @@ toolIt.instance(
       expect(second?.description).toBe("second wait")
       const refreshedFirst = yield* SessionSleep.byID(db, first!.id)
       expect(refreshedFirst?.status).toBe("cancelled")
+
+      // sleep_status peeks at the armed trigger, including recorded check output.
+      const statusTool = yield* SleepStatusTool
+      const statusDef = yield* statusTool.init()
+      yield* SessionSleep.recordNotMet(db, second!.id, "21/27 images")
+      const peek = yield* statusDef.execute({}, ctx)
+      expect(peek.output).toContain("pending")
+      expect(peek.output).toContain("second wait")
+      expect(peek.output).toContain("21/27 images")
+      const peekEmpty = yield* statusDef.execute(
+        {},
+        { ...ctx, sessionID: SessionID.make("ses_tool_none") },
+      )
+      expect(peekEmpty.output).toContain("No sleep trigger")
 
       // Cancel disarms.
       const cancel = yield* SleepCancelTool

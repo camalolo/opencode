@@ -21,7 +21,7 @@ import { WebFetchTool } from "./webfetch"
 import { WriteTool } from "./write"
 import { InvalidTool } from "./invalid"
 import { SkillTool } from "./skill"
-import { SleepCancelTool, SleepUntilTool } from "./sleep"
+import { SleepCancelTool, SleepStatusTool, SleepUntilTool } from "./sleep"
 import * as Tool from "./tool"
 import { Config } from "@/config/config"
 import { type ToolContext as PluginToolContext, type ToolDefinition } from "@opencode-ai/plugin"
@@ -118,6 +118,7 @@ const layer = Layer.effect(
     const skilltool = yield* SkillTool
     const sleepUntilTool = yield* SleepUntilTool
     const sleepCancelTool = yield* SleepCancelTool
+    const sleepStatusTool = yield* SleepStatusTool
     const agent = yield* Agent.Service
     const codeMode = flags.experimentalCodeMode ? yield* Effect.promise(() => import("./code-mode")) : undefined
     const codeModeTool = codeMode ? yield* codeMode.CodeModeTool : undefined
@@ -226,6 +227,7 @@ const layer = Layer.effect(
           skill: Tool.init(skilltool),
           sleepUntil: Tool.init(sleepUntilTool),
           sleepCancel: Tool.init(sleepCancelTool),
+          sleepStatus: Tool.init(sleepStatusTool),
           patch: Tool.init(patchtool),
           question: Tool.init(question),
           lsp: Tool.init(lsptool),
@@ -252,6 +254,7 @@ const layer = Layer.effect(
             tool.skill,
             tool.sleepUntil,
             tool.sleepCancel,
+            tool.sleepStatus,
             tool.patch,
             ...(tool.execute ? [tool.execute] : []),
             ...(flags.experimentalLspTool ? [tool.lsp] : []),

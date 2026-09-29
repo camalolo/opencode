@@ -59,8 +59,8 @@ export const SleepUntilTool = Tool.define<
     return {
       description: [
         "Arm a background trigger that wakes this session automatically when a condition becomes true.",
-        "The session can end its turn while the trigger polls in the background;",
-        "when the condition is met the session receives a new message containing the final check output.",
+        "When armed, END YOUR TURN (or do unrelated work) — never busy-wait with sleep in bash while a trigger is armed;",
+        "the wake message arrives automatically, even mid-turn. To see the latest check output, call sleep_status instead of polling.",
         "The trigger survives server restarts. Arming again replaces the previous trigger; cancel with sleep_cancel.",
         "Use for external events: a forum reply appears, a payment lands, a long job finishes, a file changes.",
         "Do not use it as a short timer — to wait a few seconds inside a command, use sleep in bash instead.",
@@ -132,7 +132,8 @@ export const SleepUntilTool = Tool.define<
                 : probe.exitCode === undefined || probe.exitCode < 0
                   ? "Note: the probe check did not exit cleanly; repeated failures will disarm the trigger and wake you with the error."
                   : "Condition not met yet (exit 1).",
-              "When the condition is met you will receive a message with the final check output and can continue. The trigger survives restarts.",
+              "IMPORTANT: do not busy-wait with bash sleep while this trigger is armed — end your turn, or do unrelated work.",
+              "The wake arrives automatically (even mid-turn) with the final check output. Call sleep_status to peek at the latest check output without waiting.",
               "Re-arming replaces this trigger; sleep_cancel disarms it.",
             ].join("\n"),
             metadata: {
@@ -144,6 +145,58 @@ export const SleepUntilTool = Tool.define<
           }
         }),
     } satisfies Tool.DefWithoutID<typeof SleepUntilParameters, Metadata>
+  }),
+)
+
+export const SleepStatusParameters = Schema.Struct({})
+
+export const SleepStatusTool = Tool.define<
+  typeof SleepStatusParameters,
+  Metadata,
+  SessionSleepScheduler.Service
+>(
+  "sleep_status",
+  Effect.gen(function* () {
+    const scheduler = yield* SessionSleepScheduler.Service
+
+    return {
+      description: [
+        "Peek at this session's sleep_until trigger without waiting: armed status, next check time, and the output of the most recent condition check.",
+        "Use it for progress while a trigger is armed (make your condition print progress on exit 1) instead of blocking on bash sleep.",
+      ].join(" "),
+      parameters: SleepStatusParameters,
+      execute: (_params: Schema.Schema.Type<typeof SleepStatusParameters>, ctx: Tool.Context<Metadata>) =>
+        Effect.gen(function* () {
+          const trigger = yield* scheduler.get(ctx.sessionID)
+          if (!trigger) {
+            return {
+              title: "no trigger",
+              output: "No sleep trigger was ever armed for this session.",
+              metadata: { trigger_status: "none" },
+            }
+          }
+          const lines = [
+            `Trigger ${trigger.id}: ${trigger.status}`,
+            `Waiting for: ${trigger.description}`,
+            `Checks every ${Math.round(trigger.intervalMs / 1000)}s; next check ${new Date(trigger.nextCheckAt).toISOString()}; timeout ${new Date(trigger.deadline).toISOString()}`,
+            trigger.consecutiveFailures > 0 ? `Consecutive check failures: ${trigger.consecutiveFailures}` : undefined,
+            trigger.lastOutput ? `Last check output:\n${trigger.lastOutput}` : "No check output recorded yet.",
+            trigger.status === "pending"
+              ? "Still armed — end your turn or call sleep_cancel; the wake arrives automatically."
+              : "The trigger is finished; its wake (if any) was delivered.",
+          ].filter(Boolean)
+          return {
+            title: `trigger ${trigger.status}`,
+            output: lines.join("\n"),
+            metadata: {
+              trigger: trigger.id,
+              trigger_status: trigger.status,
+              interval_ms: trigger.intervalMs,
+              deadline: trigger.deadline,
+            },
+          }
+        }),
+    } satisfies Tool.DefWithoutID<typeof SleepStatusParameters, Metadata>
   }),
 )
 
