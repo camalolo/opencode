@@ -31,6 +31,33 @@ export interface CheckResult {
   readonly timedOut: boolean
 }
 
+/**
+ * cmd.exe reports a missing command with exit code 1 — indistinguishable from
+ * "not met" by exit code alone — and this fixed stderr line instead.
+ */
+const WINDOWS_COMMAND_NOT_FOUND = "is not recognized as an internal or external command"
+
+export type CheckVerdict =
+  | { readonly kind: "met" }
+  | { readonly kind: "unmet" }
+  | { readonly kind: "broken"; readonly reason: string }
+
+/**
+ * Interprets one check result against the sleep_until contract (exit 0 = met,
+ * exit 1 = not met, anything else = broken check). Shared by the arm-time
+ * probe gate and the background loop so both agree on what "broken" means.
+ */
+export const classifyCheck = (result: CheckResult): CheckVerdict => {
+  if (result.timedOut) return { kind: "broken", reason: "the check timed out" }
+  if (result.exitCode === undefined)
+    return { kind: "broken", reason: result.output.trim() || "the check failed to run" }
+  if (result.exitCode === 0) return { kind: "met" }
+  if (result.output.includes(WINDOWS_COMMAND_NOT_FOUND))
+    return { kind: "broken", reason: "command not found (the shell reported it, exit code 1)" }
+  if (result.exitCode === 1) return { kind: "unmet" }
+  return { kind: "broken", reason: `exit code ${result.exitCode} (valid conditions exit 0 or 1)` }
+}
+
 export interface ArmInput {
   readonly sessionID: SessionSchema.ID
   readonly condition: string
@@ -54,6 +81,7 @@ export interface Interface {
     readonly condition: string
     readonly cwd: string
     readonly shell?: string
+    readonly timeoutMs?: number
   }) => Effect.Effect<CheckResult>
   /** Drains all due checks now instead of waiting for the next tick. */
   readonly flush: () => Effect.Effect<void>
@@ -121,7 +149,8 @@ const layer = Layer.effect(
     const store = yield* SessionStore.Service
     const appProcess = yield* AppProcess.Service
 
-    const probe: Interface["probe"] = (input) => runCheck(appProcess, { ...input, timeoutMs: PROBE_TIMEOUT_MS })
+    const probe: Interface["probe"] = (input) =>
+      runCheck(appProcess, { ...input, timeoutMs: input.timeoutMs ?? PROBE_TIMEOUT_MS })
 
     const processRow = Effect.fn("SessionSleepScheduler.processRow")(function* (row: SessionSleep.Trigger) {
       const now = Date.now()
@@ -136,22 +165,24 @@ const layer = Layer.effect(
         ...(row.shell === undefined ? {} : { shell: row.shell }),
         timeoutMs: row.checkTimeoutMs,
       })
-      if (result.exitCode === 0) {
+      const verdict = classifyCheck(result)
+      if (verdict.kind === "met") {
         yield* SessionSleep.finish(db, row.id, "fired", wakeMessageID(row), tail(result.output, 4096))
         yield* Effect.logInfo("sleep trigger fired", { "session.id": row.sessionID, trigger: row.id })
         return
       }
-      if (result.exitCode === 1) {
+      if (verdict.kind === "unmet") {
         yield* SessionSleep.recordNotMet(db, row.id, tail(result.output, 4096))
         return
       }
       const failures = yield* SessionSleep.recordFailure(db, row.id, tail(result.output, 4096))
       if (failures !== undefined && failures >= MAX_CONSECUTIVE_FAILURES) {
         yield* SessionSleep.finish(db, row.id, "failed", wakeMessageID(row))
-        yield* Effect.logWarning("sleep trigger disarmed after repeated check failures", {
+        yield* Effect.logWarning("sleep trigger disarmed after repeated broken checks", {
           "session.id": row.sessionID,
           trigger: row.id,
           failures,
+          reason: verdict.reason,
         })
       }
     })

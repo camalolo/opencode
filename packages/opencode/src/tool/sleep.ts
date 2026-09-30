@@ -11,7 +11,7 @@ import { SessionSleepScheduler } from "@/session/sleep-scheduler"
 export const SleepUntilParameters = Schema.Struct({
   condition: Schema.String.annotate({
     description:
-      "Shell command whose exit code decides when to wake: exit 0 = condition met, exit 1 = not met yet, anything else counts as a broken check. Keep it fast (seconds) and free of side effects. stdout from the final check is delivered to the session when it wakes.",
+      "Shell command whose exit code decides when to wake: exit 0 = condition met, exit 1 = not met yet, anything else counts as a broken check. Keep it fast (seconds) and free of side effects. stdout from the final check is delivered to the session when it wakes. The condition is probe-run once before arming: if that run is broken (exit outside 0/1, command not found, spawn failure, or timeout), sleep_until fails instead of arming.",
   }),
   description: Schema.String.annotate({
     description: "What you are waiting for, in one sentence. Shown to the user and included in the wake message.",
@@ -56,94 +56,125 @@ export const SleepUntilTool = Tool.define<
     const status = yield* SessionStatus.Service
     const config = yield* Config.Service
 
+    const run = (
+      params: Schema.Schema.Type<typeof SleepUntilParameters>,
+      ctx: Tool.Context<Metadata>,
+    ) =>
+      Effect.gen(function* () {
+        const limits = yield* sleepLimits(config)
+        const intervalSeconds = Math.max(
+          params.interval_seconds ?? limits.intervalSeconds,
+          limits.minIntervalSeconds,
+        )
+        const timeoutMinutes = Math.min(params.timeout_minutes ?? limits.timeoutMinutes, limits.maxTimeoutMinutes)
+        yield* ctx.ask({
+          permission: "sleep_until",
+          patterns: [params.condition],
+          always: [params.condition],
+          metadata: { description: params.description, command: params.condition },
+        })
+
+        const instance = yield* InstanceState.context
+        const cwd = instance.worktree ?? instance.directory
+
+        // Probe once before arming. This doubles as the correctness gate: the
+        // tool refuses to arm a condition whose first execution is already
+        // broken, so a bad script fails here instead of sleeping to the timeout.
+        const probe = yield* scheduler.probe({
+          condition: params.condition,
+          cwd,
+          timeoutMs: limits.checkTimeoutMs,
+        })
+        const probeOutput = () => {
+          const text = probe.output.trim()
+          return text.length > 0 ? text.slice(-2000) : undefined
+        }
+        const verdict = SessionSleepScheduler.classifyCheck(probe)
+
+        if (verdict.kind === "met") {
+          return {
+            title: "condition already met",
+            output: [
+              "The condition is already met (exit 0). No sleep armed.",
+              probeOutput() !== undefined ? `Check output:\n${probeOutput()}` : undefined,
+            ]
+              .filter(Boolean)
+              .join("\n\n"),
+            metadata: { trigger_status: "not_armed" },
+          }
+        }
+
+        if (verdict.kind === "broken") {
+          return yield* Effect.fail(
+            new Error(
+              [
+                `sleep_until refused to arm: the probe check is broken — ${verdict.reason}.`,
+                "Nothing was armed. Fix the condition so it exits 0 when met and 1 when not met yet, then call sleep_until again.",
+                probeOutput() !== undefined ? `Probe output:\n${probeOutput()}` : undefined,
+              ]
+                .filter(Boolean)
+                .join("\n\n"),
+            ),
+          )
+        }
+
+        const trigger = yield* scheduler.arm({
+          sessionID: ctx.sessionID,
+          condition: params.condition,
+          description: params.description,
+          intervalMs: intervalSeconds * 1000,
+          timeoutMs: timeoutMinutes * 60 * 1000,
+          checkTimeoutMs: limits.checkTimeoutMs,
+          cwd,
+        })
+        yield* status.set(ctx.sessionID, {
+          type: "sleeping",
+          description: params.description,
+          wake_at: trigger.deadline,
+        })
+        const deadline = new Date(trigger.deadline).toISOString()
+        yield* Effect.logInfo("sleep trigger armed", {
+          "session.id": ctx.sessionID,
+          trigger: trigger.id,
+          description: params.description,
+          intervalMs: trigger.intervalMs,
+          deadline,
+        })
+        return {
+          title: `sleeping: ${params.description}`,
+          output: [
+            `Sleep armed (${trigger.id}). Waiting for: ${params.description}`,
+            `Checks run every ${intervalSeconds}s in the background; timeout at ${deadline}.`,
+            "Condition not met yet (probe exit 1).",
+            probeOutput() !== undefined ? `Probe output:\n${probeOutput()}` : undefined,
+            "IMPORTANT: do not busy-wait with bash sleep while this trigger is armed — end your turn, or do unrelated work.",
+            "The wake arrives automatically (even mid-turn) with the final check output. Call sleep_status to peek at the latest check output without waiting.",
+            "Re-arming replaces this trigger; sleep_cancel disarms it.",
+          ]
+            .filter(Boolean)
+            .join("\n"),
+          metadata: {
+            trigger: trigger.id,
+            trigger_status: trigger.status,
+            interval_ms: trigger.intervalMs,
+            deadline: trigger.deadline,
+          },
+        }
+      })
+
     return {
       description: [
         "Arm a background trigger that wakes this session automatically when a condition becomes true.",
         "When armed, END YOUR TURN (or do unrelated work) — never busy-wait with sleep in bash while a trigger is armed;",
         "the wake message arrives automatically, even mid-turn. To see the latest check output, call sleep_status instead of polling.",
         "The trigger survives server restarts. Arming again replaces the previous trigger; cancel with sleep_cancel.",
+        "The condition is probe-run once before arming; a broken probe (exit outside 0/1, command not found, spawn failure, or timeout) fails the call instead of arming, so fix the condition and retry.",
         "Use for external events: a forum reply appears, a payment lands, a long job finishes, a file changes.",
         "Do not use it as a short timer — to wait a few seconds inside a command, use sleep in bash instead.",
       ].join(" "),
       parameters: SleepUntilParameters,
       execute: (params: Schema.Schema.Type<typeof SleepUntilParameters>, ctx: Tool.Context<Metadata>) =>
-        Effect.gen(function* () {
-          const limits = yield* sleepLimits(config)
-          const intervalSeconds = Math.max(
-            params.interval_seconds ?? limits.intervalSeconds,
-            limits.minIntervalSeconds,
-          )
-          const timeoutMinutes = Math.min(params.timeout_minutes ?? limits.timeoutMinutes, limits.maxTimeoutMinutes)
-          yield* ctx.ask({
-            permission: "sleep_until",
-            patterns: [params.condition],
-            always: [params.condition],
-            metadata: { description: params.description, command: params.condition },
-          })
-
-          const instance = yield* InstanceState.context
-          const cwd = instance.worktree ?? instance.directory
-
-          // Probe once before arming: if the condition already holds, the LLM
-          // learns immediately instead of waiting for a wake round-trip.
-          const probe = yield* scheduler.probe({ condition: params.condition, cwd })
-          if (probe.exitCode === 0) {
-            return {
-              title: "condition already met",
-              output: [
-                "The condition is already met (exit 0). No sleep armed.",
-                probe.output.trim().length > 0 ? `Check output:\n${probe.output}` : undefined,
-              ]
-                .filter(Boolean)
-                .join("\n\n"),
-              metadata: { trigger_status: "not_armed" },
-            }
-          }
-
-          const trigger = yield* scheduler.arm({
-            sessionID: ctx.sessionID,
-            condition: params.condition,
-            description: params.description,
-            intervalMs: intervalSeconds * 1000,
-            timeoutMs: timeoutMinutes * 60 * 1000,
-            checkTimeoutMs: limits.checkTimeoutMs,
-            cwd,
-          })
-          yield* status.set(ctx.sessionID, {
-            type: "sleeping",
-            description: params.description,
-            wake_at: trigger.deadline,
-          })
-          const deadline = new Date(trigger.deadline).toISOString()
-          yield* Effect.logInfo("sleep trigger armed", {
-            "session.id": ctx.sessionID,
-            trigger: trigger.id,
-            description: params.description,
-            intervalMs: trigger.intervalMs,
-            deadline,
-          })
-          return {
-            title: `sleeping: ${params.description}`,
-            output: [
-              `Sleep armed (${trigger.id}). Waiting for: ${params.description}`,
-              `Checks run every ${intervalSeconds}s in the background; timeout at ${deadline}.`,
-              probe.timedOut
-                ? "Note: the probe check timed out; if this repeats the trigger will disarm itself and report."
-                : probe.exitCode === undefined || probe.exitCode < 0
-                  ? "Note: the probe check did not exit cleanly; repeated failures will disarm the trigger and wake you with the error."
-                  : "Condition not met yet (exit 1).",
-              "IMPORTANT: do not busy-wait with bash sleep while this trigger is armed — end your turn, or do unrelated work.",
-              "The wake arrives automatically (even mid-turn) with the final check output. Call sleep_status to peek at the latest check output without waiting.",
-              "Re-arming replaces this trigger; sleep_cancel disarms it.",
-            ].join("\n"),
-            metadata: {
-              trigger: trigger.id,
-              trigger_status: trigger.status,
-              interval_ms: trigger.intervalMs,
-              deadline: trigger.deadline,
-            },
-          }
-        }),
+        run(params, ctx).pipe(Effect.orDie),
     } satisfies Tool.DefWithoutID<typeof SleepUntilParameters, Metadata>
   }),
 )

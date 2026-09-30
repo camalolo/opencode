@@ -10,7 +10,7 @@ import { AbsolutePath } from "@opencode-ai/core/schema"
 import { ModelV2 } from "@opencode-ai/core/model"
 import { ProviderV2 } from "@opencode-ai/core/provider"
 import { expect, test } from "bun:test"
-import { Effect, Layer } from "effect"
+import { Cause, Effect, Exit, Layer } from "effect"
 import { Config } from "@/config/config"
 import type * as Tool from "@/tool/tool"
 import { InstanceBootstrap } from "@/project/bootstrap"
@@ -106,6 +106,46 @@ schedulerIt.effect(
     }),
   30_000,
 )
+
+test("classifyCheck sorts met, unmet, and broken check results", () => {
+  const reasonOf = (verdict: SessionSleepScheduler.CheckVerdict) => (verdict.kind === "broken" ? verdict.reason : "")
+  expect(SessionSleepScheduler.classifyCheck({ exitCode: 0, output: "", timedOut: false })).toMatchObject({
+    kind: "met",
+  })
+  expect(SessionSleepScheduler.classifyCheck({ exitCode: 1, output: "3/9 done", timedOut: false })).toMatchObject({
+    kind: "unmet",
+  })
+  expect(SessionSleepScheduler.classifyCheck({ exitCode: 7, output: "boom", timedOut: false })).toMatchObject({
+    kind: "broken",
+  })
+  expect(reasonOf(SessionSleepScheduler.classifyCheck({ exitCode: 7, output: "boom", timedOut: false }))).toContain(
+    "exit code 7",
+  )
+  expect(
+    SessionSleepScheduler.classifyCheck({ exitCode: undefined, output: "check timed out", timedOut: true }),
+  ).toMatchObject({ kind: "broken", reason: "the check timed out" })
+  expect(SessionSleepScheduler.classifyCheck({ exitCode: undefined, output: "spawn failed", timedOut: false })).toMatchObject({
+    kind: "broken",
+    reason: "spawn failed",
+  })
+  // cmd.exe reports a missing command with exit code 1; the stderr line is the tell.
+  expect(
+    SessionSleepScheduler.classifyCheck({
+      exitCode: 1,
+      output: "'foo' is not recognized as an internal or external command,\r\noperable program or batch file.",
+      timedOut: false,
+    }),
+  ).toMatchObject({ kind: "broken" })
+  expect(
+    reasonOf(
+      SessionSleepScheduler.classifyCheck({
+        exitCode: 1,
+        output: "'foo' is not recognized as an internal or external command,\r\noperable program or batch file.",
+        timedOut: false,
+      }),
+    ),
+  ).toContain("command not found")
+})
 
 schedulerIt.effect(
   "arm persists the trigger and get returns the latest row",
@@ -470,5 +510,53 @@ toolIt.instance(
       // Cancelling again reports nothing to cancel.
       const noop = yield* cancelDef.execute({}, ctx)
       expect(noop.output).toContain("No armed sleep trigger")
+    }),
+)
+
+toolIt.instance(
+  "sleep_until refuses to arm when the probe check is broken",
+  () =>
+    Effect.gen(function* () {
+      yield* TestInstance
+      const sessionID = SessionID.make("ses_tool_broken")
+      const db = (yield* Database.Service).db
+      yield* insertSession(db, sessionID)
+      const scheduler = yield* SessionSleepScheduler.Service
+      const ctx: Tool.Context = {
+        sessionID,
+        messageID: MessageID.make("msg_tool_broken"),
+        callID: "",
+        agent: "build",
+        abort: AbortSignal.any([]),
+        messages: [],
+        metadata: () => Effect.void,
+        ask: () => Effect.void,
+      }
+      const until = yield* SleepUntilTool
+      const untilDef = yield* until.init()
+
+      const failureMessage = (exit: Exit.Exit<unknown>) => {
+        expect(Exit.isFailure(exit)).toBe(true)
+        if (!Exit.isFailure(exit)) return ""
+        // The tool wrapper ends with Effect.orDie, so the model-facing error
+        // lives in the cause as a defect.
+        const die = exit.cause.reasons.find(Cause.isDieReason)
+        return (die?.defect as Error)?.message ?? String(die?.defect)
+      }
+
+      // Non-zero, non-1 exit code: broken contract, nothing armed.
+      const exit7 = yield* untilDef.execute({ condition: "exit 7", description: "broken" }, ctx).pipe(Effect.exit)
+      expect(failureMessage(exit7)).toContain("refused to arm")
+      expect(failureMessage(exit7)).toContain("exit code 7")
+      expect(yield* scheduler.get(sessionID)).toBeUndefined()
+
+      // A missing command must also refuse: on Windows cmd.exe reports it with
+      // exit code 1, so classification cannot rely on the exit code alone.
+      const missing = yield* untilDef
+        .execute({ condition: "opencode-sleep-missing-cmd", description: "broken" }, ctx)
+        .pipe(Effect.exit)
+      expect(failureMessage(missing)).toContain("refused to arm")
+      expect(yield* scheduler.get(sessionID)).toBeUndefined()
+      expect(yield* SessionSleep.get(db, sessionID)).toBeUndefined()
     }),
 )

@@ -41,7 +41,7 @@ export const wakeText = (row: SessionSleep.Trigger, output: string) => {
   return [
     `⏰ Sleep trigger failed: ${row.description}`,
     "",
-    `The condition check kept failing (non-zero exit or timeout) ${MAX_CONSECUTIVE_FAILURES} times in a row, so the trigger disarmed itself instead of spinning forever.` +
+    `The condition check kept being broken (non-zero exit, command not found, or timeout) ${MAX_CONSECUTIVE_FAILURES} times in a row, so the trigger disarmed itself instead of spinning forever.` +
       detail,
     "",
     "Inspect the condition, fix it, and re-arm with sleep_until if needed.",
