@@ -1,9 +1,12 @@
 import { LayerNode } from "@opencode-ai/core/effect/layer-node"
+import { Global } from "@opencode-ai/core/global"
 import { Config } from "@/config/config"
 import { SessionV1 } from "@opencode-ai/core/v1/session"
 import type { MessageV2 } from "@/session/message-v2"
 import photonWasm from "@silvia-odwyer/photon-node/photon_rs_bg.wasm" with { type: "file" }
 import { Context, Effect, Layer, Schema } from "effect"
+import crypto from "node:crypto"
+import fs from "node:fs/promises"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
 
@@ -72,6 +75,25 @@ const layer = Layer.effect(
       ),
     )
 
+    // When ingest downscales an image, the full-resolution original would otherwise
+    // be lost. Stash it content-addressed under Global.Path.data so the model can
+    // still access it (via the parse tool) without it entering the prompt.
+    const stashOriginal = Effect.fn("Image.stashOriginal")(function* (input: SessionV1.FilePart) {
+      const base64 = input.url.slice(input.url.indexOf(";base64,") + ";base64,".length)
+      const hash = crypto.createHash("sha1").update(base64).digest("hex")
+      const ext = input.mime.includes("/") ? `.${input.mime.split("/")[1].split("+")[0]}` : ""
+      const file = path.join(Global.Path.data, "attachments", `${hash}${ext}`)
+      return yield* Effect.tryPromise(async () => {
+        await fs.mkdir(path.dirname(file), { recursive: true })
+        await fs.writeFile(file, Buffer.from(base64, "base64"))
+        return file
+      }).pipe(
+        Effect.catch((error) =>
+          Effect.logWarning("failed to stash original image", { error }).pipe(Effect.as(undefined)),
+        ),
+      )
+    })
+
     const normalize = Effect.fn("Image.normalize")(function* (input: SessionV1.FilePart) {
       const image = (yield* config.get()).attachment?.image
       const info = {
@@ -136,17 +158,20 @@ const layer = Layer.effect(
           resized.free()
 
           if (candidate) {
+            const originalPath = yield* stashOriginal(input)
             yield* Effect.logInfo("using resized image", {
               from_mime: input.mime,
               to_mime: candidate.mime,
               from: `${originalWidth}x${originalHeight}`,
               to: `${size.width}x${size.height}`,
             })
-            return {
+            const resized: SessionV1.FilePart = {
               ...input,
               mime: candidate.mime,
               url: `data:${candidate.mime};base64,${candidate.data}`,
             }
+            if (originalPath !== undefined) resized.original_path = originalPath
+            return resized
           }
         }
 

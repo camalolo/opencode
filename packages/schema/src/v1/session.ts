@@ -175,6 +175,9 @@ export const FilePart = Schema.Struct({
   filename: Schema.optional(Schema.String),
   url: Schema.String,
   source: Schema.optional(FilePartSource),
+  // Set when ingest downscaled the image: filesystem path of the stashed
+  // full-resolution original, so the model can parse it for fine detail.
+  original_path: Schema.optional(Schema.String),
 }).annotate({ identifier: "FilePart" })
 export type FilePart = Types.DeepMutable<Schema.Schema.Type<typeof FilePart>>
 
