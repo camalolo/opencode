@@ -1353,6 +1353,25 @@ const layer = Layer.effect(
                 yield* events.publish(Session.Event.Error, { sessionID, error: handle.message.error })
                 return "break" as const
               }
+              // Surface a "length" finish as an error when nothing is pending.
+              // The provider truncated the response at its output-token budget,
+              // and with no tool calls to feed back the loop would otherwise
+              // exit as if the turn had completed cleanly — the message often
+              // holds only invisible reasoning, so the session just goes idle.
+              if (handle.message.finish === "length") {
+                const parts = yield* MessageV2.parts(handle.message.id).pipe(
+                  Effect.provideService(Database.Service, database),
+                )
+                const hasToolCalls = parts.some(
+                  (part) => part.type === "tool" && !part.metadata?.providerExecuted && !isOrphanedInterruptedTool(part),
+                )
+                if (!hasToolCalls) {
+                  handle.message.error = new SessionV1.OutputLengthError({}).toObject()
+                  yield* sessions.updateMessage(handle.message)
+                  yield* events.publish(Session.Event.Error, { sessionID, error: handle.message.error })
+                  return "break" as const
+                }
+              }
               if (format.type === "json_schema") {
                 handle.message.error = new SessionV1.StructuredOutputError({
                   message: "Model did not produce structured output",

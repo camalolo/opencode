@@ -1417,8 +1417,13 @@ export function providerOptions(model: Provider.Model, options: { [x: string]: a
   return { [key]: normalized }
 }
 
-export function maxOutputTokens(model: Provider.Model, outputTokenMax = OUTPUT_TOKEN_MAX): number {
-  return Math.min(model.limit.output, outputTokenMax) || outputTokenMax
+export function maxOutputTokens(model: Provider.Model, outputTokenMax?: number): number {
+  // A declared model output limit is authoritative — OUTPUT_TOKEN_MAX only
+  // covers models that declare no output limit, and an explicit outputTokenMax
+  // (env flag) still clamps the declared limit.
+  const declared = model.limit.output
+  if (outputTokenMax !== undefined) return declared > 0 ? Math.min(declared, outputTokenMax) : outputTokenMax
+  return declared > 0 ? declared : OUTPUT_TOKEN_MAX
 }
 
 type JsonRecord = Record<string, unknown>
