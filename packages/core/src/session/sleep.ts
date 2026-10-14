@@ -16,6 +16,9 @@ export type Status = "pending" | "fired" | "timed_out" | "failed" | "cancelled"
 /** Statuses whose wake message must still be delivered to the session. */
 const UNDELIVERED: readonly Status[] = ["fired", "timed_out", "failed"]
 
+/** Broken checks (bad exit code, timeout, command not found, silent exit 1) before a trigger disarms itself and reports. */
+export const MAX_BROKEN_CHECKS = 5
+
 /** Delivery attempts before redelivery gives up and only logs. */
 export const MAX_DELIVER_ATTEMPTS = 5
 
@@ -37,6 +40,7 @@ export interface Trigger {
   readonly cwd: string
   readonly shell?: string
   readonly nextCheckAt: number
+  /** Broken checks since arming — not consecutive, despite the legacy column name. At MAX_BROKEN_CHECKS the trigger disarms. */
   readonly consecutiveFailures: number
   readonly lastOutput?: string
   readonly status: Status
@@ -214,6 +218,12 @@ export const claimCheck = Effect.fn("SessionSleep.claimCheck")(function* (db: Da
   return claimed !== undefined
 })
 
+/**
+ * Records a healthy unmet check. Deliberately leaves `consecutive_failures`
+ * alone: broken checks accumulate for the trigger's whole life, so a flaky
+ * condition cannot reset its own evidence by interleaving unmet results.
+ * Only a met verdict ends the trigger; the breaker disarms at MAX_BROKEN_CHECKS.
+ */
 export const recordNotMet = Effect.fn("SessionSleep.recordNotMet")(function* (
   db: DatabaseService,
   id: ID,
@@ -222,13 +232,13 @@ export const recordNotMet = Effect.fn("SessionSleep.recordNotMet")(function* (
   const now = Date.now()
   yield* db
     .update(SessionSleepTable)
-    .set({ consecutive_failures: 0, last_output: lastOutput, time_updated: now })
+    .set({ last_output: lastOutput, time_updated: now })
     .where(eq(SessionSleepTable.id, id))
     .run()
     .pipe(Effect.orDie)
 })
 
-/** Counts a failed check; returns the new consecutive failure count. */
+/** Counts a broken check; returns the new broken count since arming. */
 export const recordFailure = Effect.fn("SessionSleep.recordFailure")(function* (
   db: DatabaseService,
   id: ID,

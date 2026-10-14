@@ -202,6 +202,8 @@ export const SessionSleepTable = sqliteTable(
     cwd: text().notNull(),
     shell: text(),
     next_check_at: integer().notNull(),
+    // Broken checks since arming — not consecutive (legacy name). At
+    // MAX_BROKEN_CHECKS the trigger disarms itself and reports.
     consecutive_failures: integer().notNull().default(0),
     last_output: text(),
     status: text().notNull().$type<"pending" | "fired" | "timed_out" | "failed" | "cancelled">(),

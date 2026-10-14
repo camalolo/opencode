@@ -7,15 +7,23 @@ import { AppProcess } from "@opencode-ai/core/process"
 import { makeGlobalNode } from "@opencode-ai/core/effect/app-node"
 import { SessionSchema } from "@opencode-ai/core/session/schema"
 import { SessionStore } from "@opencode-ai/core/session/store"
-import { SessionSleep } from "@opencode-ai/core/session/sleep"
+import { MAX_BROKEN_CHECKS, SessionSleep } from "@opencode-ai/core/session/sleep"
 import { SessionStatus } from "./status"
 import { MessageID as CoreMessageID } from "@opencode-ai/core/v1/session"
 
 /** How often the scheduler scans for due checks. */
 const TICK = "5 seconds"
 
-/** Consecutive failed checks before the trigger disarms itself and reports. */
-export const MAX_CONSECUTIVE_FAILURES = 5
+/** How often the watchdog verifies the loop is still making progress. */
+const WATCHDOG = "30 seconds"
+
+/**
+ * Watchdog stall threshold. Must exceed both several tick periods and a
+ * plausible in-flight check (check timeout defaults to 30s), so a legitimately
+ * slow check batch is not mistaken for a wedged loop. A false positive is
+ * harmless anyway — the forced drain is claim-safe.
+ */
+const STALL_AFTER_MS = 60_000
 
 const MAX_CAPTURE_BYTES = 64 * 1024
 const PROBE_TIMEOUT_MS = 30_000
@@ -32,10 +40,11 @@ export interface CheckResult {
 }
 
 /**
- * cmd.exe reports a missing command with exit code 1 — indistinguishable from
- * "not met" by exit code alone — and this fixed stderr line instead.
+ * cmd.exe and PowerShell both report a missing command with "is not recognized"
+ * (and cmd collapses the error to exit code 1, indistinguishable from "not met"
+ * by exit code alone); POSIX shells print "command not found" and exit 127.
  */
-const WINDOWS_COMMAND_NOT_FOUND = "is not recognized as an internal or external command"
+const COMMAND_NOT_FOUND_PATTERNS = ["is not recognized", "command not found"]
 
 export type CheckVerdict =
   | { readonly kind: "met" }
@@ -44,17 +53,29 @@ export type CheckVerdict =
 
 /**
  * Interprets one check result against the sleep_until contract (exit 0 = met,
- * exit 1 = not met, anything else = broken check). Shared by the arm-time
- * probe gate and the background loop so both agree on what "broken" means.
+ * exit 1 = not met, anything else = broken). An unmet check must also prove it
+ * is alive by producing output: a silent exit 1 is indistinguishable from a
+ * dead or mis-suppressed check, so it counts as broken — which the arm-time
+ * probe gate turns into a refusal to arm. Shared by the probe gate and the
+ * background loop so both agree on what "broken" means.
  */
 export const classifyCheck = (result: CheckResult): CheckVerdict => {
   if (result.timedOut) return { kind: "broken", reason: "the check timed out" }
   if (result.exitCode === undefined)
     return { kind: "broken", reason: result.output.trim() || "the check failed to run" }
   if (result.exitCode === 0) return { kind: "met" }
-  if (result.output.includes(WINDOWS_COMMAND_NOT_FOUND))
-    return { kind: "broken", reason: "command not found (the shell reported it, exit code 1)" }
-  if (result.exitCode === 1) return { kind: "unmet" }
+  if (result.exitCode === 127) return { kind: "broken", reason: "command not found (exit code 127)" }
+  if (COMMAND_NOT_FOUND_PATTERNS.some((pattern) => result.output.includes(pattern)))
+    return { kind: "broken", reason: `command not found (the shell reported it, exit code ${result.exitCode})` }
+  if (result.exitCode === 1) {
+    if (result.output.trim().length === 0)
+      return {
+        kind: "broken",
+        reason:
+          'silent check: exit 1 with no output. A healthy condition prints progress when unmet, e.g. append `|| echo "still waiting"` — a silent exit 1 is indistinguishable from a dead check.',
+      }
+    return { kind: "unmet" }
+  }
   return { kind: "broken", reason: `exit code ${result.exitCode} (valid conditions exit 0 or 1)` }
 }
 
@@ -134,7 +155,9 @@ export const runCheck = Effect.fn("SessionSleepScheduler.runCheck")(function* (
  * Global trigger scheduler. Owns the poll loop that turns armed
  * `session_sleep` rows into terminal rows (fired / timed_out / failed); the
  * companion SessionSleepDelivery service observes those terminal rows and
- * wakes the sessions. Deliberately knows nothing about prompts or instances
+ * wakes the sessions. A watchdog fiber forces a drain whenever the loop stops
+ * making progress, so a wedged tick cannot leave armed triggers in limbo.
+ * Deliberately knows nothing about prompts or instances
  * so that the tool registry can depend on it without a dependency cycle.
  *
  * Every mutation is a row-level claim in sqlite, which is what makes several
@@ -152,7 +175,15 @@ const layer = Layer.effect(
     const probe: Interface["probe"] = (input) =>
       runCheck(appProcess, { ...input, timeoutMs: input.timeoutMs ?? PROBE_TIMEOUT_MS })
 
+    /**
+     * Watchdog heartbeat: refreshed whenever the loop scans, claims, or
+     * finishes work. If it goes stale past STALL_AFTER_MS, the loop is wedged
+     * or dead and the watchdog forces a claim-safe drain from this process.
+     */
+    let lastProgressAt = Date.now()
+
     const processRow = Effect.fn("SessionSleepScheduler.processRow")(function* (row: SessionSleep.Trigger) {
+      lastProgressAt = Date.now()
       const now = Date.now()
       if (now >= row.deadline) {
         yield* SessionSleep.finish(db, row.id, "timed_out", wakeMessageID(row))
@@ -165,6 +196,7 @@ const layer = Layer.effect(
         ...(row.shell === undefined ? {} : { shell: row.shell }),
         timeoutMs: row.checkTimeoutMs,
       })
+      lastProgressAt = Date.now()
       const verdict = classifyCheck(result)
       if (verdict.kind === "met") {
         yield* SessionSleep.finish(db, row.id, "fired", wakeMessageID(row), tail(result.output, 4096))
@@ -176,9 +208,9 @@ const layer = Layer.effect(
         return
       }
       const failures = yield* SessionSleep.recordFailure(db, row.id, tail(result.output, 4096))
-      if (failures !== undefined && failures >= MAX_CONSECUTIVE_FAILURES) {
+      if (failures !== undefined && failures >= MAX_BROKEN_CHECKS) {
         yield* SessionSleep.finish(db, row.id, "failed", wakeMessageID(row))
-        yield* Effect.logWarning("sleep trigger disarmed after repeated broken checks", {
+        yield* Effect.logWarning("sleep trigger disarmed after broken checks", {
           "session.id": row.sessionID,
           trigger: row.id,
           failures,
@@ -189,14 +221,43 @@ const layer = Layer.effect(
 
     const tick = Effect.fn("SessionSleepScheduler.tick")(function* () {
       const due = yield* SessionSleep.due(db, Date.now())
-      yield* Effect.forEach(due, (row) => processRow(row).pipe(Effect.ignore), { concurrency: 4, discard: true })
+      lastProgressAt = Date.now()
+      // Each row is caught on its own so one defecting row cannot take the
+      // whole batch (and with it the loop's progress heartbeat) down.
+      yield* Effect.forEach(
+        due,
+        (row) =>
+          processRow(row).pipe(
+            Effect.catchCause((cause) => Effect.logWarning("sleep check failed", { cause, row: row.id })),
+          ),
+        { concurrency: 4, discard: true },
+      )
     })
 
+    const watchdog = Effect.fn("SessionSleepScheduler.watchdog")(function* () {
+      const idleMs = Date.now() - lastProgressAt
+      if (idleMs < STALL_AFTER_MS) return
+      yield* Effect.logWarning("sleep scheduler made no progress; forcing a drain", { idleMs })
+      yield* tick()
+    })
+
+    // The catch sits inside the repeated effect on purpose: `Effect.repeat`
+    // stops at the first failure or defect, so an outer catch would let one
+    // bad tick (e.g. a transient sqlite error) kill the loop forever and leave
+    // armed triggers in limbo. Caught per iteration, the loop outlives it.
     yield* Effect.forkScoped(
       tick().pipe(
+        Effect.catchCause((cause) => Effect.logError("sleep scheduler tick failed", { cause })),
         Effect.delay(Duration.seconds(3)),
         Effect.repeat(Schedule.spaced(TICK)),
-        Effect.catchCause((cause) => Effect.logError("sleep scheduler tick failed", { cause })),
+        Effect.ignore,
+      ),
+    )
+    yield* Effect.forkScoped(
+      watchdog().pipe(
+        Effect.catchCause((cause) => Effect.logError("sleep scheduler watchdog failed", { cause })),
+        Effect.delay(Duration.seconds(30)),
+        Effect.repeat(Schedule.spaced(WATCHDOG)),
         Effect.ignore,
       ),
     )

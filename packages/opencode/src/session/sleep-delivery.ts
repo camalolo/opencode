@@ -4,16 +4,13 @@ import { Context, Duration, Effect, Layer, Schedule } from "effect"
 import { Database, Database as DatabaseNode } from "@opencode-ai/core/database/database"
 import { makeGlobalNode } from "@opencode-ai/core/effect/app-node"
 import { SessionStore } from "@opencode-ai/core/session/store"
-import { SessionSleep, MAX_DELIVER_ATTEMPTS as MAX_WAKE_ATTEMPTS } from "@opencode-ai/core/session/sleep"
+import { SessionSleep, MAX_BROKEN_CHECKS, MAX_DELIVER_ATTEMPTS as MAX_WAKE_ATTEMPTS } from "@opencode-ai/core/session/sleep"
 import { InstanceStore } from "@/project/instance-store"
 import { SessionPrompt } from "./prompt"
 import { SessionStatus } from "./status"
 
 /** How often undelivered wakes are rescanned; also the repair cadence after crashes. */
 const TICK = "5 seconds"
-
-/** Consecutive failed checks before the trigger disarms itself and reports. */
-export const MAX_CONSECUTIVE_FAILURES = 5
 
 const MAX_WAKE_OUTPUT_CHARS = 4 * 1024
 
@@ -41,7 +38,7 @@ export const wakeText = (row: SessionSleep.Trigger, output: string) => {
   return [
     `⏰ Sleep trigger failed: ${row.description}`,
     "",
-    `The condition check kept being broken (non-zero exit, command not found, or timeout) ${MAX_CONSECUTIVE_FAILURES} times in a row, so the trigger disarmed itself instead of spinning forever.` +
+    `The condition check was broken ${MAX_BROKEN_CHECKS} times since arming (bad exit code, command not found, timeout, or exit 1 with no output), so the trigger disarmed itself instead of spinning forever.` +
       detail,
     "",
     "Inspect the condition, fix it, and re-arm with sleep_until if needed.",
@@ -123,14 +120,27 @@ const layer = Layer.effect(
 
     const flush: Interface["flush"] = Effect.fn("SessionSleepDelivery.flush")(function* () {
       const undelivered = yield* SessionSleep.deliverable(db)
-      yield* Effect.forEach(undelivered, (row) => deliver(row).pipe(Effect.ignore), { concurrency: 3, discard: true })
+      // Each row is caught on its own so one defecting row cannot take the
+      // whole delivery batch down.
+      yield* Effect.forEach(
+        undelivered,
+        (row) =>
+          deliver(row).pipe(
+            Effect.catchCause((cause) => Effect.logWarning("sleep wake delivery failed", { cause, row: row.id })),
+          ),
+        { concurrency: 3, discard: true },
+      )
     })
 
+    // The catch sits inside the repeated effect on purpose: `Effect.repeat`
+    // stops at the first failure or defect, so an outer catch would let one
+    // bad tick (e.g. a transient sqlite error) kill delivery forever and leave
+    // fired triggers undelivered. Caught per iteration, the loop outlives it.
     yield* Effect.forkScoped(
       flush().pipe(
+        Effect.catchCause((cause) => Effect.logError("sleep delivery tick failed", { cause })),
         Effect.delay(Duration.seconds(3)),
         Effect.repeat(Schedule.spaced(TICK)),
-        Effect.catchCause((cause) => Effect.logError("sleep delivery tick failed", { cause })),
         Effect.ignore,
       ),
     )

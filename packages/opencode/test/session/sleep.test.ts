@@ -69,6 +69,10 @@ const fakeWithParts = (sessionID: SessionID): SessionV1.WithParts => ({
   parts: [],
 })
 
+// An unmet condition must produce output: a silent exit 1 classifies as a
+// broken check and the arm-time probe refuses it.
+const unmetWithOutput = process.platform === "win32" ? "echo still waiting & exit 1" : "echo 'still waiting'; exit 1"
+
 // ---------------------------------------------------------------------------
 // Scheduler
 // ---------------------------------------------------------------------------
@@ -145,6 +149,28 @@ test("classifyCheck sorts met, unmet, and broken check results", () => {
       }),
     ),
   ).toContain("command not found")
+  // PowerShell phrases a missing command differently but also collapses it to exit code 1.
+  expect(
+    SessionSleepScheduler.classifyCheck({
+      exitCode: 1,
+      output: "The term 'foo' is not recognized as the name of a cmdlet, function, script file, or executable program.",
+      timedOut: false,
+    }),
+  ).toMatchObject({ kind: "broken" })
+  // POSIX shells exit 127 for a missing command.
+  expect(SessionSleepScheduler.classifyCheck({ exitCode: 127, output: "", timedOut: false })).toMatchObject({
+    kind: "broken",
+  })
+  expect(reasonOf(SessionSleepScheduler.classifyCheck({ exitCode: 127, output: "", timedOut: false }))).toContain(
+    "command not found",
+  )
+  // An unmet check must prove it is alive: a silent exit 1 counts as broken.
+  expect(SessionSleepScheduler.classifyCheck({ exitCode: 1, output: "", timedOut: false })).toMatchObject({
+    kind: "broken",
+  })
+  expect(reasonOf(SessionSleepScheduler.classifyCheck({ exitCode: 1, output: "   \n\t", timedOut: false }))).toContain(
+    "silent check",
+  )
 })
 
 schedulerIt.effect(
@@ -186,7 +212,7 @@ schedulerIt.effect(
       )
       expect(fired.lastOutput).toContain("")
 
-      const unmet = yield* arm("ses_sched_fire", { condition: "exit 1", description: "unmet" })
+      const unmet = yield* arm("ses_sched_fire", { condition: unmetWithOutput, description: "unmet" })
       yield* scheduler.flush()
       const stillPending = yield* SessionSleep.byID(db, unmet.id)
       expect(stillPending?.status).toBe("pending")
@@ -206,6 +232,38 @@ schedulerIt.effect(
       const trigger = yield* arm("ses_sched_fail", { condition: "exit 7", intervalMs: 1 })
 
       for (let i = 0; i < 5; i++) yield* scheduler.flush()
+
+      const failed = yield* pollWithTimeout(
+        Effect.gen(function* () {
+          const row = yield* SessionSleep.byID(db, trigger.id)
+          return row?.status === "failed" ? row : undefined
+        }),
+        "trigger never disarmed as failed",
+      )
+      expect(failed.consecutiveFailures).toBeGreaterThanOrEqual(5)
+    }),
+  30_000,
+)
+
+schedulerIt.effect(
+  "broken checks accumulate across unmet checks until the breaker trips",
+  () =>
+    Effect.gen(function* () {
+      const db = (yield* Database.Service).db
+      yield* insertSession(db, "ses_sched_breaker")
+      const scheduler = yield* SessionSleepScheduler.Service
+      const trigger = yield* arm("ses_sched_breaker", { condition: "exit 7", intervalMs: 1 })
+
+      // Two broken checks, then a healthy unmet one: the unmet result must not
+      // reset the broken count, or a flaky condition could evade the breaker
+      // forever by alternating.
+      yield* scheduler.flush()
+      yield* scheduler.flush()
+      yield* SessionSleep.recordNotMet(db, trigger.id, "3/9 done")
+      const current = yield* SessionSleep.byID(db, trigger.id)
+      expect(current?.consecutiveFailures).toBe(2)
+
+      for (let i = 0; i < 3; i++) yield* scheduler.flush()
 
       const failed = yield* pollWithTimeout(
         Effect.gen(function* () {
@@ -240,6 +298,66 @@ schedulerIt.effect(
       expect(timedOut.timeFinished).toBeDefined()
     }),
   30_000,
+)
+
+// ---------------------------------------------------------------------------
+// Loop liveness
+// ---------------------------------------------------------------------------
+
+/**
+ * A poisoned Database whose next `update` access throws, simulating a
+ * transient sqlite failure inside a scheduler tick. `Database.node` carries no
+ * dependencies, so the real implementation is built inline underneath.
+ */
+const trip = { current: false }
+const flakyDatabase = Layer.effect(
+  Database.Service,
+  Effect.gen(function* () {
+    const real = yield* Database.Service
+    const db = new Proxy(real.db, {
+      get(target, prop, receiver) {
+        if (trip.current && prop === "update") {
+          trip.current = false
+          throw new Error("simulated sqlite busy")
+        }
+        return Reflect.get(target, prop, receiver)
+      },
+    })
+    return { db }
+  }),
+  // Provided as a layer dependency (not built inside the effect) so the real
+  // database stays open for the flaky layer's whole lifetime.
+).pipe(Layer.provide(Database.node.implementation as Layer.Layer<Database.Service, never>))
+
+const loopIt = testEffect(
+  LayerNode.compile(LayerNode.group([SessionSleepScheduler.node, Database.node]), [
+    [Database.node, flakyDatabase],
+  ] as const),
+)
+
+// Runs against the real forked tick loop (live clock): the first tick dies on
+// the poisoned db, and the loop must survive it and drain the row anyway.
+loopIt.live(
+  "a failed tick does not kill the scheduler loop",
+  () =>
+    Effect.gen(function* () {
+      const db = (yield* Database.Service).db
+      yield* insertSession(db, "ses_sched_loop")
+      const scheduler = yield* SessionSleepScheduler.Service
+      const trigger = yield* arm("ses_sched_loop", { condition: "exit 0", intervalMs: 1 })
+      trip.current = true
+
+      const fired = yield* pollWithTimeout(
+        Effect.gen(function* () {
+          const row = yield* SessionSleep.byID(db, trigger.id)
+          return row?.status === "fired" ? row : undefined
+        }),
+        "trigger never fired after a broken tick",
+        "30 seconds",
+      )
+      expect(fired.status).toBe("fired")
+    }),
+  60_000,
 )
 
 // ---------------------------------------------------------------------------
@@ -426,6 +544,15 @@ test("wake text covers fired, timed out, and failed outcomes", () => {
 
 const noopBootstrap = Layer.succeed(InstanceBootstrap.Service, InstanceBootstrap.Service.of({ run: Effect.void }))
 
+// The tool wrapper ends with Effect.orDie, so the model-facing error lives in
+// the exit cause as a defect.
+const toolDieMessage = (exit: Exit.Exit<unknown>) => {
+  expect(Exit.isFailure(exit)).toBe(true)
+  if (!Exit.isFailure(exit)) return ""
+  const die = exit.cause.reasons.find(Cause.isDieReason)
+  return (die?.defect as Error)?.message ?? String(die?.defect)
+}
+
 const toolIt = testEffect(
   LayerNode.compile(
     LayerNode.group([
@@ -472,14 +599,14 @@ toolIt.instance(
       expect(yield* scheduler.get(sessionID)).toBeUndefined()
 
       // Condition unmet: arms a pending trigger.
-      const armed = yield* untilDef.execute({ condition: "exit 1", description: "forum reply" }, ctx)
+      const armed = yield* untilDef.execute({ condition: unmetWithOutput, description: "forum reply" }, ctx)
       expect(armed.output).toContain("Sleep armed")
       const first = yield* scheduler.get(sessionID)
       expect(first?.status).toBe("pending")
       expect(first?.description).toBe("forum reply")
 
       // Re-arming replaces the previous trigger.
-      yield* untilDef.execute({ condition: "exit 1", description: "second wait" }, ctx)
+      yield* untilDef.execute({ condition: unmetWithOutput, description: "second wait" }, ctx)
       const second = yield* scheduler.get(sessionID)
       expect(second?.id).not.toBe(first?.id)
       expect(second?.description).toBe("second wait")
@@ -535,19 +662,10 @@ toolIt.instance(
       const until = yield* SleepUntilTool
       const untilDef = yield* until.init()
 
-      const failureMessage = (exit: Exit.Exit<unknown>) => {
-        expect(Exit.isFailure(exit)).toBe(true)
-        if (!Exit.isFailure(exit)) return ""
-        // The tool wrapper ends with Effect.orDie, so the model-facing error
-        // lives in the cause as a defect.
-        const die = exit.cause.reasons.find(Cause.isDieReason)
-        return (die?.defect as Error)?.message ?? String(die?.defect)
-      }
-
       // Non-zero, non-1 exit code: broken contract, nothing armed.
       const exit7 = yield* untilDef.execute({ condition: "exit 7", description: "broken" }, ctx).pipe(Effect.exit)
-      expect(failureMessage(exit7)).toContain("refused to arm")
-      expect(failureMessage(exit7)).toContain("exit code 7")
+      expect(toolDieMessage(exit7)).toContain("refused to arm")
+      expect(toolDieMessage(exit7)).toContain("exit code 7")
       expect(yield* scheduler.get(sessionID)).toBeUndefined()
 
       // A missing command must also refuse: on Windows cmd.exe reports it with
@@ -555,8 +673,47 @@ toolIt.instance(
       const missing = yield* untilDef
         .execute({ condition: "opencode-sleep-missing-cmd", description: "broken" }, ctx)
         .pipe(Effect.exit)
-      expect(failureMessage(missing)).toContain("refused to arm")
+      expect(toolDieMessage(missing)).toContain("refused to arm")
       expect(yield* scheduler.get(sessionID)).toBeUndefined()
       expect(yield* SessionSleep.get(db, sessionID)).toBeUndefined()
+    }),
+)
+
+toolIt.instance(
+  "sleep_until refuses to arm a silent unmet condition",
+  () =>
+    Effect.gen(function* () {
+      yield* TestInstance
+      const sessionID = SessionID.make("ses_tool_silent")
+      const db = (yield* Database.Service).db
+      yield* insertSession(db, sessionID)
+      const scheduler = yield* SessionSleepScheduler.Service
+      const ctx: Tool.Context = {
+        sessionID,
+        messageID: MessageID.make("msg_tool_silent"),
+        callID: "",
+        agent: "build",
+        abort: AbortSignal.any([]),
+        messages: [],
+        metadata: () => Effect.void,
+        ask: () => Effect.void,
+      }
+      const until = yield* SleepUntilTool
+      const untilDef = yield* until.init()
+
+      // exit 1 with no output cannot prove the check is alive, so arming is
+      // refused instead of sleeping to the timeout on a dead condition.
+      const silent = yield* untilDef.execute({ condition: "exit 1", description: "silent" }, ctx).pipe(Effect.exit)
+      const message = toolDieMessage(silent)
+      expect(message).toContain("refused to arm")
+      expect(message).toContain("silent check")
+      expect(message).toContain("echo")
+      expect(yield* scheduler.get(sessionID)).toBeUndefined()
+      expect(yield* SessionSleep.get(db, sessionID)).toBeUndefined()
+
+      // The same condition with progress output arms fine.
+      const armed = yield* untilDef.execute({ condition: unmetWithOutput, description: "loud" }, ctx)
+      expect(armed.output).toContain("Sleep armed")
+      expect((yield* scheduler.get(sessionID))?.status).toBe("pending")
     }),
 )

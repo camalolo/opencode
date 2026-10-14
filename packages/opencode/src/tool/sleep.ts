@@ -3,6 +3,7 @@ export * as SleepTool from "./sleep"
 import { Effect, Schema } from "effect"
 import * as Tool from "./tool"
 import { PositiveInt } from "@opencode-ai/core/schema"
+import { MAX_BROKEN_CHECKS } from "@opencode-ai/core/session/sleep"
 import { Config } from "@/config/config"
 import { InstanceState } from "@/effect/instance-state"
 import { SessionStatus } from "@/session/status"
@@ -11,7 +12,7 @@ import { SessionSleepScheduler } from "@/session/sleep-scheduler"
 export const SleepUntilParameters = Schema.Struct({
   condition: Schema.String.annotate({
     description:
-      "Shell command whose exit code decides when to wake: exit 0 = condition met, exit 1 = not met yet, anything else counts as a broken check. Keep it fast (seconds) and free of side effects. stdout from the final check is delivered to the session when it wakes. The condition is probe-run once before arming: if that run is broken (exit outside 0/1, command not found, spawn failure, or timeout), sleep_until fails instead of arming.",
+      "Shell command whose exit code decides when to wake: exit 0 = condition met, exit 1 = not met yet (print progress on exit 1 — a silent unmet check is treated as broken), anything else counts as a broken check. Keep it fast (seconds) and free of side effects. stdout from the final check is delivered to the session when it wakes. The condition is probe-run once before arming: if that run is broken (exit outside 0/1, command not found, timeout, or exit 1 with no output), sleep_until fails instead of arming.",
   }),
   description: Schema.String.annotate({
     description: "What you are waiting for, in one sentence. Shown to the user and included in the wake message.",
@@ -109,7 +110,7 @@ export const SleepUntilTool = Tool.define<
             new Error(
               [
                 `sleep_until refused to arm: the probe check is broken — ${verdict.reason}.`,
-                "Nothing was armed. Fix the condition so it exits 0 when met and 1 when not met yet, then call sleep_until again.",
+                "Nothing was armed. Fix the condition so it exits 0 when met and 1 (with progress output) when not met, then call sleep_until again.",
                 probeOutput() !== undefined ? `Probe output:\n${probeOutput()}` : undefined,
               ]
                 .filter(Boolean)
@@ -145,6 +146,7 @@ export const SleepUntilTool = Tool.define<
           output: [
             `Sleep armed (${trigger.id}). Waiting for: ${params.description}`,
             `Checks run every ${intervalSeconds}s in the background; timeout at ${deadline}.`,
+            `A broken check (bad exit code, command not found, timeout, or silent exit 1) counts toward a ${MAX_BROKEN_CHECKS}-strike breaker: reaching it disarms the trigger and wakes you.`,
             "Condition not met yet (probe exit 1).",
             probeOutput() !== undefined ? `Probe output:\n${probeOutput()}` : undefined,
             "IMPORTANT: do not busy-wait with bash sleep while this trigger is armed — end your turn, or do unrelated work.",
@@ -168,7 +170,8 @@ export const SleepUntilTool = Tool.define<
         "When armed, END YOUR TURN (or do unrelated work) — never busy-wait with sleep in bash while a trigger is armed;",
         "the wake message arrives automatically, even mid-turn. To see the latest check output, call sleep_status instead of polling.",
         "The trigger survives server restarts. Arming again replaces the previous trigger; cancel with sleep_cancel.",
-        "The condition is probe-run once before arming; a broken probe (exit outside 0/1, command not found, spawn failure, or timeout) fails the call instead of arming, so fix the condition and retry.",
+        "The condition is probe-run once before arming; a broken probe (exit outside 0/1, command not found, timeout, or exit 1 with no output) fails the call instead of arming, so fix the condition and retry.",
+        `Broken checks also accumulate while armed: ${MAX_BROKEN_CHECKS} of them disarm the trigger and wake you with the failure, so a misbehaving condition can never spin silently until the timeout.`,
         "Use for external events: a forum reply appears, a payment lands, a long job finishes, a file changes.",
         "Do not use it as a short timer — to wait a few seconds inside a command, use sleep in bash instead.",
       ].join(" "),
@@ -210,7 +213,9 @@ export const SleepStatusTool = Tool.define<
             `Trigger ${trigger.id}: ${trigger.status}`,
             `Waiting for: ${trigger.description}`,
             `Checks every ${Math.round(trigger.intervalMs / 1000)}s; next check ${new Date(trigger.nextCheckAt).toISOString()}; timeout ${new Date(trigger.deadline).toISOString()}`,
-            trigger.consecutiveFailures > 0 ? `Consecutive check failures: ${trigger.consecutiveFailures}` : undefined,
+            trigger.consecutiveFailures > 0
+              ? `Broken checks: ${trigger.consecutiveFailures}/${MAX_BROKEN_CHECKS} — reaching ${MAX_BROKEN_CHECKS} disarms the trigger and wakes you.`
+              : undefined,
             trigger.lastOutput ? `Last check output:\n${trigger.lastOutput}` : "No check output recorded yet.",
             trigger.status === "pending"
               ? "Still armed — end your turn or call sleep_cancel; the wake arrives automatically."
