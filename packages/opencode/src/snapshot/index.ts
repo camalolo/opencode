@@ -153,19 +153,36 @@ const layer: Layer.Layer<Service, never, FSUtil.Service | AppProcess.Service | C
         })
 
         const stage = Effect.fnUntraced(function* (files: string[]) {
-          if (!files.length) return
-          const result = yield* git(
-            [...cfg, ...args(["add", "--all", "--sparse", "--pathspec-from-file=-", "--pathspec-file-nul"])],
-            {
-              cwd: state.worktree,
-              stdin: encodeTopLevelLiteralPathspecs(files),
-            },
-          )
-          if (result.code === 0) return
-          yield* Effect.logWarning("failed to add snapshot files", {
-            exitCode: result.code,
-            stderr: result.stderr,
-          })
+          let remaining = files
+          const seen = new Set<string>()
+          while (remaining.length) {
+            const result = yield* git(
+              [...cfg, ...args(["add", "--all", "--sparse", "--pathspec-from-file=-", "--pathspec-file-nul"])],
+              {
+                cwd: state.worktree,
+                stdin: encodeTopLevelLiteralPathspecs(remaining),
+              },
+            )
+            if (result.code === 0) return
+            // One un-addable path (e.g. a Windows reserved device name like NUL)
+            // fails the whole batch; retry without the offenders instead of losing
+            // every other change. Git reports them worktree-relative and quoted.
+            const skipped = new Set(
+              [...result.stderr.matchAll(/error: (?:invalid path|unable to add) '(.+?)'/gm)]
+                .map((match) => path.join(state.worktree, match[1]!).replaceAll("\\", "/"))
+                .filter((item) => !seen.has(item)),
+            )
+            if (!skipped.size) {
+              yield* Effect.logWarning("failed to add snapshot files", {
+                exitCode: result.code,
+                stderr: result.stderr,
+              })
+              return
+            }
+            for (const item of skipped) seen.add(item)
+            yield* Effect.logWarning("skipping files git cannot add to the snapshot", { files: [...skipped] })
+            remaining = remaining.filter((item) => !seen.has(item.replaceAll("\\", "/")))
+          }
         })
 
         const exists = (file: string) => fs.exists(file).pipe(Effect.orDie)

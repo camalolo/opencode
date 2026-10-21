@@ -525,12 +525,32 @@ const layer = Layer.effect(
       }
       if (stage.length) {
         changed = true
-        yield* repositoryOperation(
-          "refresh",
-          input.repository,
-          ["add", "--all", "--sparse", "--pathspec-from-file=-", "--pathspec-file-nul"],
-          { stdin: stage.join("\0") + "\0" },
-        )
+        // One un-addable path (e.g. a Windows reserved device name like NUL) fails
+        // the whole batch; retry without the offenders instead of losing every
+        // other change. Git reports them worktree-relative and quoted.
+        let remaining = stage
+        const rejected = new Set<string>()
+        while (remaining.length) {
+          const failure = yield* repositoryOperation(
+            "refresh",
+            input.repository,
+            ["add", "--all", "--sparse", "--pathspec-from-file=-", "--pathspec-file-nul"],
+            { stdin: remaining.join("\0") + "\0" },
+          ).pipe(
+            Effect.as(undefined),
+            Effect.catch((error) => Effect.succeed(error)),
+          )
+          if (failure === undefined) break
+          const offenders = new Set(
+            [...failure.message.matchAll(/error: (?:invalid path|unable to add) '(.+?)'/gm)]
+              .map((match) => match[1]!.replaceAll("\\", "/"))
+              .filter((item) => !rejected.has(item)),
+          )
+          if (!offenders.size) return yield* failure
+          for (const item of offenders) rejected.add(item)
+          yield* Effect.logWarning("skipping files git cannot add to the snapshot", { files: [...offenders] })
+          remaining = remaining.filter((item) => !rejected.has(item))
+        }
       }
       return { skipped, changed }
     })

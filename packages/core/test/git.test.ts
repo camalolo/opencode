@@ -161,4 +161,47 @@ describe("Git trees", () => {
       expect(yield* read(path.join(root.path, "outside.txt"))).toBe("changed outside\n")
     }),
   )
+
+  // Reserved device names (NUL) only exist on Windows.
+  if (process.platform === "win32")
+    it.live("refresh skips files git cannot add instead of failing the batch", () =>
+      Effect.gen(function* () {
+        const root = yield* Effect.acquireRelease(
+          Effect.promise(() => tmpdir()),
+          (dir) => Effect.promise(() => dir[Symbol.asyncDispose]()),
+        )
+        yield* Effect.promise(async () => {
+          await initRepo(root.path)
+          await fs.writeFile(path.join(root.path, "tracked.txt"), "one\n")
+        })
+        const git = yield* Git.Service
+        const source = yield* git.repo.discover(AbsolutePath.make(root.path))
+        if (!source) throw new Error("Repository not found")
+        // Keep the shadow gitdir outside the worktree like the snapshot service does.
+        const storage = AbsolutePath.make(`${root.path}-snapshot`)
+        yield* Effect.addFinalizer(() =>
+          Effect.promise(() => fs.rm(storage, { recursive: true, force: true })).pipe(Effect.ignore),
+        )
+        const repository = yield* git.repo.create({
+          worktree: source.worktree,
+          gitDirectory: storage,
+          seed: source,
+        })
+        const nul = "\\\\?\\" + path.join(root.path, "NUL")
+        yield* Effect.addFinalizer(() => Effect.promise(() => fs.rm(nul, { force: true }).catch(() => undefined)))
+        yield* Effect.promise(async () => {
+          await fs.writeFile(nul, "reserved device name")
+          await fs.writeFile(path.join(root.path, "valid.txt"), "valid\n")
+        })
+        const before = yield* git.tree.write(repository)
+        yield* git.index.refresh({ repository, scope: RelativePath.make(".") })
+        const after = yield* git.tree.write(repository)
+        // tracked.txt was never committed in the fixture, so both files stage; the
+        // reserved-name file must be the only one missing.
+        expect(yield* git.tree.files({ repository, from: before, to: after })).toEqual([
+          RelativePath.make("tracked.txt"),
+          RelativePath.make("valid.txt"),
+        ])
+      }),
+    )
 })

@@ -21,6 +21,8 @@ const it = testEffect(
 )
 // Windows forbids both * and : in directory names.
 const nonWindowsIt = process.platform === "win32" ? it.live.skip : it.live
+// Reserved device names (NUL) only exist on Windows.
+const windowsInstanceIt = process.platform === "win32" ? it.instance : it.instance.skip
 
 // Git always outputs /-separated paths internally. Snapshot.patch() joins them
 // with path.join (which produces \ on Windows) then normalizes back to /.
@@ -1282,4 +1284,22 @@ it.live(
       expect(patch.files).toContain(fwd(dir, "gone.txt"))
     }).pipe(provideInstance(dir))
   }),
+)
+
+windowsInstanceIt(
+  "staging skips files git cannot add instead of aborting the snapshot",
+  withTrackedSnapshot(({ tmp, snapshot, before }) =>
+    Effect.gen(function* () {
+      // A Windows reserved device name can exist in the worktree but never in a
+      // git index; staging must skip it and still capture every other change.
+      const nul = "\\\\?\\" + path.resolve(tmp.path, "NUL")
+      yield* Effect.addFinalizer(() => Effect.promise(() => fs.rm(nul, { force: true }).catch(() => undefined)))
+      yield* Effect.promise(() => fs.writeFile(nul, "reserved device name"))
+      yield* write(`${tmp.path}/valid.txt`, "valid content")
+      const patch = yield* snapshot.patch(before)
+      expect(patch.files).toContain(fwd(tmp.path, "valid.txt"))
+      expect(patch.files).not.toContain(fwd(tmp.path, "NUL"))
+    }),
+  ),
+  { git: true },
 )
