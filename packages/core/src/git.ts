@@ -130,7 +130,10 @@ export interface Interface {
       scope: RelativePath
       ignores?: Repository
       maximumUntrackedFileBytes?: number
-    }) => Effect.Effect<{ readonly skipped: readonly RelativePath[] }, OperationError>
+    }) => Effect.Effect<
+      { readonly skipped: readonly RelativePath[]; /** True when the index was mutated. */ readonly changed: boolean },
+      OperationError
+    >
     readonly ignored: (input: {
       repository: Repository
       paths: readonly RelativePath[]
@@ -142,6 +145,8 @@ export interface Interface {
       scopes: readonly RelativePath[]
       ignores?: Repository
       maximumUntrackedFileBytes?: number
+      /** Known tree for the current index; returned unchanged when the refresh finds nothing new. */
+      previous?: TreeID
     }) => Effect.Effect<TreeID, OperationError>
     readonly write: (repository: Repository) => Effect.Effect<TreeID, OperationError>
     readonly files: (input: {
@@ -481,7 +486,8 @@ const layer = Layer.effect(
         { concurrency: 2 },
       )
       const candidates = Array.from(new Set([...tracked, ...untracked]))
-      if (!candidates.length) return { skipped: [] }
+      if (!candidates.length) return { skipped: [], changed: false }
+      let changed = false
       const ignored = input.ignores
         ? new Set(
             (yield* repositoryOperation("refresh", input.ignores, ["check-ignore", "--no-index", "--stdin", "-z"], {
@@ -508,21 +514,25 @@ const layer = Layer.effect(
         : []
       const stage = allowed.filter((item) => !skipped.includes(RelativePath.make(item)))
       const remove = [...ignored, ...skipped]
-      if (remove.length)
+      if (remove.length) {
+        changed = true
         yield* repositoryOperation(
           "refresh",
           input.repository,
           ["rm", "--cached", "-f", "--ignore-unmatch", "--pathspec-from-file=-", "--pathspec-file-nul"],
           { stdin: remove.join("\0") + "\0" },
         )
-      if (stage.length)
+      }
+      if (stage.length) {
+        changed = true
         yield* repositoryOperation(
           "refresh",
           input.repository,
           ["add", "--all", "--sparse", "--pathspec-from-file=-", "--pathspec-file-nul"],
           { stdin: stage.join("\0") + "\0" },
         )
-      return { skipped }
+      }
+      return { skipped, changed }
     })
 
     const ignored = Effect.fn("Git.index.ignored")(function* (input: {
@@ -574,11 +584,25 @@ const layer = Layer.effect(
         scopes: readonly RelativePath[]
         ignores?: Repository
         maximumUntrackedFileBytes?: number
+        previous?: TreeID
       }) =>
         locked(
           input.repository,
           Effect.gen(function* () {
-            yield* Effect.forEach(input.scopes, (scope) => refresh({ ...input, scope }), { discard: true })
+            let changed = false
+            yield* Effect.forEach(
+              input.scopes,
+              (scope) =>
+                refresh({ ...input, scope }).pipe(
+                  Effect.map((result) => {
+                    changed = changed || result.changed
+                  }),
+                ),
+              { discard: true },
+            )
+            // The index is unchanged since the caller last captured it: reusing the
+            // known tree skips a full index re-read in write-tree.
+            if (!changed && input.previous) return input.previous
             return yield* writeTree(input.repository)
           }),
         ),

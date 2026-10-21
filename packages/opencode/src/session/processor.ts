@@ -69,6 +69,8 @@ interface ProcessorContext extends Input {
   toolcalls: Record<string, ToolCall>
   shouldBreak: boolean
   snapshot: string | undefined
+  /** Most recent tracked hash; steps reuse it when nothing changed in between. */
+  lastSnapshot: string | undefined
   blocked: boolean
   needsCompaction: boolean
   currentText: SessionV1.TextPart | undefined
@@ -109,6 +111,7 @@ const layer = Layer.effect(
         toolcalls: {},
         shouldBreak: false,
         snapshot: initialSnapshot,
+        lastSnapshot: initialSnapshot,
         blocked: false,
         needsCompaction: false,
         currentText: undefined,
@@ -424,7 +427,11 @@ const layer = Layer.effect(
             throw new Error(value.message)
 
           case "step-start":
-            if (!ctx.snapshot) ctx.snapshot = yield* snapshot.track()
+            // Nothing writes to the worktree between a step-finish and the next
+            // step-start (only the provider round trip), so the previous step's
+            // tracked hash describes the same tree - reuse it instead of paying
+            // for a full rescan.
+            if (!ctx.snapshot) ctx.snapshot = ctx.lastSnapshot ?? (yield* snapshot.track())
             yield* session.updatePart({
               id: PartID.ascending(),
               messageID: ctx.assistantMessage.id,
@@ -436,6 +443,7 @@ const layer = Layer.effect(
 
           case "step-finish": {
             const completedSnapshot = yield* snapshot.track()
+            if (completedSnapshot) ctx.lastSnapshot = completedSnapshot
             yield* Effect.forEach(Object.keys(ctx.reasoningMap), finishReasoning)
             const usage = Session.getUsage({
               model: ctx.model,
@@ -457,7 +465,8 @@ const layer = Layer.effect(
             })
             yield* session.updateMessage(ctx.assistantMessage)
             if (ctx.snapshot) {
-              const patch = yield* snapshot.patch(ctx.snapshot)
+              // track() just refreshed the index; skip the redundant rescan.
+              const patch = yield* snapshot.patch(ctx.snapshot, { refresh: false })
               if (patch.files.length) {
                 yield* session.updatePart({
                   id: PartID.ascending(),

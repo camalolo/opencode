@@ -22,6 +22,15 @@ export type FileDiff = typeof FileDiff.Type
 
 const prune = "7.days"
 const limit = 2 * 1024 * 1024
+// Last write-tree hash per shadow gitdir. Keyed by gitdir (not InstanceState) because
+// instances in different subdirectories of one worktree share the same shadow repo;
+// the write-tree result only depends on that shared index.
+const lastTrees = new Map<string, string>()
+
+interface AddResult {
+  /** True when the shadow index was mutated (files staged or dropped). */
+  readonly changed: boolean
+}
 const core = ["-c", "core.longpaths=true", "-c", "core.symlinks=true"]
 const cfg = ["-c", "core.autocrlf=false", ...core]
 const quote = [...cfg, "-c", "core.quotepath=false"]
@@ -37,7 +46,7 @@ export interface Interface {
   readonly init: () => Effect.Effect<void>
   readonly cleanup: () => Effect.Effect<void>
   readonly track: () => Effect.Effect<string | undefined>
-  readonly patch: (hash: string) => Effect.Effect<Patch>
+  readonly patch: (hash: string, options?: { refresh?: boolean }) => Effect.Effect<Patch>
   readonly restore: (snapshot: string) => Effect.Effect<void>
   readonly revert: (patches: Patch[]) => Effect.Effect<void>
   readonly diff: (hash: string) => Effect.Effect<string>
@@ -186,10 +195,14 @@ const layer: Layer.Layer<Service, never, FSUtil.Service | AppProcess.Service | C
             file ? (yield* read(file)).trimEnd() : "",
             ...list.map((item) => `/${item.replaceAll("\\", "/")}`),
           ]
-            .filter(Boolean)
-            .join("\n")
+              .filter(Boolean)
+              .join("\n")
+          const next = text ? `${text}\n` : ""
+          // Rewriting this file on every track churns the filesystem for no gain
+          // (measurable on Windows where every write can trigger AV re-scans).
+          if ((yield* read(target)) === next) return
           yield* fs.ensureDir(path.join(state.gitdir, "info")).pipe(Effect.orDie)
-          yield* fs.writeFileString(target, text ? `${text}\n` : "").pipe(Effect.orDie)
+          yield* fs.writeFileString(target, next).pipe(Effect.orDie)
         })
 
         // Reuse the hashes for the git storage between the original repo and snapshot
@@ -252,31 +265,41 @@ const layer: Layer.Layer<Service, never, FSUtil.Service | AppProcess.Service | C
               otherCode: other.code,
               otherStderr: other.stderr,
             })
-            return
+            return { changed: false }
           }
 
           const tracked = diff.text.split("\0").filter(Boolean)
           const untracked = other.text.split("\0").filter(Boolean)
           const all = Array.from(new Set([...tracked, ...untracked]))
-          if (!all.length) return
+          // Nothing changed since the last scan: skip ignore resolution,
+          // stats, and staging entirely.
+          if (!all.length) return { changed: false }
 
           // Resolve source-repo ignore rules against the exact candidate set.
           // --no-index keeps this pattern-based even when a path is already tracked.
           const ignored = yield* ignore(all)
+          let changed = false
 
           // Remove newly-ignored files from snapshot index to prevent re-adding
           if (ignored.size > 0) {
             const ignoredFiles = Array.from(ignored)
             yield* Effect.logInfo("removing gitignored files from snapshot", { count: ignoredFiles.length })
             yield* drop(ignoredFiles)
+            changed = true
           }
 
           const allow = all.filter((item) => !ignored.has(item))
-          if (!allow.length) return
+          if (!allow.length) {
+            // The index moved without a matching write-tree, so any cached tree
+            // is now stale.
+            if (changed) lastTrees.delete(state.gitdir)
+            return { changed }
+          }
 
+          // The 2MB cap only blocks untracked files, so only those need a stat.
           const large = new Set(
             (yield* Effect.all(
-              allow.map((item) =>
+              untracked.map((item) =>
                 fs
                   .stat(path.join(state.worktree, item))
                   .pipe(Effect.catch(() => Effect.void))
@@ -294,7 +317,15 @@ const layer: Layer.Layer<Service, never, FSUtil.Service | AppProcess.Service | C
           const block = new Set(untracked.filter((item) => large.has(item)))
           yield* sync(Array.from(block))
           // Stage only the allowed candidate paths so snapshot updates stay scoped.
-          yield* stage(allow.filter((item) => !block.has(item)))
+          const stageFiles = allow.filter((item) => !block.has(item))
+          if (stageFiles.length) {
+            yield* stage(stageFiles)
+            changed = true
+          }
+          // The index moved without a matching write-tree, so any cached tree is
+          // now stale.
+          if (changed) lastTrees.delete(state.gitdir)
+          return { changed }
         })
 
         const cleanup = Effect.fnUntraced(function* () {
@@ -302,7 +333,9 @@ const layer: Layer.Layer<Service, never, FSUtil.Service | AppProcess.Service | C
             Effect.gen(function* () {
               if (!(yield* enabled())) return
               if (!(yield* exists(state.gitdir))) return
-              const result = yield* git(args(["gc", `--prune=${prune}`]), { cwd: state.directory })
+              // --auto only repacks when enough loose objects accumulated, so the
+              // hourly tick is a cheap no-op most of the time instead of a full gc.
+              const result = yield* git(args(["gc", "--auto", `--prune=${prune}`]), { cwd: state.directory })
               if (result.code !== 0) {
                 yield* Effect.logWarning("cleanup failed", {
                   exitCode: result.code,
@@ -325,31 +358,50 @@ const layer: Layer.Layer<Service, never, FSUtil.Service | AppProcess.Service | C
                 yield* git(["init"], {
                   env: { GIT_DIR: state.gitdir, GIT_WORK_TREE: state.worktree },
                 })
-                yield* git(["--git-dir", state.gitdir, "config", "core.autocrlf", "false"])
-                yield* git(["--git-dir", state.gitdir, "config", "core.longpaths", "true"])
-                yield* git(["--git-dir", state.gitdir, "config", "core.symlinks", "true"])
-                yield* git(["--git-dir", state.gitdir, "config", "core.fsmonitor", "false"])
-                // Tuning for very large worktrees so the first add stays bounded.
-                yield* git(["--git-dir", state.gitdir, "config", "feature.manyFiles", "true"])
-                yield* git(["--git-dir", state.gitdir, "config", "index.version", "4"])
-                yield* git(["--git-dir", state.gitdir, "config", "index.threads", "true"])
-                yield* git(["--git-dir", state.gitdir, "config", "core.untrackedCache", "true"])
+                // Write the shadow-repo tuning in one file write; eight sequential
+                // `git config` spawns cost ~25ms each on Windows.
+                const config = [
+                  "[core]",
+                  "\tautocrlf = false",
+                  "\tlongpaths = true",
+                  "\tsymlinks = true",
+                  "\tfsmonitor = false",
+                  "\tuntrackedCache = true",
+                  "[index]",
+                  "\tversion = 4",
+                  "\tthreads = true",
+                  "[feature]",
+                  "\tmanyFiles = true",
+                  "",
+                ].join("\n")
+                const configPath = path.join(state.gitdir, "config")
+                yield* fs.writeFileString(configPath, (yield* read(configPath)) + config).pipe(Effect.orDie)
                 yield* seed()
                 yield* Effect.logInfo("initialized")
               }
-              yield* add()
-              const result = yield* git(args(["write-tree"]), { cwd: state.directory })
-              const hash = result.text.trim()
+              const result = yield* add()
+              // Nothing changed since the last scan and we already know the tree:
+              // skip the write-tree, which re-reads the full index.
+              const cached = lastTrees.get(state.gitdir)
+              if (!result.changed && cached) {
+                yield* Effect.logInfo("tracking", { hash: cached, cwd: state.directory, git: state.gitdir })
+                return cached
+              }
+              const tree = yield* git(args(["write-tree"]), { cwd: state.directory })
+              const hash = tree.text.trim()
+              if (hash) lastTrees.set(state.gitdir, hash)
               yield* Effect.logInfo("tracking", { hash, cwd: state.directory, git: state.gitdir })
               return hash
             }),
           )
         })
 
-        const patch = Effect.fnUntraced(function* (hash: string) {
+        const patch = Effect.fnUntraced(function* (hash: string, options?: { refresh?: boolean }) {
           return yield* locked(
             Effect.gen(function* () {
-              yield* add()
+              // Callers that tracked immediately before already have a fresh index;
+              // refreshing again re-runs the full worktree scan for nothing.
+              if (options?.refresh !== false) yield* add()
               const result = yield* git(
                 [...quote, ...args(["diff", "--cached", "--no-ext-diff", "--name-only", hash, "--", "."])],
                 {
@@ -382,6 +434,9 @@ const layer: Layer.Layer<Service, never, FSUtil.Service | AppProcess.Service | C
         const restore = Effect.fnUntraced(function* (snapshot: string) {
           return yield* locked(
             Effect.gen(function* () {
+              // read-tree replaces the shadow index behind the cache's back, so the
+              // cached tree no longer describes it.
+              lastTrees.delete(state.gitdir)
               yield* Effect.logInfo("restore", { commit: snapshot })
               const result = yield* git([...core, ...args(["read-tree", snapshot])], { cwd: state.worktree })
               if (result.code === 0) {
@@ -408,6 +463,9 @@ const layer: Layer.Layer<Service, never, FSUtil.Service | AppProcess.Service | C
         const revert = Effect.fnUntraced(function* (patches: Patch[]) {
           return yield* locked(
             Effect.gen(function* () {
+              // `git checkout <tree> -- <file>` below updates the shadow index, so
+              // the cached tree no longer describes it.
+              lastTrees.delete(state.gitdir)
               const ops: { hash: string; file: string; rel: string }[] = []
               const seen = new Set<string>()
               for (const item of patches) {
@@ -779,8 +837,8 @@ const layer: Layer.Layer<Service, never, FSUtil.Service | AppProcess.Service | C
       track: Effect.fn("Snapshot.track")(function* () {
         return yield* InstanceState.useEffect(state, (s) => s.track())
       }),
-      patch: Effect.fn("Snapshot.patch")(function* (hash: string) {
-        return yield* InstanceState.useEffect(state, (s) => s.patch(hash))
+      patch: Effect.fn("Snapshot.patch")(function* (hash: string, options?: { refresh?: boolean }) {
+        return yield* InstanceState.useEffect(state, (s) => s.patch(hash, options))
       }),
       restore: Effect.fn("Snapshot.restore")(function* (snapshot: string) {
         return yield* InstanceState.useEffect(state, (s) => s.restore(snapshot))

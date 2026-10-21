@@ -164,6 +164,47 @@ describe("Snapshot", () => {
       (tmp) => Effect.promise(() => tmp[Symbol.asyncDispose]()),
     ),
   )
+  testEffect(Layer.empty).live("reuses the captured tree while nothing changed", () =>
+    Effect.acquireUseRelease(
+      Effect.promise(() => tmpdir()),
+      (tmp) =>
+        Effect.gen(function* () {
+          const project = path.join(tmp.path, "project")
+          yield* Effect.promise(async () => {
+            await fs.mkdir(project)
+            await fs.writeFile(path.join(project, "tracked.txt"), "one\n")
+            await $`git init`.cwd(project).quiet()
+            await $`git config core.fsmonitor false`.cwd(project).quiet()
+            await $`git config commit.gpgsign false`.cwd(project).quiet()
+            await $`git config user.email test@opencode.test`.cwd(project).quiet()
+            await $`git config user.name Test`.cwd(project).quiet()
+            await $`git add .`.cwd(project).quiet()
+            await $`git commit -m initial`.cwd(project).quiet()
+          })
+
+          const layer = snapshotLayer(tmp.path, project)
+          yield* Effect.gen(function* () {
+            const snapshot = yield* Snapshot.Service
+            const first = yield* snapshot.capture()
+            expect(first).toBeDefined()
+            const second = yield* snapshot.capture()
+            expect(second).toBe(first)
+            yield* Effect.promise(async () => {
+              await fs.writeFile(path.join(project, "tracked.txt"), "two\n")
+            })
+            const third = yield* snapshot.capture()
+            expect(third).toBeDefined()
+            expect(third).not.toBe(first)
+            // Checking out an older tree rewrites the shadow index, so the next
+            // capture must recompute instead of reusing the cached tree.
+            yield* snapshot.checkout(first!)
+            const restored = yield* snapshot.capture()
+            expect(restored).toBe(first)
+          }).pipe(Effect.provide(layer))
+        }),
+      (tmp) => Effect.promise(() => tmp[Symbol.asyncDispose]()),
+    ),
+  )
 })
 
 function snapshotLayer(data: string, directory: string) {

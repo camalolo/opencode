@@ -174,6 +174,7 @@ const layer = Layer.effect(
       sessionID: SessionSchema.ID,
       promotion: SessionInput.Delivery | undefined,
       step: number,
+      startSnapshot: Snapshot.ID | undefined,
       recoverOverflow?: typeof compaction.compactAfterOverflow,
     ) {
       const session = yield* getSession(sessionID)
@@ -214,7 +215,9 @@ const layer = Layer.effect(
       })
       if (yield* compaction.compactIfNeeded({ sessionID: session.id, entries, model, request }))
         return yield* Effect.die(continueAfterCompaction(currentStep))
-      const startSnapshot = yield* snapshots.capture()
+      // Nothing writes to the worktree between turns (only the provider round
+      // trip), so the previous turn's end capture describes the same tree.
+      const startSnapshotHash: Snapshot.ID | undefined = startSnapshot ?? (yield* snapshots.capture())
       const publisher = createLLMEventPublisher(events, {
         sessionID: session.id,
         agent: agent.id,
@@ -223,7 +226,7 @@ const layer = Layer.effect(
           providerID: ProviderV2.ID.make(model.provider),
           ...(session.model?.variant === undefined ? {} : { variant: session.model.variant }),
         },
-        snapshot: startSnapshot,
+        snapshot: startSnapshotHash,
       })
       const withPublication = Semaphore.makeUnsafe(1).withPermit
       const publish = (event: LLMEvent, outputPaths: ReadonlyArray<string> = []) =>
@@ -313,15 +316,18 @@ const layer = Layer.effect(
             const message = failure instanceof Error ? failure.message : String(failure)
             yield* withPublication(publisher.failUnsettledTools(`Tool execution failed: ${message}`))
           }
+          let endSnapshotHash: Snapshot.ID | undefined
           const stepSettlement = publisher.stepSettlement()
           if (stepSettlement && !publisher.hasProviderError()) {
-            const endSnapshot = yield* snapshots.capture()
+            endSnapshotHash = yield* snapshots.capture()
             const files =
-              startSnapshot && endSnapshot
+              startSnapshotHash && endSnapshotHash && startSnapshotHash !== endSnapshotHash
                 ? yield* snapshots
-                    .files({ from: startSnapshot, to: endSnapshot })
+                    .files({ from: startSnapshotHash, to: endSnapshotHash })
                     .pipe(Effect.catch(() => Effect.succeed(undefined)))
-                : undefined
+                : startSnapshotHash && endSnapshotHash
+                  ? []
+                  : undefined
             yield* withPublication(
               events.publish(SessionEvent.Step.Ended, {
                 sessionID: session.id,
@@ -330,7 +336,7 @@ const layer = Layer.effect(
                 finish: stepSettlement.finish,
                 cost: 0,
                 tokens: stepSettlement.tokens,
-                snapshot: endSnapshot,
+                snapshot: endSnapshotHash,
                 files,
               }),
             )
@@ -342,7 +348,11 @@ const layer = Layer.effect(
           if (stream._tag === "Failure") return yield* Effect.failCause(stream.cause)
           if (settled._tag === "Failure" && Cause.hasInterrupts(settled.cause))
             return yield* Effect.failCause(settled.cause)
-          return { needsContinuation: !publisher.hasProviderError() && needsContinuation, step: currentStep }
+          return {
+            needsContinuation: !publisher.hasProviderError() && needsContinuation,
+            step: currentStep,
+            snapshot: endSnapshotHash ?? startSnapshotHash,
+          }
         }),
       )
     }, Effect.scoped)
@@ -350,31 +360,35 @@ const layer = Layer.effect(
       sessionID: SessionSchema.ID,
       promotion: SessionInput.Delivery | undefined,
       step: number,
-    ) => Effect.Effect<{ readonly needsContinuation: boolean; readonly step: number }, RunError>
+      startSnapshot: Snapshot.ID | undefined,
+    ) => Effect.Effect<
+      { readonly needsContinuation: boolean; readonly step: number; readonly snapshot: Snapshot.ID | undefined },
+      RunError
+    >
 
-    const runAfterOverflowCompaction: RunTurn = Effect.fnUntraced(function* (sessionID, promotion, step) {
-      return yield* runTurnAttempt(sessionID, promotion, step).pipe(
+    const runAfterOverflowCompaction: RunTurn = Effect.fnUntraced(function* (sessionID, promotion, step, startSnapshot) {
+      return yield* runTurnAttempt(sessionID, promotion, step, startSnapshot).pipe(
         Effect.catchDefect(
           Effect.fnUntraced(function* (defect) {
             if (!(defect instanceof TurnTransitionError)) return yield* Effect.die(defect)
             if (defect.transition._tag === "ContinueAfterOverflowCompaction")
               return yield* Effect.die("Post-compaction provider attempt cannot recover another overflow")
             yield* Effect.yieldNow
-            return yield* runAfterOverflowCompaction(sessionID, undefined, defect.transition.step)
+            return yield* runAfterOverflowCompaction(sessionID, undefined, defect.transition.step, startSnapshot)
           }),
         ),
       )
     })
 
-    const runTurn: RunTurn = Effect.fnUntraced(function* (sessionID, promotion, step) {
-      return yield* runTurnAttempt(sessionID, promotion, step, compaction.compactAfterOverflow).pipe(
+    const runTurn: RunTurn = Effect.fnUntraced(function* (sessionID, promotion, step, startSnapshot) {
+      return yield* runTurnAttempt(sessionID, promotion, step, startSnapshot, compaction.compactAfterOverflow).pipe(
         Effect.catchDefect(
           Effect.fnUntraced(function* (defect) {
             if (!(defect instanceof TurnTransitionError)) return yield* Effect.die(defect)
             yield* Effect.yieldNow
             if (defect.transition._tag === "ContinueAfterOverflowCompaction")
-              return yield* runAfterOverflowCompaction(sessionID, undefined, defect.transition.step)
-            return yield* runTurn(sessionID, undefined, defect.transition.step)
+              return yield* runAfterOverflowCompaction(sessionID, undefined, defect.transition.step, startSnapshot)
+            return yield* runTurn(sessionID, undefined, defect.transition.step, startSnapshot)
           }),
         ),
       )
@@ -393,10 +407,12 @@ const layer = Layer.effect(
       while (shouldRun) {
         let needsContinuation = true
         let step = 1
+        let lastSnapshot: Snapshot.ID | undefined
         while (needsContinuation) {
-          const result = yield* runTurn(input.sessionID, promotion, step)
+          const result = yield* runTurn(input.sessionID, promotion, step, lastSnapshot)
           needsContinuation = result.needsContinuation
           step = result.step + 1
+          lastSnapshot = result.snapshot
           promotion = "steer"
           if (!needsContinuation) needsContinuation = yield* SessionInput.hasPending(db, input.sessionID, "steer")
         }

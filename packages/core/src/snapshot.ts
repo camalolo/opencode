@@ -83,6 +83,10 @@ export interface Interface {
 
 export class Service extends Context.Service<Service, Interface>()("@opencode/v2/Snapshot") {}
 
+// Last captured tree per shadow gitdir. Keyed by gitdir because Locations in
+// different subdirectories of one worktree share the same shadow repository.
+const lastTrees = new Map<string, Git.TreeID>()
+
 const layer = Layer.effect(
   Service,
   Effect.gen(function* () {
@@ -130,14 +134,15 @@ const layer = Layer.effect(
       if (!(yield* enabled())) return undefined
       return yield* Effect.gen(function* () {
         const repo = yield* repository()
-        return ID.make(
-          yield* git.tree.capture({
-            repository: repo,
-            scopes: [yield* scope()],
-            ignores: source,
-            maximumUntrackedFileBytes: 2 * 1024 * 1024,
-          }),
-        )
+        const tree = yield* git.tree.capture({
+          repository: repo,
+          scopes: [yield* scope()],
+          ignores: source,
+          maximumUntrackedFileBytes: 2 * 1024 * 1024,
+          previous: lastTrees.get(gitDirectory),
+        })
+        lastTrees.set(gitDirectory, tree)
+        return ID.make(tree)
       }).pipe(
         Effect.catch((cause) => Effect.logWarning("failed to capture snapshot", { cause }).pipe(Effect.as(undefined))),
       )
@@ -190,6 +195,9 @@ const layer = Layer.effect(
       if (!(yield* enabled())) return yield* new Error({ operation: "preview", message: "Snapshots are disabled" })
       const repo = yield* repository().pipe(Effect.mapError((cause) => failure("preview", cause)))
       const files = yield* plan("preview", input)
+      // tree.capture refreshes the real shadow index, so the cached tree becomes
+      // stale regardless of the preview outcome.
+      lastTrees.delete(gitDirectory)
       const current = yield* git.tree
         .capture({
           repository: repo,
@@ -211,12 +219,17 @@ const layer = Layer.effect(
     const restore = Effect.fn("Snapshot.restore")(function* (input: RestoreInput) {
       if (!(yield* enabled())) return yield* new Error({ operation: "restore", message: "Snapshots are disabled" })
       const repo = yield* repository().pipe(Effect.mapError((cause) => failure("restore", cause)))
+      // `git checkout <tree> -- <file>` inside tree.restore updates the shadow
+      // index, so the cached tree no longer describes it.
+      lastTrees.delete(gitDirectory)
       yield* git.tree
         .restore({ repository: repo, files: yield* plan("restore", input) })
         .pipe(Effect.mapError((cause) => failure("restore", cause)))
     })
 
     const checkout = Effect.fn("Snapshot.checkout")(function* (snapshot: ID) {
+      // read-tree replaces the shadow index behind the cache's back.
+      lastTrees.delete(gitDirectory)
       const repo = yield* repository().pipe(Effect.mapError((cause) => failure("restore", cause)))
       yield* git.tree
         .checkout({ repository: repo, tree: Git.TreeID.make(snapshot) })

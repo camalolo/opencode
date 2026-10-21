@@ -1216,3 +1216,70 @@ it.instance(
   }),
   { git: true },
 )
+
+it.live(
+  "unchanged tracks reuse the previous tree hash",
+  Effect.gen(function* () {
+    const dir = yield* scopedGitTmpdir()
+    yield* write(`${dir}/a.txt`, "initial")
+    yield* exec(dir, ["git", "add", "."])
+    yield* exec(dir, ["git", "commit", "-m", "init"])
+    yield* Effect.gen(function* () {
+      const snapshot = yield* Snapshot.Service
+      const first = yield* snapshot.track()
+      expect(first).toBeTruthy()
+      const second = yield* snapshot.track()
+      expect(second).toBe(first)
+    }).pipe(provideInstance(dir))
+  }),
+)
+
+it.live(
+  "restore invalidates the tracked tree cache",
+  Effect.gen(function* () {
+    const dir = yield* scopedGitTmpdir()
+    yield* write(`${dir}/a.txt`, "initial")
+    yield* exec(dir, ["git", "add", "."])
+    yield* exec(dir, ["git", "commit", "-m", "init"])
+    yield* Effect.gen(function* () {
+      const snapshot = yield* Snapshot.Service
+      const before = yield* snapshot.track()
+      expect(before).toBeTruthy()
+      yield* write(`${dir}/a.txt`, "changed")
+      const after = yield* snapshot.track()
+      expect(after).not.toBe(before)
+      yield* snapshot.restore(before!)
+      // The worktree matches the original snapshot again, so the next track must
+      // produce its tree hash instead of reusing the modified tree's.
+      const restored = yield* snapshot.track()
+      expect(restored).toBe(before)
+    }).pipe(provideInstance(dir))
+  }),
+)
+
+it.live(
+  "patch without refresh sees changes staged by the preceding track",
+  Effect.gen(function* () {
+    const dir = yield* scopedGitTmpdir()
+    yield* write(`${dir}/a.txt`, "initial")
+    yield* write(`${dir}/gone.txt`, "initial")
+    yield* exec(dir, ["git", "add", "."])
+    yield* exec(dir, ["git", "commit", "-m", "init"])
+    yield* Effect.gen(function* () {
+      const snapshot = yield* Snapshot.Service
+      const before = yield* snapshot.track()
+      expect(before).toBeTruthy()
+      yield* write(`${dir}/a.txt`, "changed")
+      yield* write(`${dir}/new.txt`, "new")
+      yield* rm(`${dir}/gone.txt`)
+      const hash = yield* snapshot.track()
+      expect(hash).toBeTruthy()
+      // Mirrors the processor's fused step-finish flow: diff the baseline hash
+      // against the index that track() just refreshed, without rescanning.
+      const patch = yield* snapshot.patch(before!, { refresh: false })
+      expect(patch.files).toContain(fwd(dir, "a.txt"))
+      expect(patch.files).toContain(fwd(dir, "new.txt"))
+      expect(patch.files).toContain(fwd(dir, "gone.txt"))
+    }).pipe(provideInstance(dir))
+  }),
+)
