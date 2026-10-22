@@ -8,22 +8,15 @@ import { Dialog as DialogV2, DialogBody, DialogHeader, DialogTitleGroup } from "
 import { Icon as IconV2 } from "@opencode-ai/ui/v2/icon"
 import { IconButtonV2 } from "@opencode-ai/ui/v2/icon-button-v2"
 import { TextInputV2 } from "@opencode-ai/ui/v2/text-input-v2"
-import { Switch as SwitchV2 } from "@opencode-ai/ui/v2/switch-v2"
-import { SelectV2 } from "@opencode-ai/ui/v2/select-v2"
-import { TooltipV2 } from "@opencode-ai/ui/v2/tooltip-v2"
-import { ProviderIcon } from "@opencode-ai/ui/provider-icon"
 import { useFilteredList } from "@opencode-ai/ui/hooks"
-import { For, Show, createMemo, type Component } from "solid-js"
-import { createStore } from "solid-js/store"
+import { Show, type Component } from "solid-js"
 import { useLocal } from "@/context/local"
-import { useModels } from "@/context/models"
 import { popularProviders } from "@/hooks/use-providers"
 import { useLanguage } from "@/context/language"
 import { useDialog } from "@opencode-ai/ui/context/dialog"
 import { DialogConnectProvider } from "./dialog-connect-provider"
 import { decode64 } from "@/utils/base64"
-import { SettingsListV2 } from "./settings-v2/parts/list"
-import { SettingsRowV2 } from "./settings-v2/parts/row"
+import { ModelsProviderGroups } from "./settings-v2/models-groups"
 import "./settings-v2/settings-v2.css"
 
 type ModelItem = ReturnType<ReturnType<typeof useLocal>["model"]["list"]>[number]
@@ -129,22 +122,6 @@ export const DialogManageModelsV2: Component = () => {
   const handleConnectProvider = () => {
     void dialog.show(() => <DialogConnectProvider directory={directory} />)
   }
-  const providerList = (providerID: string) => local.model.list().filter((x) => x.provider.id === providerID)
-  // A provider is active as soon as one of its models is enabled. The list
-  // collapses exactly when no model is enabled; checking the provider on a
-  // collapsed group only reveals the rows so the first model can be picked
-  // without bulk-enabling everything.
-  const providerActive = (providerID: string) =>
-    providerList(providerID).some((x) => local.model.visible({ modelID: x.id, providerID: x.provider.id }))
-  const setProviderVisibility = (providerID: string, checked: boolean) => {
-    providerList(providerID).forEach((x) => {
-      local.model.setVisibility({ modelID: x.id, providerID: x.provider.id }, checked)
-    })
-  }
-  const [revealed, setRevealed] = createStore({} as Record<string, boolean>)
-  const setModelVisibility = (item: ModelItem, checked: boolean) => {
-    local.model.setVisibility({ modelID: item.id, providerID: item.provider.id }, checked)
-  }
   const list = useFilteredList<ModelItem>({
     items: () => local.model.list(),
     key: (x) => `${x.provider.id}:${x.id}`,
@@ -225,105 +202,12 @@ export const DialogManageModelsV2: Component = () => {
                   </div>
                 }
               >
-                <For each={list.grouped.latest}>
-                  {(group) => {
-                    const expanded = () => providerActive(group.category) || !!revealed[group.category]
-                    return (
-                      <div class="settings-v2-section" data-component="settings-models-provider">
-                        <div class="settings-v2-models-group-header justify-between">
-                          <div class="flex min-w-0 items-center gap-2">
-                            <ProviderIcon id={group.category} width={16} height={16} class="ml-4 shrink-0" />
-                            <h3 class="settings-v2-section-title">{group.items[0].provider.name}</h3>
-                          </div>
-                          <div>
-                            <SwitchV2
-                              class="mr-6"
-                              checked={expanded()}
-                              onChange={(checked) => {
-                                if (checked) {
-                                  setRevealed(group.category, true)
-                                  return
-                                }
-                                setRevealed(group.category, false)
-                                setProviderVisibility(group.category, false)
-                              }}
-                              hideLabel
-                            >
-                              {group.items[0].provider.name}
-                            </SwitchV2>
-                          </div>
-                        </div>
-                        <Show when={expanded()}>
-                          <SettingsListV2>
-                            <For each={group.items}>
-                              {(item) => (
-                                <SettingsRowV2 title={item.name} description="">
-                                  <div class="flex items-center gap-2">
-                                    <Show when={modelVariants(item).length > 0}>
-                                      <ModelVariantSelect item={item} />
-                                    </Show>
-                                    <div>
-                                      <SwitchV2
-                                        checked={local.model.visible({ modelID: item.id, providerID: item.provider.id })}
-                                        onChange={(checked) => setModelVisibility(item, checked)}
-                                        hideLabel
-                                      >
-                                        {item.name}
-                                      </SwitchV2>
-                                    </div>
-                                  </div>
-                                </SettingsRowV2>
-                              )}
-                            </For>
-                          </SettingsListV2>
-                        </Show>
-                      </div>
-                    )
-                  }}
-                </For>
+                <ModelsProviderGroups groups={list.grouped.latest} searching={() => !!list.filter()} />
               </Show>
             </Show>
           </div>
         </div>
       </DialogBody>
     </DialogV2>
-  )
-}
-
-function modelVariants(item: ModelItem) {
-  return Object.keys(item.variants ?? {})
-}
-
-type VariantOption = { id: string; value?: string }
-
-function ModelVariantSelect(props: { item: ModelItem }) {
-  const models = useModels()
-  const language = useLanguage()
-  const options = createMemo<VariantOption[]>(() => [
-    { id: "default" },
-    ...modelVariants(props.item).map((value) => ({ id: value, value })),
-  ])
-  const current = () => {
-    const saved = models.variant.get({ providerID: props.item.provider.id, modelID: props.item.id })
-    return options().find((option) => option.value === saved) ?? options()[0]
-  }
-  const label = (option: VariantOption) =>
-    option.value ? option.value.charAt(0).toUpperCase() + option.value.slice(1) : language.t("common.default")
-  return (
-    <TooltipV2 value={language.t("dialog.model.manage.reasoning")} placement="bottom" gutter={6}>
-      <SelectV2
-        appearance="inline"
-        data-action="manage-models-reasoning"
-        options={options()}
-        current={current()}
-        value={(option) => option.id}
-        label={label}
-        onSelect={(option) =>
-          models.variant.set({ providerID: props.item.provider.id, modelID: props.item.id }, option?.value)
-        }
-        placement="bottom-end"
-        gutter={6}
-      />
-    </TooltipV2>
   )
 }
