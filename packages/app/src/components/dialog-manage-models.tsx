@@ -9,11 +9,14 @@ import { Icon as IconV2 } from "@opencode-ai/ui/v2/icon"
 import { IconButtonV2 } from "@opencode-ai/ui/v2/icon-button-v2"
 import { TextInputV2 } from "@opencode-ai/ui/v2/text-input-v2"
 import { Switch as SwitchV2 } from "@opencode-ai/ui/v2/switch-v2"
+import { SelectV2 } from "@opencode-ai/ui/v2/select-v2"
+import { TooltipV2 } from "@opencode-ai/ui/v2/tooltip-v2"
 import { ProviderIcon } from "@opencode-ai/ui/provider-icon"
 import { useFilteredList } from "@opencode-ai/ui/hooks"
-import { For, Show, type Component } from "solid-js"
+import { For, Show, createMemo, type Component } from "solid-js"
 import { createStore } from "solid-js/store"
 import { useLocal } from "@/context/local"
+import { useModels } from "@/context/models"
 import { popularProviders } from "@/hooks/use-providers"
 import { useLanguage } from "@/context/language"
 import { useDialog } from "@opencode-ai/ui/context/dialog"
@@ -255,14 +258,19 @@ export const DialogManageModelsV2: Component = () => {
                             <For each={group.items}>
                               {(item) => (
                                 <SettingsRowV2 title={item.name} description="">
-                                  <div>
-                                    <SwitchV2
-                                      checked={local.model.visible({ modelID: item.id, providerID: item.provider.id })}
-                                      onChange={(checked) => setModelVisibility(item, checked)}
-                                      hideLabel
-                                    >
-                                      {item.name}
-                                    </SwitchV2>
+                                  <div class="flex items-center gap-2">
+                                    <Show when={modelVariants(item).length > 0}>
+                                      <ModelVariantSelect item={item} />
+                                    </Show>
+                                    <div>
+                                      <SwitchV2
+                                        checked={local.model.visible({ modelID: item.id, providerID: item.provider.id })}
+                                        onChange={(checked) => setModelVisibility(item, checked)}
+                                        hideLabel
+                                      >
+                                        {item.name}
+                                      </SwitchV2>
+                                    </div>
                                   </div>
                                 </SettingsRowV2>
                               )}
@@ -279,5 +287,43 @@ export const DialogManageModelsV2: Component = () => {
         </div>
       </DialogBody>
     </DialogV2>
+  )
+}
+
+function modelVariants(item: ModelItem) {
+  return Object.keys(item.variants ?? {})
+}
+
+type VariantOption = { id: string; value?: string }
+
+function ModelVariantSelect(props: { item: ModelItem }) {
+  const models = useModels()
+  const language = useLanguage()
+  const options = createMemo<VariantOption[]>(() => [
+    { id: "default" },
+    ...modelVariants(props.item).map((value) => ({ id: value, value })),
+  ])
+  const current = () => {
+    const saved = models.variant.get({ providerID: props.item.provider.id, modelID: props.item.id })
+    return options().find((option) => option.value === saved) ?? options()[0]
+  }
+  const label = (option: VariantOption) =>
+    option.value ? option.value.charAt(0).toUpperCase() + option.value.slice(1) : language.t("common.default")
+  return (
+    <TooltipV2 value={language.t("dialog.model.manage.reasoning")} placement="bottom" gutter={6}>
+      <SelectV2
+        appearance="inline"
+        data-action="manage-models-reasoning"
+        options={options()}
+        current={current()}
+        value={(option) => option.id}
+        label={label}
+        onSelect={(option) =>
+          models.variant.set({ providerID: props.item.provider.id, modelID: props.item.id }, option?.value)
+        }
+        placement="bottom-end"
+        gutter={6}
+      />
+    </TooltipV2>
   )
 }

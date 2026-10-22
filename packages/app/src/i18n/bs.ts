@@ -174,6 +174,7 @@ export const dict = {
   "command.agent.cycle.reverse.description": "Prebaci na prethodnog agenta",
   "command.model.variant.cycle": "Promijeni nivo razmišljanja",
   "command.model.variant.cycle.description": "Prebaci na sljedeći nivo",
+  "command.model.variant.cycle.feedback": "Nivo razmišljanja: {{level}}",
   "command.prompt.mode.shell": "Shell",
   "command.prompt.mode.normal": "Prompt",
   "command.permissions.autoaccept.enable": "Automatski prihvati dozvole",
@@ -223,6 +224,7 @@ export const dict = {
   "dialog.model.empty": "Nema rezultata za modele",
   "dialog.model.manage": "Upravljaj modelima",
   "dialog.model.manage.description": "Prilagodi koji se modeli prikazuju u izborniku modela.",
+  "dialog.model.manage.reasoning": "Nivo razmišljanja",
   "dialog.model.manage.provider.toggle": "Uključi/isključi sve {{provider}} modele",
 
   "dialog.model.unpaid.freeModels.title": "Besplatni modeli koje obezbjeđuje OpenCode",

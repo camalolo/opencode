@@ -173,6 +173,7 @@ export const dict = {
   "command.agent.cycle.reverse.description": "Переключиться к предыдущему агенту",
   "command.model.variant.cycle": "Переключить уровень усилий",
   "command.model.variant.cycle.description": "Переключиться к следующему уровню усилий",
+  "command.model.variant.cycle.feedback": "Уровень усилий: {{level}}",
   "command.prompt.mode.shell": "Оболочка",
   "command.prompt.mode.normal": "Промпт",
   "command.permissions.autoaccept.enable": "Автоматически принимать разрешения",
@@ -222,6 +223,7 @@ export const dict = {
   "dialog.model.empty": "Модели не найдены",
   "dialog.model.manage": "Управление моделями",
   "dialog.model.manage.description": "Настройте, какие модели отображаются при выборе модели",
+  "dialog.model.manage.reasoning": "Уровень усилий",
   "dialog.model.manage.provider.toggle": "Переключить все модели {{provider}}",
 
   "dialog.model.unpaid.freeModels.title": "Бесплатные модели от OpenCode",

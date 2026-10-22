@@ -174,6 +174,7 @@ export const dict = {
   "command.agent.cycle.reverse.description": "Cambiar al agente anterior",
   "command.model.variant.cycle": "Cambiar esfuerzo de razonamiento",
   "command.model.variant.cycle.description": "Cambiar al siguiente nivel de esfuerzo",
+  "command.model.variant.cycle.feedback": "Esfuerzo de razonamiento: {{level}}",
   "command.prompt.mode.shell": "Shell",
   "command.prompt.mode.normal": "Prompt",
   "command.permissions.autoaccept.enable": "Aceptar permisos automáticamente",
@@ -223,6 +224,7 @@ export const dict = {
   "dialog.model.empty": "Sin resultados de modelos",
   "dialog.model.manage": "Gestionar modelos",
   "dialog.model.manage.description": "Personalizar qué modelos aparecen en el selector de modelos.",
+  "dialog.model.manage.reasoning": "Esfuerzo de razonamiento",
   "dialog.model.manage.provider.toggle": "Mostrar u ocultar todos los modelos de {{provider}}",
 
   "dialog.model.unpaid.freeModels.title": "Modelos gratuitos proporcionados por OpenCode",

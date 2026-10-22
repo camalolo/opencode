@@ -176,6 +176,7 @@ export const dict = {
   "command.agent.cycle.reverse.description": "切換到上一個代理程式",
   "command.model.variant.cycle": "切換思考強度",
   "command.model.variant.cycle.description": "切換到下一個強度等級",
+  "command.model.variant.cycle.feedback": "思考強度：{{level}}",
   "command.prompt.mode.shell": "Shell",
   "command.prompt.mode.normal": "Prompt",
   "command.permissions.autoaccept.enable": "自動接受權限",
@@ -225,6 +226,7 @@ export const dict = {
   "dialog.model.empty": "找不到模型",
   "dialog.model.manage": "管理模型",
   "dialog.model.manage.description": "自訂模型選擇器中顯示的模型。",
+  "dialog.model.manage.reasoning": "思考強度",
   "dialog.model.manage.provider.toggle": "切換所有 {{provider}} 模型",
 
   "dialog.model.unpaid.freeModels.title": "OpenCode 提供的免費模型",

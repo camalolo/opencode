@@ -178,6 +178,7 @@ export const dict = {
   "command.agent.cycle.reverse.description": "Önceki ajana geç",
   "command.model.variant.cycle": "Düşünme eforu değiştir",
   "command.model.variant.cycle.description": "Sonraki efor seviyesine geç",
+  "command.model.variant.cycle.feedback": "Düşünme eforu: {{level}}",
   "command.prompt.mode.shell": "Kabuk",
   "command.prompt.mode.normal": "İstem",
   "command.permissions.autoaccept.enable": "İzinleri otomatik kabul et",
@@ -227,6 +228,7 @@ export const dict = {
   "dialog.model.empty": "Model sonucu yok",
   "dialog.model.manage": "Modelleri yönet",
   "dialog.model.manage.description": "Model seçicide hangi modellerin görüneceğini özelleştirin.",
+  "dialog.model.manage.reasoning": "Düşünme eforu",
   "dialog.model.manage.provider.toggle": "Tüm {{provider}} modellerini aç/kapat",
 
   "dialog.model.unpaid.freeModels.title": "OpenCode tarafından sunulan ücretsiz modeller",

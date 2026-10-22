@@ -77,6 +77,7 @@ export const dict = {
   "command.agent.cycle.reverse.description": "Switch to the previous agent",
   "command.model.variant.cycle": "Cycle thinking effort",
   "command.model.variant.cycle.description": "Switch to the next effort level",
+  "command.model.variant.cycle.feedback": "Thinking effort: {{level}}",
   "command.prompt.mode.shell": "Shell",
   "command.prompt.mode.normal": "Prompt",
   "command.permissions.autoaccept.enable": "Auto-accept permissions",
@@ -126,6 +127,7 @@ export const dict = {
   "dialog.model.manage": "Manage models",
   "dialog.model.manage.description": "Customize which models appear in the model selector.",
   "dialog.model.manage.provider.toggle": "Toggle all {{provider}} models",
+  "dialog.model.manage.reasoning": "Thinking effort",
 
   "dialog.model.unpaid.freeModels.title": "Free models provided by OpenCode",
   "dialog.model.unpaid.addMore.title": "Add more models from popular providers",

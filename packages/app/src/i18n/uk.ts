@@ -174,6 +174,7 @@ export const dict = {
   "command.agent.cycle.reverse.description": "Перемкнути на попереднього агента",
   "command.model.variant.cycle": "Перемкнути рівень мислення",
   "command.model.variant.cycle.description": "Перемкнути на наступний рівень зусилля",
+  "command.model.variant.cycle.feedback": "Рівень мислення: {{level}}",
   "command.prompt.mode.shell": "Команда",
   "command.prompt.mode.normal": "Запит",
   "command.permissions.autoaccept.enable": "Автоматично приймати дозволи",
@@ -223,6 +224,7 @@ export const dict = {
   "dialog.model.empty": "Моделей не знайдено",
   "dialog.model.manage": "Керувати моделями",
   "dialog.model.manage.description": "Налаштуйте, які моделі відображатимуться у виборі моделей.",
+  "dialog.model.manage.reasoning": "Рівень мислення",
   "dialog.model.manage.provider.toggle": "Перемкнути всі моделі {{provider}}",
 
   "dialog.model.unpaid.freeModels.title": "Безкоштовні моделі від OpenCode",

@@ -1,8 +1,10 @@
 import { useCommand, type CommandOption } from "@/context/command"
+import { cycleModelVariant } from "@/context/model-variant"
 import { useLanguage } from "@/context/language"
 import { useLocal, type ModelSelection } from "@/context/local"
 import { useDialog } from "@opencode-ai/ui/context/dialog"
 import { getCursorPosition, setCursorPosition } from "@/components/prompt-input/editor-dom"
+import { showToast } from "@/utils/toast"
 import { useSessionLayout } from "./session-layout"
 import { createSessionOwnership } from "./session-ownership"
 
@@ -60,7 +62,25 @@ export const useComposerCommands = (input: { model?: ModelSelection } = {}) => {
       title: language.t("command.model.variant.cycle"),
       description: language.t("command.model.variant.cycle.description"),
       keybind: "shift+mod+d",
-      onSelect: () => model.variant.cycle(),
+      onSelect: () => {
+        // The level is easy to change blind via the keybind, so announce the
+        // new value; the model button also shows it persistently. Compute the
+        // target instead of reading it back: the store write is deferred by
+        // startTransition, so an eager read would announce the stale level.
+        const variants = model.variant.list()
+        if (variants.length === 0) return
+        const next = cycleModelVariant({
+          variants,
+          selected: model.variant.selected(),
+          configured: model.variant.configured(),
+        })
+        model.variant.set(next)
+        showToast({
+          title: language.t("command.model.variant.cycle.feedback", {
+            level: next ? next.charAt(0).toUpperCase() + next.slice(1) : language.t("common.default"),
+          }),
+        })
+      },
     }),
     agentCommand({
       id: "agent.cycle",

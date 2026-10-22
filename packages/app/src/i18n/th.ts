@@ -172,6 +172,7 @@ export const dict = {
   "command.agent.cycle.reverse.description": "สลับไปยังเอเจนต์ก่อนหน้า",
   "command.model.variant.cycle": "เปลี่ยนความพยายามในการคิด",
   "command.model.variant.cycle.description": "สลับไปยังระดับความพยายามถัดไป",
+  "command.model.variant.cycle.feedback": "ความพยายามในการคิด: {{level}}",
   "command.prompt.mode.shell": "เชลล์",
   "command.prompt.mode.normal": "พรอมต์",
   "command.permissions.autoaccept.enable": "ยอมรับสิทธิ์โดยอัตโนมัติ",
@@ -221,6 +222,7 @@ export const dict = {
   "dialog.model.empty": "ไม่พบผลลัพธ์โมเดล",
   "dialog.model.manage": "จัดการโมเดล",
   "dialog.model.manage.description": "ปรับแต่งโมเดลที่จะปรากฏในตัวเลือกโมเดล",
+  "dialog.model.manage.reasoning": "ความพยายามในการคิด",
   "dialog.model.manage.provider.toggle": "สลับโมเดลทั้งหมดของ {{provider}}",
 
   "dialog.model.unpaid.freeModels.title": "โมเดลฟรีที่จัดหาให้โดย OpenCode",

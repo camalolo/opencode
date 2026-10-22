@@ -55,7 +55,6 @@ export function PromptInputV2Composer(props: PromptInputV2ComposerProps) {
         controller={props.controller}
         borderUnderlay={props.borderUnderlay}
         class={props.class}
-        variantControlVisible={!props.controller.model.loading}
         attachKeybind={command.keybindParts("file.attach")}
         attachShortcut={command.keybind("file.attach")}
         modelControl={
@@ -318,7 +317,6 @@ export function usePromptInputV2Controller(props: PromptInputV2ControllerProps):
       keybind: command.keybindParts(item.id),
     })),
   )
-  const variants = createMemo(() => ["default", ...props.controls.model.selection.variant.list()])
   const controller = createPromptInputV2Controller({
     store: () => prompt.capture().store,
     state: interaction,
@@ -393,12 +391,6 @@ export function usePromptInputV2Controller(props: PromptInputV2ControllerProps):
               keybind: () => command.keybindParts("agent.cycle"),
             }
           : undefined
-      },
-      variant: {
-        options: () => variants().map((value) => ({ id: value, label: value })),
-        current: () => props.controls.model.selection.variant.current() ?? "default",
-        onSelect: (value) => props.controls.model.selection.variant.set(value === "default" ? undefined : value),
-        keybind: () => command.keybindParts("model.variant.cycle"),
       },
       submit: {
         stopping,
@@ -480,6 +472,13 @@ function PromptInputV2ModelControl(props: {
   onUnpaidClick: () => void
 }) {
   const shouldAnimate = createMemo<boolean>((previous) => previous ?? props.loading)
+  // Surfacing the active level here keeps the cycle keybind observable: the
+  // level changes are otherwise invisible once the footer dropdown is gone.
+  const variantLabel = () => {
+    const value = props.model.variant.current()
+    if (!value) return
+    return value.charAt(0).toUpperCase() + value.slice(1)
+  }
   const content = () => (
     <>
       <Show when={props.providerID}>
@@ -492,6 +491,9 @@ function PromptInputV2ModelControl(props: {
         )}
       </Show>
       <span class="truncate leading-4">{props.modelName}</span>
+      <Show when={variantLabel()} keyed>
+        {(label) => <span class="shrink-0 leading-4 text-v2-text-text-faint">· {label}</span>}
+      </Show>
       <span class="-ml-0.5 -mr-1 flex shrink-0">
         <Icon name="chevron-down" />
       </span>
@@ -515,6 +517,7 @@ function PromptInputV2ModelControl(props: {
             <ButtonV2
               data-action="prompt-model"
               data-control-type="dialog"
+              data-prompt-variant={props.model.variant.current()}
               variant="ghost-muted"
               size="normal"
               class="min-w-0 max-w-[220px] justify-start ![font-weight:440] group"
@@ -538,6 +541,7 @@ function PromptInputV2ModelControl(props: {
                 classList={{ "animate-in fade-in": shouldAnimate() }}
                 data-action="prompt-model"
                 data-control-type="popover"
+                data-prompt-variant={props.model.variant.current()}
               >
                 {content()}
               </ButtonV2>

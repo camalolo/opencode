@@ -73,6 +73,7 @@ export const dict = {
   "command.agent.cycle.reverse.description": "Skift til forrige agent",
   "command.model.variant.cycle": "Skift tænkeindsats",
   "command.model.variant.cycle.description": "Skift til næste indsatsniveau",
+  "command.model.variant.cycle.feedback": "Tænkeindsats: {{level}}",
   "command.prompt.mode.shell": "Shell",
   "command.prompt.mode.normal": "Prompt",
   "command.permissions.autoaccept.enable": "Accepter tilladelser automatisk",
@@ -122,6 +123,7 @@ export const dict = {
   "dialog.model.empty": "Ingen modeller fundet",
   "dialog.model.manage": "Administrer modeller",
   "dialog.model.manage.description": "Tilpas hvilke modeller der vises i modelvælgeren.",
+  "dialog.model.manage.reasoning": "Tænkeindsats",
   "dialog.model.manage.provider.toggle": "Skift alle {{provider}}-modeller",
 
   "dialog.model.unpaid.freeModels.title": "Gratis modeller leveret af OpenCode",

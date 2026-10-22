@@ -174,6 +174,7 @@ export const dict = {
   "command.agent.cycle.reverse.description": "Beralih ke agen sebelumnya",
   "command.model.variant.cycle": "Ganti usaha berpikir",
   "command.model.variant.cycle.description": "Beralih ke tingkat usaha berikutnya",
+  "command.model.variant.cycle.feedback": "Usaha berpikir: {{level}}",
   "command.prompt.mode.shell": "Shell",
   "command.prompt.mode.normal": "Prompt",
   "command.permissions.autoaccept.enable": "Terima izin otomatis",
@@ -223,6 +224,7 @@ export const dict = {
   "dialog.model.empty": "Tidak ada hasil model",
   "dialog.model.manage": "Kelola model",
   "dialog.model.manage.description": "Sesuaikan model mana yang muncul di pemilih model.",
+  "dialog.model.manage.reasoning": "Usaha berpikir",
   "dialog.model.manage.provider.toggle": "Alihkan semua model {{provider}}",
 
   "dialog.model.unpaid.freeModels.title": "Model gratis disediakan oleh OpenCode",

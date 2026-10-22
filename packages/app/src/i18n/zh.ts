@@ -195,6 +195,7 @@ export const dict = {
 
   "command.model.variant.cycle": "切换思考强度",
   "command.model.variant.cycle.description": "切换到下一个强度等级",
+  "command.model.variant.cycle.feedback": "思考强度：{{level}}",
 
   "command.prompt.mode.shell": "Shell",
   "command.prompt.mode.normal": "Prompt",
@@ -248,6 +249,7 @@ export const dict = {
   "dialog.model.empty": "未找到模型",
   "dialog.model.manage": "管理模型",
   "dialog.model.manage.description": "自定义模型选择器中显示的模型。",
+  "dialog.model.manage.reasoning": "思考强度",
   "dialog.model.manage.provider.toggle": "切换所有 {{provider}} 模型",
   "dialog.model.unpaid.freeModels.title": "OpenCode 提供的免费模型",
   "dialog.model.unpaid.addMore.title": "从热门提供商添加更多模型",
