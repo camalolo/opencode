@@ -5,7 +5,7 @@ import { Effect, Schema } from "effect"
 import type { Database } from "../database/database"
 import { Identifier } from "../id/id"
 import { statics } from "../schema"
-import type { MessageID } from "../v1/session"
+import { MessageID } from "../v1/session"
 import { SessionSchema } from "./schema"
 import { SessionSleepTable } from "./sql"
 
@@ -27,6 +27,9 @@ export const ID = Schema.String.pipe(
   statics((schema) => ({ ascending: () => schema.make(Identifier.ascending("sleep")) })),
 )
 export type ID = Schema.Schema.Type<typeof ID>
+
+/** Deterministic wake message id per trigger, so redelivery cannot duplicate prompts. */
+export const wakeMessageID = (row: { readonly id: ID }) => MessageID.make(`msg_sleep_${row.id}`)
 
 export interface Trigger {
   readonly id: ID
@@ -151,6 +154,8 @@ export const pendingAll = Effect.fn("SessionSleep.pendingAll")(function* (db: Da
       sessionID: SessionSleepTable.session_id,
       description: SessionSleepTable.description,
       deadline: SessionSleepTable.deadline,
+      next_check_at: SessionSleepTable.next_check_at,
+      interval_ms: SessionSleepTable.interval_ms,
     })
     .from(SessionSleepTable)
     .where(eq(SessionSleepTable.status, "pending"))
@@ -160,7 +165,51 @@ export const pendingAll = Effect.fn("SessionSleep.pendingAll")(function* (db: Da
     sessionID: SessionSchema.ID.make(row.sessionID),
     description: row.description,
     wakeAt: row.deadline,
+    nextCheckAt: row.next_check_at,
+    intervalMs: row.interval_ms,
   }))
+})
+
+/**
+ * Deadline sweep: finalizes every pending trigger whose deadline has passed,
+ * regardless of the scheduler loop's health. This is what makes limbo waiting
+ * impossible by construction — even a dead or wedged loop cannot hold a
+ * session past its own timeout once anything (tick, status poll, delivery
+ * scan) touches the table. Row-level claims in `finish` keep concurrent
+ * callers safe.
+ */
+export const sweepOverdue = Effect.fn("SessionSleep.sweepOverdue")(function* (db: DatabaseService, now: number) {
+  const rows = yield* db
+    .select()
+    .from(SessionSleepTable)
+    .where(and(eq(SessionSleepTable.status, "pending"), lte(SessionSleepTable.deadline, now)))
+    .limit(64)
+    .all()
+    .pipe(Effect.orDie)
+  let swept = 0
+  for (const raw of rows) {
+    const row = fromRow(raw)
+    const claimed = yield* finish(db, row.id, "timed_out", wakeMessageID(row))
+    if (claimed) swept += 1
+  }
+  return swept
+})
+
+/** Most recent triggers for a session, newest first — used by the re-arm budget. */
+export const history = Effect.fn("SessionSleep.history")(function* (
+  db: DatabaseService,
+  sessionID: SessionSchema.ID,
+  limit = 8,
+) {
+  const rows = yield* db
+    .select()
+    .from(SessionSleepTable)
+    .where(eq(SessionSleepTable.session_id, sessionID))
+    .orderBy(desc(SessionSleepTable.time_created))
+    .limit(limit)
+    .all()
+    .pipe(Effect.orDie)
+  return rows.map(fromRow)
 })
 
 export const cancel = Effect.fn("SessionSleep.cancel")(function* (db: DatabaseService, sessionID: SessionSchema.ID) {

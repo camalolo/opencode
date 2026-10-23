@@ -7,7 +7,7 @@ import { ProjectTable } from "@opencode-ai/core/project/sql"
 import { AbsolutePath } from "@opencode-ai/core/schema"
 import { SessionSchema } from "@opencode-ai/core/session/schema"
 import { SessionSleep } from "@opencode-ai/core/session/sleep"
-import { SessionTable } from "@opencode-ai/core/session/sql"
+import { SessionTable, SessionSleepTable } from "@opencode-ai/core/session/sql"
 import { MessageID } from "@opencode-ai/core/v1/session"
 import { tmpdir } from "./fixture/tmpdir"
 
@@ -163,7 +163,7 @@ describe("SessionSleep", () => {
   )
 
   itDb(
-    "recordFailure counts consecutive failures and recordNotMet resets them",
+    "recordFailure accumulates across the trigger's whole life and recordNotMet never resets it",
     (db) =>
       Effect.gen(function* () {
         yield* insertSession(db, "ses_a")
@@ -171,9 +171,11 @@ describe("SessionSleep", () => {
 
         expect(yield* SessionSleep.recordFailure(db, trigger.id, "boom")).toBe(1)
         expect(yield* SessionSleep.recordFailure(db, trigger.id, "boom")).toBe(2)
+        // A flaky condition must not reset its own evidence by interleaving
+        // unmet results; only a met verdict ends the trigger.
         yield* SessionSleep.recordNotMet(db, trigger.id, "fine")
         const after = yield* SessionSleep.byID(db, trigger.id)
-        expect(after?.consecutiveFailures).toBe(0)
+        expect(after?.consecutiveFailures).toBe(2)
         expect(after?.lastOutput).toBe("fine")
       }),
   )
@@ -215,6 +217,81 @@ describe("SessionSleep", () => {
         const pending = yield* SessionSleep.pendingAll(db)
         expect(pending.map((row) => row.description).toSorted()).toEqual(["watch alpha", "watch beta"])
         expect(pending.every((row) => typeof row.wakeAt === "number")).toBe(true)
+      }),
+  )
+
+  itDb(
+    "sweepOverdue finalizes only expired pending rows regardless of claim state",
+    (db) =>
+      Effect.gen(function* () {
+        // One trigger per session: arming replaces the session's pending row.
+        yield* insertSession(db, "ses_sweep_expired")
+        yield* insertSession(db, "ses_sweep_hung")
+        yield* insertSession(db, "ses_sweep_healthy")
+        const expired = yield* SessionSleep.arm(
+          db,
+          armInput("ses_sweep_expired", { deadline: Date.now() - 1_000 }),
+        )
+        const hung = yield* SessionSleep.arm(db, armInput("ses_sweep_hung", { intervalMs: 3_600_000 }))
+        expect(yield* SessionSleep.claimCheck(db, hung.id, Date.now())).toBe(true)
+        const healthy = yield* SessionSleep.arm(db, armInput("ses_sweep_healthy"))
+
+        // First sweep converts the already-expired row, but must leave the
+        // hung row alone: it is not due and its deadline is still ahead.
+        expect(yield* SessionSleep.sweepOverdue(db, Date.now())).toBe(1)
+        expect((yield* SessionSleep.byID(db, expired.id))?.status).toBe("timed_out")
+        expect((yield* SessionSleep.byID(db, hung.id))?.status).toBe("pending")
+        expect((yield* SessionSleep.byID(db, healthy.id))?.status).toBe("pending")
+
+        // Once the hung row's deadline passes, the sweep converts it to a
+        // timeout wake even though it never became due again — this is the
+        // production limbo backstop.
+        yield* db
+          .update(SessionSleepTable)
+          .set({ deadline: Date.now() - 1_000 })
+          .where(eq(SessionSleepTable.id, hung.id))
+          .run()
+          .pipe(Effect.orDie)
+        expect(yield* SessionSleep.sweepOverdue(db, Date.now())).toBe(1)
+
+        expect((yield* SessionSleep.byID(db, hung.id))?.status).toBe("timed_out")
+        expect((yield* SessionSleep.byID(db, healthy.id))?.status).toBe("pending")
+        // Swept rows land in the delivery queue with deterministic wake ids.
+        const deliverable = yield* SessionSleep.deliverable(db)
+        expect(deliverable.map((row) => row.id)).toContain(expired.id)
+        expect(deliverable.map((row) => row.messageID)).toContain(`msg_sleep_${expired.id}`)
+      }),
+  )
+
+  itDb(
+    "history reads newest first across replaced triggers",
+    (db) =>
+      Effect.gen(function* () {
+        yield* insertSession(db, "ses_history")
+        const first = yield* SessionSleep.arm(db, armInput("ses_history", { description: "first" }))
+        yield* SessionSleep.finish(db, first.id, "timed_out", SessionSleep.wakeMessageID(first))
+        const second = yield* SessionSleep.arm(db, armInput("ses_history", { description: "second" }))
+        yield* SessionSleep.finish(db, second.id, "timed_out", SessionSleep.wakeMessageID(second))
+        const third = yield* SessionSleep.arm(db, armInput("ses_history", { description: "third" }))
+
+        const history = yield* SessionSleep.history(db, SessionSchema.ID.make("ses_history"))
+        expect(history.map((row) => row.id)).toEqual([third.id, second.id, first.id])
+        expect(history.map((row) => row.status)).toEqual(["pending", "timed_out", "timed_out"])
+      }),
+  )
+
+  itDb(
+    "pendingAll carries the heartbeat fields for stall detection",
+    (db) =>
+      Effect.gen(function* () {
+        yield* insertSession(db, "ses_heartbeat")
+        const trigger = yield* SessionSleep.arm(db, armInput("ses_heartbeat", { intervalMs: 45_000 }))
+        yield* SessionSleep.claimCheck(db, trigger.id, Date.now())
+
+        const pending = yield* SessionSleep.pendingAll(db)
+        const row = pending.find((candidate) => candidate.sessionID === SessionSchema.ID.make("ses_heartbeat"))
+        expect(row?.intervalMs).toBe(45_000)
+        expect(row && row.nextCheckAt > Date.now()).toBe(true)
       }),
   )
 

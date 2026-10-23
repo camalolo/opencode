@@ -23,7 +23,7 @@ import { SessionSleepScheduler } from "@/session/sleep-scheduler"
 import { SessionStatus } from "@/session/status"
 import { Truncate } from "@/tool/truncate"
 import { Agent } from "@/agent/agent"
-import { SleepCancelTool, SleepStatusTool, SleepUntilTool } from "@/tool/sleep"
+import { conditionSelfMatch, SleepCancelTool, SleepStatusTool, SleepUntilTool } from "@/tool/sleep"
 import { pollWithTimeout, testEffect } from "../lib/effect"
 
 const insertSession = (db: Database.Interface["db"], sessionID: string) =>
@@ -300,6 +300,29 @@ schedulerIt.effect(
   30_000,
 )
 
+schedulerIt.effect(
+  "deadline sweep catches a claimed-but-never-checked trigger (loop-death limbo)",
+  () =>
+    Effect.gen(function* () {
+      const db = (yield* Database.Service).db
+      yield* insertSession(db, "ses_sched_sweep")
+      const scheduler = yield* SessionSleepScheduler.Service
+      const trigger = yield* arm("ses_sched_sweep", { timeoutMs: 0, intervalMs: 3_600_000 })
+      // Simulate a claim whose check never completes (wedged loop): the row's
+      // next check moves past the deadline, so it is never due again — the
+      // production limbo. The sweep must still convert it to a timeout wake.
+      expect(yield* SessionSleep.claimCheck(db, trigger.id, Date.now())).toBe(true)
+      const claimed = yield* SessionSleep.byID(db, trigger.id)
+      expect(claimed && claimed.nextCheckAt > Date.now()).toBe(true)
+
+      yield* scheduler.flush()
+
+      const timedOut = yield* SessionSleep.byID(db, trigger.id)
+      expect(timedOut?.status).toBe("timed_out")
+    }),
+  30_000,
+)
+
 // ---------------------------------------------------------------------------
 // Loop liveness
 // ---------------------------------------------------------------------------
@@ -539,6 +562,34 @@ test("wake text covers fired, timed out, and failed outcomes", () => {
 })
 
 // ---------------------------------------------------------------------------
+// Arm-time condition validation
+// ---------------------------------------------------------------------------
+
+test("conditionSelfMatch refuses pgrep -f patterns that match their own wrapper shell", () => {
+  // The production bug: pgrep -f matches the sh -c / ssh wrapper carrying the
+  // whole condition text, so the check always reports the unmet state.
+  expect(
+    conditionSelfMatch(
+      `ssh devshop 'if ! sudo pgrep -f "dpkg-buildpackage" >/dev/null; then echo BUILD_DONE; exit 0; fi; echo RUNNING; exit 1'`,
+    ),
+  ).toContain("own wrapper shell")
+  expect(conditionSelfMatch(`pgrep -f dpkg-buildpackage >/dev/null && exit 1; echo running; exit 1`)).toContain(
+    "own wrapper shell",
+  )
+  expect(conditionSelfMatch(`pkill -f 'my-worker' --signal 0; exit 1`)).toContain("own wrapper shell")
+
+  // Non-full-match pgrep only sees process names; the wrapper's comm is sh/bash.
+  expect(conditionSelfMatch(`pgrep dpkg-buildpackage >/dev/null || exit 1`)).toBeUndefined()
+  expect(conditionSelfMatch(`pgrep -x dpkg-buildpackage >/dev/null || exit 1`)).toBeUndefined()
+  // Bracket trick: the regex no longer matches the condition text itself.
+  expect(
+    conditionSelfMatch(`pgrep -f "[d]pkg-buildpackage" >/dev/null || { echo running; exit 1; }; echo done`),
+  ).toBeUndefined()
+  // No pgrep at all.
+  expect(conditionSelfMatch(`test -f /tmp/done || { echo waiting; exit 1; }`)).toBeUndefined()
+})
+
+// ---------------------------------------------------------------------------
 // Tools
 // ---------------------------------------------------------------------------
 
@@ -715,5 +766,97 @@ toolIt.instance(
       const armed = yield* untilDef.execute({ condition: unmetWithOutput, description: "loud" }, ctx)
       expect(armed.output).toContain("Sleep armed")
       expect((yield* scheduler.get(sessionID))?.status).toBe("pending")
+    }),
+)
+
+toolIt.instance(
+  "sleep_until refuses to arm a condition that matches its own wrapper shell",
+  () =>
+    Effect.gen(function* () {
+      yield* TestInstance
+      const sessionID = SessionID.make("ses_tool_selfmatch")
+      const db = (yield* Database.Service).db
+      yield* insertSession(db, sessionID)
+      const scheduler = yield* SessionSleepScheduler.Service
+      const ctx: Tool.Context = {
+        sessionID,
+        messageID: MessageID.make("msg_tool_selfmatch"),
+        callID: "",
+        agent: "build",
+        abort: AbortSignal.any([]),
+        messages: [],
+        metadata: () => Effect.void,
+        ask: () => Effect.void,
+      }
+      const until = yield* SleepUntilTool
+      const untilDef = yield* until.init()
+
+      // The pgrep pattern appears in the condition text, so the check would
+      // always find its own sh -c / ssh wrapper and never report the waited
+      // -for state. Refused before arming (and before the permission ask).
+      const condition = `pgrep -f dpkg-buildpackage >/dev/null || { echo running; exit 1; }; echo done`
+      const refused = yield* untilDef.execute({ condition, description: "build watch" }, ctx).pipe(Effect.exit)
+      expect(toolDieMessage(refused)).toContain("refused to arm")
+      expect(toolDieMessage(refused)).toContain("own wrapper shell")
+      expect(yield* scheduler.get(sessionID)).toBeUndefined()
+      expect(yield* SessionSleep.get(db, sessionID)).toBeUndefined()
+    }),
+)
+
+toolIt.instance(
+  "sleep_until stops re-arming after consecutive timeouts",
+  () =>
+    Effect.gen(function* () {
+      yield* TestInstance
+      const sessionID = SessionID.make("ses_tool_budget")
+      const db = (yield* Database.Service).db
+      yield* insertSession(db, sessionID)
+      const scheduler = yield* SessionSleepScheduler.Service
+      const ctx: Tool.Context = {
+        sessionID,
+        messageID: MessageID.make("msg_tool_budget"),
+        callID: "",
+        agent: "build",
+        abort: AbortSignal.any([]),
+        messages: [],
+        metadata: () => Effect.void,
+        ask: () => Effect.void,
+      }
+      const until = yield* SleepUntilTool
+      const untilDef = yield* until.init()
+
+      // Three triggers in a row that end without ever being met: the exact
+      // "pod never came up, re-arm, timeout, re-arm" loop that burns billed
+      // turns. The fourth arm must be refused.
+      for (let i = 0; i < 3; i++) {
+        const armed = yield* untilDef.execute({ condition: unmetWithOutput, description: `wait ${i}` }, ctx)
+        expect(armed.output).toContain("Sleep armed")
+        const trigger = yield* scheduler.get(sessionID)
+        yield* SessionSleep.finish(db, trigger!.id, "timed_out", SessionSleep.wakeMessageID(trigger!))
+      }
+
+      const refused = yield* untilDef.execute({ condition: unmetWithOutput, description: "wait 4" }, ctx).pipe(
+        Effect.exit,
+      )
+      const message = toolDieMessage(refused)
+      expect(message).toContain("refused to arm")
+      expect(message).toContain("cost guard")
+
+      // A met trigger breaks the streak: the budget only caps timeout loops,
+      // not sessions that get their wake and continue.
+      const fresh = yield* SessionSleep.arm(db, {
+        id: SessionSleep.ID.ascending(),
+        sessionID,
+        condition: unmetWithOutput,
+        description: "met before",
+        intervalMs: 60_000,
+        checkTimeoutMs: 30_000,
+        deadline: Date.now() + 3_600_000,
+        cwd: "/tmp/test",
+        nextCheckAt: Date.now(),
+      })
+      yield* SessionSleep.finish(db, fresh.id, "fired", SessionSleep.wakeMessageID(fresh))
+      const recovered = yield* untilDef.execute({ condition: unmetWithOutput, description: "fresh wait" }, ctx)
+      expect(recovered.output).toContain("Sleep armed")
     }),
 )

@@ -473,6 +473,7 @@ export type FilePart = {
   filename?: string
   url: string
   source?: FilePartSource
+  original_path?: string
 }
 
 export type ToolStatePending = {
@@ -702,6 +703,14 @@ export type SessionStatus =
        * Epoch ms when the trigger times out
        */
       wake_at: number
+      /**
+       * Epoch ms when the next condition check is due; absent when unknown
+       */
+      next_check_at?: number
+      /**
+       * Milliseconds between condition checks; clients derive heartbeat staleness from it
+       */
+      interval_ms?: number
     }
 
 export type QuestionOption = {
@@ -2044,6 +2053,7 @@ export type Config = {
     timeout_minutes?: number
     max_timeout_minutes?: number
     check_timeout_seconds?: number
+    max_consecutive_timeouts?: number
   }
   experimental?: {
     disable_paste_summary?: boolean

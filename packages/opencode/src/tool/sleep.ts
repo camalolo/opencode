@@ -3,7 +3,8 @@ export * as SleepTool from "./sleep"
 import { Effect, Schema } from "effect"
 import * as Tool from "./tool"
 import { PositiveInt } from "@opencode-ai/core/schema"
-import { MAX_BROKEN_CHECKS } from "@opencode-ai/core/session/sleep"
+import { Database } from "@opencode-ai/core/database/database"
+import { MAX_BROKEN_CHECKS, SessionSleep } from "@opencode-ai/core/session/sleep"
 import { Config } from "@/config/config"
 import { InstanceState } from "@/effect/instance-state"
 import { SessionStatus } from "@/session/status"
@@ -12,7 +13,7 @@ import { SessionSleepScheduler } from "@/session/sleep-scheduler"
 export const SleepUntilParameters = Schema.Struct({
   condition: Schema.String.annotate({
     description:
-      "Shell command whose exit code decides when to wake: exit 0 = condition met, exit 1 = not met yet (print progress on exit 1 — a silent unmet check is treated as broken), anything else counts as a broken check. Keep it fast (seconds) and free of side effects. stdout from the final check is delivered to the session when it wakes. The condition is probe-run once before arming: if that run is broken (exit outside 0/1, command not found, timeout, or exit 1 with no output), sleep_until fails instead of arming.",
+      "Shell command whose exit code decides when to wake: exit 0 = condition met, exit 1 = not met yet (print progress on exit 1 — a silent unmet check is treated as broken), anything else counts as a broken check. Keep it fast (seconds) and free of side effects. stdout from the final check is delivered to the session when it wakes. The condition is probe-run once before arming: if that run is broken (exit outside 0/1, command not found, timeout, or exit 1 with no output), sleep_until fails instead of arming. Conditions that would match their own wrapper shell in the process list (e.g. pgrep -f with a pattern that appears in the condition text) are refused — the check would never observe the waited-for state.",
   }),
   description: Schema.String.annotate({
     description: "What you are waiting for, in one sentence. Shown to the user and included in the wake message.",
@@ -43,19 +44,87 @@ const sleepLimits = Effect.fn("SleepTool.sleepLimits")(function* (config: Config
     timeoutMinutes: sleep?.timeout_minutes ?? 360,
     maxTimeoutMinutes: sleep?.max_timeout_minutes ?? 7 * 24 * 60,
     checkTimeoutMs: (sleep?.check_timeout_seconds ?? 30) * 1000,
+    maxConsecutiveTimeouts: sleep?.max_consecutive_timeouts ?? 3,
   }
 })
+
+/**
+ * Detects conditions that are guaranteed to match their own wrapper shell in
+ * the process list. The scheduler runs the condition through
+ * `sh -c '<condition>'` (ssh adds another shell carrying the same text), so
+ * while the check runs, the full condition text is some process's command
+ * line. A `pgrep -f <pattern>` whose pattern regex-matches the condition
+ * string therefore always finds that wrapper and reports the unmet state
+ * forever — regardless of what is actually running. This exact bug was
+ * observed in production: builds finished but the watch kept saying RUNNING
+ * until its timeout. Returns the refusal reason, or undefined when clean.
+ */
+export const conditionSelfMatch = (condition: string): string | undefined => {
+  for (const match of condition.matchAll(/\b(?:pgrep|pkill)\b/g)) {
+    let index = match.index! + match[0].length
+    let fullMatch = false
+    let pattern: string | undefined
+    scan: while (index < condition.length) {
+      const rest = condition.slice(index)
+      const skipped = rest.match(/^\s+/)?.[0].length ?? 0
+      if (skipped > 0) {
+        index += skipped
+        continue
+      }
+      const char = condition[index]
+      // End of this command: the flags/pattern scan must not run into the next one.
+      if (char === undefined || char === ";" || char === "|" || char === "&" || char === ")") break
+      if (char === "-") {
+        const flag = rest.match(/^--?[a-zA-Z-]+/)?.[0]
+        if (!flag) break
+        if (flag.startsWith("--")) {
+          if (flag === "--full" || flag === "--list-full") fullMatch = true
+          if (flag === "--exact") fullMatch = false
+        } else {
+          if (flag.slice(1).includes("f")) fullMatch = true
+          if (flag.slice(1).includes("x")) fullMatch = false
+        }
+        index += flag.length
+        continue
+      }
+      if (char === "'" || char === '"') {
+        const end = condition.indexOf(char, index + 1)
+        if (end === -1) break
+        pattern = condition.slice(index + 1, end)
+      } else {
+        pattern = rest.match(/^[^\s;|&)]+/)?.[0]
+      }
+      break scan
+    }
+    if (!fullMatch || pattern === undefined) continue
+    let hitsSelf: boolean
+    try {
+      hitsSelf = new RegExp(pattern).test(condition)
+    } catch {
+      // Not a valid regex; pgrep would treat it literally. Nothing to prove here.
+      continue
+    }
+    if (!hitsSelf) continue
+    return [
+      `the condition uses \`${match[0]} -f ${pattern}\`, but the pattern also matches the condition's own wrapper shell:`,
+      "while the check runs, the entire condition text is a process command line (sh -c / ssh), so the check always finds itself and can never report the waited-for state.",
+      "Fix it so the wrapper cannot match: bracket the first character in the pgrep argument (e.g. pgrep -f \"[d]pkg-buildpackage\") AND make sure the spelled-out word appears nowhere else in the condition, or better, match a pidfile or a marker the workload writes on completion.",
+    ].join(" ")
+  }
+  return undefined
+}
 
 export const SleepUntilTool = Tool.define<
   typeof SleepUntilParameters,
   Metadata,
-  SessionSleepScheduler.Service | Config.Service | SessionStatus.Service
+  SessionSleepScheduler.Service | Config.Service | SessionStatus.Service | Database.Service
 >(
   "sleep_until",
   Effect.gen(function* () {
     const scheduler = yield* SessionSleepScheduler.Service
     const status = yield* SessionStatus.Service
     const config = yield* Config.Service
+    const db = (yield* Database.Service).db
 
     const run = (
       params: Schema.Schema.Type<typeof SleepUntilParameters>,
@@ -68,6 +137,39 @@ export const SleepUntilTool = Tool.define<
           limits.minIntervalSeconds,
         )
         const timeoutMinutes = Math.min(params.timeout_minutes ?? limits.timeoutMinutes, limits.maxTimeoutMinutes)
+
+        const selfMatch = conditionSelfMatch(params.condition)
+        if (selfMatch)
+          return yield* Effect.fail(
+            new Error(
+              [
+                "sleep_until refused to arm: the wake condition can never become true —",
+                selfMatch,
+              ].join(" "),
+            ),
+          )
+
+        // Re-arm budget: a session whose recent triggers all timed out or
+        // broke is polling for something that never happens, and every
+        // timeout wake is a billed turn. Cut the loop and force a report to
+        // the user instead of letting the charges accrue silently.
+        const recent = yield* SessionSleep.history(db, ctx.sessionID)
+        let consecutiveTimeouts = 0
+        for (const row of recent) {
+          if (row.status !== "timed_out" && row.status !== "failed") break
+          consecutiveTimeouts += 1
+        }
+        if (consecutiveTimeouts >= limits.maxConsecutiveTimeouts)
+          return yield* Effect.fail(
+            new Error(
+              [
+                `sleep_until refused to arm: the last ${consecutiveTimeouts} triggers on this session ended in timeout or failure without the condition ever being met.`,
+                "This is a cost guard — repeatedly re-arming a never-true condition burns a billed turn on every timeout.",
+                "Do not call sleep_until again. Tell the user the wait is not converging, summarize what was observed, and let them decide (they can raise sleep.max_consecutive_timeouts in config if the watch is legitimate).",
+              ].join(" "),
+            ),
+          )
+
         yield* ctx.ask({
           permission: "sleep_until",
           patterns: [params.condition],
@@ -132,6 +234,8 @@ export const SleepUntilTool = Tool.define<
           type: "sleeping",
           description: params.description,
           wake_at: trigger.deadline,
+          next_check_at: trigger.nextCheckAt,
+          interval_ms: trigger.intervalMs,
         })
         const deadline = new Date(trigger.deadline).toISOString()
         yield* Effect.logInfo("sleep trigger armed", {
@@ -171,7 +275,9 @@ export const SleepUntilTool = Tool.define<
         "the wake message arrives automatically, even mid-turn. To see the latest check output, call sleep_status instead of polling.",
         "The trigger survives server restarts. Arming again replaces the previous trigger; cancel with sleep_cancel.",
         "The condition is probe-run once before arming; a broken probe (exit outside 0/1, command not found, timeout, or exit 1 with no output) fails the call instead of arming, so fix the condition and retry.",
+        "Conditions that would match their own wrapper shell in the process list (pgrep -f whose pattern appears in the condition text) are refused — such a check never fires.",
         `Broken checks also accumulate while armed: ${MAX_BROKEN_CHECKS} of them disarm the trigger and wake you with the failure, so a misbehaving condition can never spin silently until the timeout.`,
+        "A session whose recent triggers all timed out without a met condition cannot re-arm: report to the user instead.",
         "Use for external events: a forum reply appears, a payment lands, a long job finishes, a file changes.",
         "Do not use it as a short timer — to wait a few seconds inside a command, use sleep in bash instead.",
       ].join(" "),
@@ -209,6 +315,12 @@ export const SleepStatusTool = Tool.define<
               metadata: { trigger_status: "none" },
             }
           }
+          // Heartbeat: a pending trigger whose next check is far past due
+          // means the background scheduler has not run it — the wake cannot
+          // be trusted until that changes.
+          const now = Date.now()
+          const stalled =
+            trigger.status === "pending" && now > trigger.nextCheckAt + Math.max(trigger.intervalMs * 2, 60_000)
           const lines = [
             `Trigger ${trigger.id}: ${trigger.status}`,
             `Waiting for: ${trigger.description}`,
@@ -216,9 +328,14 @@ export const SleepStatusTool = Tool.define<
             trigger.consecutiveFailures > 0
               ? `Broken checks: ${trigger.consecutiveFailures}/${MAX_BROKEN_CHECKS} — reaching ${MAX_BROKEN_CHECKS} disarms the trigger and wakes you.`
               : undefined,
+            stalled
+              ? `WARNING: checks are STALLED — the next check was due ${new Date(trigger.nextCheckAt).toISOString()} but has not run. The background scheduler looks wedged; this wake may never arrive and the timeout may not fire either. Do not keep waiting on it: inform the user, and use sleep_cancel to disarm this trigger.`
+              : undefined,
             trigger.lastOutput ? `Last check output:\n${trigger.lastOutput}` : "No check output recorded yet.",
             trigger.status === "pending"
-              ? "Still armed — end your turn or call sleep_cancel; the wake arrives automatically."
+              ? stalled
+                ? "The trigger is armed but unhealthy — surface the stall to the user."
+                : "Still armed — end your turn or call sleep_cancel; the wake arrives automatically."
               : "The trigger is finished; its wake (if any) was delivered.",
           ].filter(Boolean)
           return {

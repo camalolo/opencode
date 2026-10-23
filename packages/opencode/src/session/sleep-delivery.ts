@@ -5,6 +5,7 @@ import { Database, Database as DatabaseNode } from "@opencode-ai/core/database/d
 import { makeGlobalNode } from "@opencode-ai/core/effect/app-node"
 import { SessionStore } from "@opencode-ai/core/session/store"
 import { SessionSleep, MAX_BROKEN_CHECKS, MAX_DELIVER_ATTEMPTS as MAX_WAKE_ATTEMPTS } from "@opencode-ai/core/session/sleep"
+import { SupervisedLoop } from "@/effect/supervised"
 import { InstanceStore } from "@/project/instance-store"
 import { SessionPrompt } from "./prompt"
 import { SessionStatus } from "./status"
@@ -119,6 +120,12 @@ const layer = Layer.effect(
     })
 
     const flush: Interface["flush"] = Effect.fn("SessionSleepDelivery.flush")(function* () {
+      // Finalize overdue triggers before scanning: if the scheduler loop is
+      // wedged, this service is the second line of defense that still converts
+      // an expired trigger into a bounded timeout wake on every tick.
+      yield* SessionSleep.sweepOverdue(db, Date.now()).pipe(
+        Effect.catchCause((cause) => Effect.logWarning("sleep deadline sweep failed", { cause })),
+      )
       const undelivered = yield* SessionSleep.deliverable(db)
       // Each row is caught on its own so one defecting row cannot take the
       // whole delivery batch down.
@@ -136,12 +143,17 @@ const layer = Layer.effect(
     // stops at the first failure or defect, so an outer catch would let one
     // bad tick (e.g. a transient sqlite error) kill delivery forever and leave
     // fired triggers undelivered. Caught per iteration, the loop outlives it.
+    // Supervised on top: even a total loop death restarts instead of silently
+    // stranding terminal triggers with undelivered wakes.
     yield* Effect.forkScoped(
-      flush().pipe(
-        Effect.catchCause((cause) => Effect.logError("sleep delivery tick failed", { cause })),
-        Effect.delay(Duration.seconds(3)),
-        Effect.repeat(Schedule.spaced(TICK)),
-        Effect.ignore,
+      SupervisedLoop.supervise(
+        "sleep delivery",
+        flush().pipe(
+          Effect.catchCause((cause) => Effect.logError("sleep delivery tick failed", { cause })),
+          Effect.delay(Duration.seconds(3)),
+          Effect.repeat(Schedule.spaced(TICK)),
+          Effect.ignore,
+        ),
       ),
     )
 

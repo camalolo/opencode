@@ -183,6 +183,10 @@ export const Info = Schema.Struct({
       check_timeout_seconds: Schema.optional(PositiveInt).annotate({
         description: "Seconds before an individual condition check is killed (default: 30)",
       }),
+      max_consecutive_timeouts: Schema.optional(PositiveInt).annotate({
+        description:
+          "Refuse to arm a new sleep trigger after this many consecutive timed-out or failed triggers on the same session, so a never-true condition cannot loop billed wake turns forever (default: 3)",
+      }),
     }),
   ).annotate({
     description: "Guardrails for the sleep_until tool that wakes a session when a condition becomes true",

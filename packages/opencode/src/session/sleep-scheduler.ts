@@ -8,8 +8,8 @@ import { makeGlobalNode } from "@opencode-ai/core/effect/app-node"
 import { SessionSchema } from "@opencode-ai/core/session/schema"
 import { SessionStore } from "@opencode-ai/core/session/store"
 import { MAX_BROKEN_CHECKS, SessionSleep } from "@opencode-ai/core/session/sleep"
+import { SupervisedLoop } from "@/effect/supervised"
 import { SessionStatus } from "./status"
-import { MessageID as CoreMessageID } from "@opencode-ai/core/v1/session"
 
 /** How often the scheduler scans for due checks. */
 const TICK = "5 seconds"
@@ -185,8 +185,16 @@ const layer = Layer.effect(
     const processRow = Effect.fn("SessionSleepScheduler.processRow")(function* (row: SessionSleep.Trigger) {
       lastProgressAt = Date.now()
       const now = Date.now()
+      const lateMs = now - row.nextCheckAt
+      if (lateMs > Math.max(row.intervalMs * 3, 120_000))
+        yield* Effect.logWarning("sleep check claimed late; the scheduler loop is being starved", {
+          "session.id": row.sessionID,
+          trigger: row.id,
+          late_ms: lateMs,
+          interval_ms: row.intervalMs,
+        })
       if (now >= row.deadline) {
-        yield* SessionSleep.finish(db, row.id, "timed_out", wakeMessageID(row))
+        yield* SessionSleep.finish(db, row.id, "timed_out", SessionSleep.wakeMessageID(row))
         return
       }
       if (!(yield* SessionSleep.claimCheck(db, row.id, now))) return
@@ -199,7 +207,7 @@ const layer = Layer.effect(
       lastProgressAt = Date.now()
       const verdict = classifyCheck(result)
       if (verdict.kind === "met") {
-        yield* SessionSleep.finish(db, row.id, "fired", wakeMessageID(row), tail(result.output, 4096))
+        yield* SessionSleep.finish(db, row.id, "fired", SessionSleep.wakeMessageID(row), tail(result.output, 4096))
         yield* Effect.logInfo("sleep trigger fired", { "session.id": row.sessionID, trigger: row.id })
         return
       }
@@ -209,7 +217,7 @@ const layer = Layer.effect(
       }
       const failures = yield* SessionSleep.recordFailure(db, row.id, tail(result.output, 4096))
       if (failures !== undefined && failures >= MAX_BROKEN_CHECKS) {
-        yield* SessionSleep.finish(db, row.id, "failed", wakeMessageID(row))
+        yield* SessionSleep.finish(db, row.id, "failed", SessionSleep.wakeMessageID(row))
         yield* Effect.logWarning("sleep trigger disarmed after broken checks", {
           "session.id": row.sessionID,
           trigger: row.id,
@@ -220,6 +228,13 @@ const layer = Layer.effect(
     })
 
     const tick = Effect.fn("SessionSleepScheduler.tick")(function* () {
+      // Deadline authority lives here even though processRow also checks it:
+      // a row whose claim was taken by a hung check never becomes due again,
+      // and this sweep is what guarantees a pending trigger can outlive its
+      // timeout by at most one tick.
+      yield* SessionSleep.sweepOverdue(db, Date.now()).pipe(
+        Effect.catchCause((cause) => Effect.logWarning("sleep deadline sweep failed", { cause })),
+      )
       const due = yield* SessionSleep.due(db, Date.now())
       lastProgressAt = Date.now()
       // Each row is caught on its own so one defecting row cannot take the
@@ -241,24 +256,31 @@ const layer = Layer.effect(
       yield* tick()
     })
 
-    // The catch sits inside the repeated effect on purpose: `Effect.repeat`
-    // stops at the first failure or defect, so an outer catch would let one
-    // bad tick (e.g. a transient sqlite error) kill the loop forever and leave
-    // armed triggers in limbo. Caught per iteration, the loop outlives it.
+    // Both loops run under supervision: `Effect.repeat` stops at its first
+    // uncaught failure and a forked fiber dies silently with its scope, and
+    // either death used to strand armed triggers in limbo with no timeout
+    // escape (observed in production). The supervisor restarts them forever;
+    // shutdown interrupts the supervisor itself.
     yield* Effect.forkScoped(
-      tick().pipe(
-        Effect.catchCause((cause) => Effect.logError("sleep scheduler tick failed", { cause })),
-        Effect.delay(Duration.seconds(3)),
-        Effect.repeat(Schedule.spaced(TICK)),
-        Effect.ignore,
+      SupervisedLoop.supervise(
+        "sleep scheduler",
+        tick().pipe(
+          Effect.catchCause((cause) => Effect.logError("sleep scheduler tick failed", { cause })),
+          Effect.delay(Duration.seconds(3)),
+          Effect.repeat(Schedule.spaced(TICK)),
+          Effect.ignore,
+        ),
       ),
     )
     yield* Effect.forkScoped(
-      watchdog().pipe(
-        Effect.catchCause((cause) => Effect.logError("sleep scheduler watchdog failed", { cause })),
-        Effect.delay(Duration.seconds(30)),
-        Effect.repeat(Schedule.spaced(WATCHDOG)),
-        Effect.ignore,
+      SupervisedLoop.supervise(
+        "sleep scheduler watchdog",
+        watchdog().pipe(
+          Effect.catchCause((cause) => Effect.logError("sleep scheduler watchdog failed", { cause })),
+          Effect.delay(Duration.seconds(30)),
+          Effect.repeat(Schedule.spaced(WATCHDOG)),
+          Effect.ignore,
+        ),
       ),
     )
 
@@ -286,11 +308,6 @@ const layer = Layer.effect(
 
 export { layer }
 
-/** Deterministic wake message id per trigger, so redelivery cannot duplicate prompts. */
-function wakeMessageID(row: SessionSleep.Trigger) {
-  return CoreMessageID.make(`msg_sleep_${row.id}`)
-}
-
 /**
  * The idle transition must not clobber an armed trigger: when a session stops
  * while a sleep_until trigger is pending, re-seed the sleeping status from the
@@ -308,6 +325,8 @@ export const settleIdle = Effect.fn("SessionSleepScheduler.settleIdle")(function
       type: "sleeping",
       description: latest.description,
       wake_at: latest.deadline,
+      next_check_at: latest.nextCheckAt,
+      interval_ms: latest.intervalMs,
     })
     return
   }

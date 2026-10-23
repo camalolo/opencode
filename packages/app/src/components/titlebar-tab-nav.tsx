@@ -9,10 +9,15 @@ import { useLanguage } from "@/context/language"
 import { ServerConnection, serverName } from "@/context/server"
 import { displayName, projectForSession } from "@/pages/layout/helpers"
 import { SessionTabAvatar } from "@/pages/layout/session-tab-avatar"
+import { isSleepStalled, useNow, type SleepingStatus } from "@/utils/sleep-stall"
 import type { Session } from "@opencode-ai/sdk/v2"
 import { canOpenTabRename, forwardTabRef } from "./titlebar-tab-gesture"
 import { TabPreviewPopover } from "./titlebar-tab-popover"
 import "./titlebar-tab-nav.css"
+
+function sleepingStatus(status: SleepingStatus | undefined) {
+  return status?.type === "sleeping" ? status : undefined
+}
 
 // MouseEvent.button uses 1 for the middle/wheel button.
 const MIDDLE_MOUSE_BUTTON = 1
@@ -238,23 +243,31 @@ export function TabNavItem(props: {
                   sessionId={session.id}
                   server={props.server}
                 />
-                <Show when={serverCtx()?.sync.session.data.session_status[session.id]?.type === "sleeping"}>
-                  <span
-                    class="absolute -bottom-0.5 -end-0.5 flex size-3 items-center justify-center rounded-full bg-text-diff-delete-base ring-1 ring-v2-background-background-base"
-                    data-slot="tab-sleeping-indicator"
-                  >
-                    <svg
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="white"
-                      stroke-width="2.5"
-                      class="size-2"
-                      aria-hidden="true"
-                    >
-                      <circle cx="12" cy="12" r="9" />
-                      <path d="M12 7v5l3 2" stroke-linecap="round" stroke-linejoin="round" />
-                    </svg>
-                  </span>
+                <Show when={sleepingStatus(serverCtx()?.sync.session.data.session_status[session.id])} keyed>
+                  {(status) => {
+                    const stalled = isSleepStalled(status, useNow()())
+                    return (
+                      <span
+                        class={`absolute -bottom-0.5 -end-0.5 flex size-3 items-center justify-center rounded-full ring-1 ring-v2-background-background-base ${
+                          stalled ? "bg-surface-warning-strong animate-pulse" : "bg-text-diff-delete-base"
+                        }`}
+                        data-slot="tab-sleeping-indicator"
+                        data-stalled={stalled ? "true" : undefined}
+                      >
+                        <svg
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="white"
+                          stroke-width="2.5"
+                          class="size-2"
+                          aria-hidden="true"
+                        >
+                          <circle cx="12" cy="12" r="9" />
+                          <path d="M12 7v5l3 2" stroke-linecap="round" stroke-linejoin="round" />
+                        </svg>
+                      </span>
+                    )
+                  }}
                 </Show>
               </>
             )}

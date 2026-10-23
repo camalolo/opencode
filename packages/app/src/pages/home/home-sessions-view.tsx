@@ -11,6 +11,7 @@ import { useGlobal } from "@/context/global"
 import { ServerConnection } from "@/context/server"
 import { SessionTabAvatarView } from "@/pages/layout/session-tab-avatar"
 import { sessionTitle } from "@/utils/session-title"
+import { isSleepStalled, useNow } from "@/utils/sleep-stall"
 import { shouldOpenSessionInBackground } from "../home-session-open"
 import {
   HomeSessionStatusController,
@@ -181,6 +182,9 @@ function HomeSessionLeading(props: {
   unread: boolean
   loading: boolean
 }) {
+  const sleeping = homeSessionSleeping(props.server, props.record.session.id)
+  const now = useNow()
+  const stalled = createMemo(() => isSleepStalled(sleeping(), now()))
   return (
     <div class="relative shrink-0">
       <Show when={props.open}>
@@ -200,18 +204,15 @@ function HomeSessionLeading(props: {
         unread={props.unread}
         loading={props.loading}
       />
-      <Show when={homeSessionSleeping(props.server, props.record.session.id)}>        <span
-          class="absolute -bottom-0.5 -end-0.5 flex size-3 items-center justify-center rounded-full bg-text-diff-delete-base ring-1 ring-v2-background-bg-base"
+      <Show when={sleeping()}>
+        <span
+          class={`absolute -bottom-0.5 -end-0.5 flex size-3 items-center justify-center rounded-full ring-1 ring-v2-background-bg-base ${
+            stalled() ? "bg-surface-warning-strong animate-pulse" : "bg-text-diff-delete-base"
+          }`}
           data-slot="home-session-sleeping-indicator"
+          data-stalled={stalled() ? "true" : undefined}
         >
-          <svg
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="white"
-            stroke-width="2.5"
-            class="size-2"
-            aria-hidden="true"
-          >
+          <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" class="size-2" aria-hidden="true">
             <circle cx="12" cy="12" r="9" />
             <path d="M12 7v5l3 2" stroke-linecap="round" stroke-linejoin="round" />
           </svg>
@@ -227,10 +228,11 @@ function homeSessionSleeping(server: ServerConnection.Key, sessionId: string) {
   const global = useGlobal()
   return createMemo(() => {
     const conn = global.servers.list().find((item) => ServerConnection.key(item) === server)
-    if (!conn) return false
+    if (!conn) return undefined
     const ctx = global.ensureServerCtx(conn)
-    return ctx.sync.session.data.session_status[sessionId]?.type === "sleeping"
-  })()
+    const status = ctx.sync.session.data.session_status[sessionId]
+    return status?.type === "sleeping" ? status : undefined
+  })
 }
 
 function HomeSessionSearch(props: HomeSessionsViewProps) {

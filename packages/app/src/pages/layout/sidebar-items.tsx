@@ -15,6 +15,7 @@ import { useNotification } from "@/context/notification"
 import { usePermission } from "@/context/permission"
 import { messageAgentColor } from "@/utils/agent"
 import { sessionTitle } from "@/utils/session-title"
+import { isSleepStalled, useNow } from "@/utils/sleep-stall"
 import { sessionPermissionRequest } from "../session/composer/session-request-tree"
 import { childSessionOnPath, getProjectAvatarSource, hasProjectPermissions } from "./helpers"
 
@@ -97,6 +98,7 @@ const SessionRow = (props: {
   tint: Accessor<string | undefined>
   isWorking: Accessor<boolean>
   isSleeping: Accessor<boolean>
+  sleepStalled: Accessor<boolean>
   hasPermissions: Accessor<boolean>
   hasError: Accessor<boolean>
   unseenCount: Accessor<number>
@@ -133,8 +135,13 @@ const SessionRow = (props: {
             </Match>
             <Match when={props.isSleeping()}>
               <span
-                class="flex size-[15px] items-center justify-center rounded-full bg-text-diff-delete-base"
+                classList={{
+                  "flex size-[15px] items-center justify-center rounded-full": true,
+                  "bg-surface-warning-strong animate-pulse": props.sleepStalled(),
+                  "bg-text-diff-delete-base": !props.sleepStalled(),
+                }}
                 data-slot="session-sleeping-indicator"
+                data-stalled={props.sleepStalled() ? "true" : undefined}
               >
                 <svg
                   viewBox="0 0 24 24"
@@ -190,9 +197,13 @@ export const SessionItem = (props: SessionItemProps): JSX.Element => {
     if (hasPermissions()) return false
     return serverSync().session.data.session_working(props.session.id)
   })
-  const isSleeping = createMemo(
-    () => serverSync().session.data.session_status[props.session.id]?.type === "sleeping",
-  )
+  const sleeping = createMemo(() => {
+    const status = serverSync().session.data.session_status[props.session.id]
+    return status?.type === "sleeping" ? status : undefined
+  })
+  const now = useNow()
+  const isSleeping = createMemo(() => sleeping() !== undefined)
+  const sleepStalled = createMemo(() => isSleepStalled(sleeping(), now()))
 
   const tint = createMemo(() =>
     messageAgentColor(serverSync().session.data.message[props.session.id], sessionStore.agent),
@@ -232,6 +243,7 @@ export const SessionItem = (props: SessionItemProps): JSX.Element => {
       tint={tint}
       isWorking={isWorking}
       isSleeping={isSleeping}
+      sleepStalled={sleepStalled}
       hasPermissions={hasPermissions}
       hasError={hasError}
       unseenCount={unseenCount}

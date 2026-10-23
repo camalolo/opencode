@@ -35,6 +35,14 @@ export const Info = Schema.Union([
       description: "What the session is waiting for, as set by the sleep_until tool",
     }),
     wake_at: NonNegativeInt.annotate({ description: "Epoch ms when the trigger times out" }),
+    next_check_at: optional(
+      NonNegativeInt.annotate({ description: "Epoch ms when the next condition check is due; absent when unknown" }),
+    ),
+    interval_ms: optional(
+      NonNegativeInt.annotate({
+        description: "Milliseconds between condition checks; clients derive heartbeat staleness from it",
+      }),
+    ),
   }),
 ]).annotate({ identifier: "SessionStatus" })
 export type Info = Schema.Schema.Type<typeof Info>

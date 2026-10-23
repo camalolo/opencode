@@ -13,6 +13,7 @@ import { MessageV2 } from "@/session/message-v2"
 import { SessionPrompt } from "@/session/prompt"
 import { SessionRevert } from "@/session/revert"
 import { SessionRunState } from "@/session/run-state"
+import { SessionSleepDelivery } from "@/session/sleep-delivery"
 import { SessionStatus } from "@/session/status"
 import { SessionSummary } from "@/session/summary"
 import { Todo } from "@/session/todo"
@@ -58,6 +59,7 @@ export const sessionHandlers = HttpApiBuilder.group(InstanceHttpApi, "session", 
     const agentSvc = yield* Agent.Service
     const permissionSvc = yield* Permission.Service
     const statusSvc = yield* SessionStatus.Service
+    const sleepDelivery = yield* SessionSleepDelivery.Service
     const todoSvc = yield* Todo.Service
     const summary = yield* SessionSummary.Service
     const events = yield* EventV2Bridge.Service
@@ -83,13 +85,30 @@ export const sessionHandlers = HttpApiBuilder.group(InstanceHttpApi, "session", 
       // this endpoint too, and scoping by the routed instance left their
       // stores without the badge. Live busy/retry entries win - a session
       // that is actively working is more informative than the trigger under it.
+      // Deadline sweep on the read path: the UI polls this endpoint constantly,
+      // so an expired pending trigger converts to a timeout wake even if the
+      // scheduler loop is wedged. This is the limbo backstop. The delivery
+      // flush that follows admits the wake through the normal prompt path and
+      // is claim-idempotent, so the delivery loop doing it again is harmless.
+      const db = (yield* Database.Service).db
+      // catchCause (not just the error channel): the store fails via defects.
+      const swept = yield* SessionSleep.sweepOverdue(db, Date.now()).pipe(
+        Effect.catchCause((cause) => Effect.logWarning("sleep deadline sweep failed", { cause }).pipe(Effect.as(0))),
+      )
+      if (swept > 0) yield* sleepDelivery.flush().pipe(Effect.ignore)
       const entries = yield* statusSvc.list()
       const merged = new Map(entries)
-      const pending = yield* SessionSleep.pendingAll((yield* Database.Service).db)
+      const pending = yield* SessionSleep.pendingAll(db)
       for (const row of pending) {
         const existing = merged.get(row.sessionID)
         if (existing && existing.type !== "idle") continue
-        merged.set(row.sessionID, { type: "sleeping", description: row.description, wake_at: row.wakeAt })
+        merged.set(row.sessionID, {
+          type: "sleeping",
+          description: row.description,
+          wake_at: row.wakeAt,
+          next_check_at: row.nextCheckAt,
+          interval_ms: row.intervalMs,
+        })
       }
       return Object.fromEntries(merged)
     })
