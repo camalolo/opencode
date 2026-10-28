@@ -19,12 +19,15 @@ const tail = (output: string) =>
   output.length <= MAX_WAKE_OUTPUT_CHARS ? output : `…${output.slice(-MAX_WAKE_OUTPUT_CHARS)}`
 
 export const wakeText = (row: SessionSleep.Trigger, output: string) => {
+  const state = SessionSleep.isStateTrigger(row)
   const detail = output.trim().length > 0 ? `\n\nLast check output:\n${tail(output)}` : ""
   if (row.status === "fired")
     return [
       `⏰ Sleep trigger fired: ${row.description}`,
       "",
-      "The condition check you armed with the sleep_until tool exited 0." + detail,
+      (state
+        ? "The predicate judged the observed state met (exit 0)."
+        : "The condition check you armed with the sleep_until tool exited 0.") + detail,
       "",
       "The trigger is disarmed. Continue working on this now.",
     ].join("\n")
@@ -32,17 +35,21 @@ export const wakeText = (row: SessionSleep.Trigger, output: string) => {
     return [
       `⏰ Sleep trigger timed out: ${row.description}`,
       "",
-      "The condition never became true within the timeout." + detail,
+      (state
+        ? "The predicate never judged the state document met within the timeout. Last check output shows how far the state got."
+        : "The condition never became true within the timeout.") + detail,
       "",
       "The trigger is disarmed. Re-arm it, adjust the condition, or move on.",
     ].join("\n")
   return [
     `⏰ Sleep trigger failed: ${row.description}`,
     "",
-    `The condition check was broken ${MAX_BROKEN_CHECKS} times since arming (bad exit code, command not found, timeout, or exit 1 with no output), so the trigger disarmed itself instead of spinning forever.` +
+    `The check was broken ${MAX_BROKEN_CHECKS} times since arming (bad exit code, command not found, timeout, or exit 1 with no output), so the trigger disarmed itself instead of spinning forever.` +
       detail,
     "",
-    "Inspect the condition, fix it, and re-arm with sleep_until if needed.",
+    (state
+      ? "Inspect the last check output, fix the observe or predicate, and re-arm with sleep_until if needed."
+      : "Inspect the condition, fix it, and re-arm with sleep_until if needed."),
   ].join("\n")
 }
 

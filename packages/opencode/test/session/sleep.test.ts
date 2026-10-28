@@ -545,7 +545,7 @@ delivery.it.effect(
 // Wake text
 // ---------------------------------------------------------------------------
 
-const row = (status: SessionSleep.Status, output = "") =>
+const row = (status: SessionSleep.Status, output = "", extra: Partial<SessionSleep.Trigger> = {}) =>
   ({
     id: SessionSleep.ID.make("slp_test"),
     sessionID: SessionSchema.ID.make("ses_x"),
@@ -561,6 +561,7 @@ const row = (status: SessionSleep.Status, output = "") =>
     deliverAttempts: 0,
     timeCreated: Date.now(),
     ...(output ? { lastOutput: output } : {}),
+    ...extra,
   }) as SessionSleep.Trigger
 
 test("wake text covers fired, timed out, and failed outcomes", () => {
@@ -574,6 +575,19 @@ test("wake text covers fired, timed out, and failed outcomes", () => {
   const failed = wakeText(row("failed"), "boom")
   expect(failed).toContain("disarmed itself")
   expect(failed).toContain("boom")
+})
+
+test("wake text speaks state-check vocabulary for state triggers", () => {
+  const state = { observe: "tail -n 50 x.log", predicate: "grep -q done", metExample: "done" }
+  const fired = wakeText(row("fired", "[state]\njob done", state), "[state]\njob done")
+  expect(fired).toContain("predicate judged the observed state met")
+  expect(fired).not.toContain("condition check you armed")
+
+  const timedOut = wakeText(row("timed_out", "", state), "")
+  expect(timedOut).toContain("predicate never judged the state document met")
+
+  const failed = wakeText(row("failed", "boom", state), "boom")
+  expect(failed).toContain("fix the observe or predicate")
 })
 
 // ---------------------------------------------------------------------------
