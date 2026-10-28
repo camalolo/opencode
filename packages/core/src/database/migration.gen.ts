@@ -47,5 +47,6 @@ export const migrations = (
     import("./migration/20260920160000_part_time_updated_idx"),
     import("./migration/20260923044853_silent_darkstar"),
     import("./migration/20260926073421_session_sleep"),
+    import("./migration/20261028080829_sleep_state_check"),
   ])
 ).map((module) => module.default) satisfies DatabaseMigration.Migration[]

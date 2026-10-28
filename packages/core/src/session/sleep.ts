@@ -19,6 +19,16 @@ const UNDELIVERED: readonly Status[] = ["fired", "timed_out", "failed"]
 /** Broken checks (bad exit code, timeout, command not found, silent exit 1) before a trigger disarms itself and reports. */
 export const MAX_BROKEN_CHECKS = 5
 
+/**
+ * Narrows to a state trigger, whose check is `observe | predicate` with
+ * `met_example` proven at arm time. Anything else is a legacy single-string
+ * condition row.
+ */
+export const isStateTrigger = (
+  trigger: Trigger,
+): trigger is Trigger & { readonly observe: string; readonly predicate: string; readonly metExample: string } =>
+  trigger.observe !== undefined && trigger.predicate !== undefined && trigger.metExample !== undefined
+
 /** Delivery attempts before redelivery gives up and only logs. */
 export const MAX_DELIVER_ATTEMPTS = 5
 
@@ -34,7 +44,12 @@ export const wakeMessageID = (row: { readonly id: ID }) => MessageID.make(`msg_s
 export interface Trigger {
   readonly id: ID
   readonly sessionID: SessionSchema.ID
+  /** Legacy single-string check. Empty for state triggers. */
   readonly condition: string
+  /** State-trigger check (all three set together; undefined for legacy rows). */
+  readonly observe?: string
+  readonly predicate?: string
+  readonly metExample?: string
   readonly description: string
   readonly intervalMs: number
   readonly checkTimeoutMs: number
@@ -60,6 +75,9 @@ const fromRow = (row: Row): Trigger => ({
   id: ID.make(row.id),
   sessionID: SessionSchema.ID.make(row.session_id),
   condition: row.condition,
+  ...(row.observe === null || row.predicate === null || row.met_example === null
+    ? {}
+    : { observe: row.observe, predicate: row.predicate, metExample: row.met_example }),
   description: row.description,
   intervalMs: row.interval_ms,
   checkTimeoutMs: row.check_timeout_ms,
@@ -86,7 +104,11 @@ export const arm = Effect.fn("SessionSleep.arm")(function* (
   input: {
     readonly id: ID
     readonly sessionID: SessionSchema.ID
-    readonly condition: string
+    /** Legacy single-string check; omitted for state triggers. */
+    readonly condition?: string
+    readonly observe?: string
+    readonly predicate?: string
+    readonly metExample?: string
     readonly description: string
     readonly intervalMs: number
     readonly checkTimeoutMs: number
@@ -108,7 +130,12 @@ export const arm = Effect.fn("SessionSleep.arm")(function* (
     .values({
       id: input.id,
       session_id: input.sessionID,
-      condition: input.condition,
+      // Legacy rows carry the condition text; state rows leave it empty and
+      // fill observe/predicate/met_example instead.
+      condition: input.condition ?? "",
+      ...(input.observe === undefined ? {} : { observe: input.observe }),
+      ...(input.predicate === undefined ? {} : { predicate: input.predicate }),
+      ...(input.metExample === undefined ? {} : { met_example: input.metExample }),
       description: input.description,
       interval_ms: input.intervalMs,
       check_timeout_ms: input.checkTimeoutMs,

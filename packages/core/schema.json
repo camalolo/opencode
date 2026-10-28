@@ -1,9 +1,9 @@
 {
   "version": "7",
   "dialect": "sqlite",
-  "id": "56a488fb-3c08-40db-a9dc-4d0ae60a7d41",
+  "id": "fecccb99-68da-41c8-876d-fc5804f7972f",
   "prevIds": [
-    "2ca66d68-43df-423b-9c26-f94240c66be3"
+    "56a488fb-3c08-40db-a9dc-4d0ae60a7d41"
   ],
   "ddl": [
     {
@@ -1147,6 +1147,36 @@
       "default": null,
       "generated": null,
       "name": "condition",
+      "entityType": "columns",
+      "table": "session_sleep"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "observe",
+      "entityType": "columns",
+      "table": "session_sleep"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "predicate",
+      "entityType": "columns",
+      "table": "session_sleep"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "met_example",
       "entityType": "columns",
       "table": "session_sleep"
     },

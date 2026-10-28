@@ -39,6 +39,12 @@ export interface CheckResult {
   readonly timedOut: boolean
 }
 
+/** One evaluated check: the verdict plus the output worth showing the session. */
+export interface CheckOutcome {
+  readonly verdict: CheckVerdict
+  readonly output: string
+}
+
 /**
  * cmd.exe and PowerShell both report a missing command with "is not recognized"
  * (and cmd collapses the error to exit code 1, indistinguishable from "not met"
@@ -79,15 +85,36 @@ export const classifyCheck = (result: CheckResult): CheckVerdict => {
   return { kind: "broken", reason: `exit code ${result.exitCode} (valid conditions exit 0 or 1)` }
 }
 
+/**
+ * Judges the observe stage of a state check, whose exit code is meaningless —
+ * it only prints the state document (e.g. `grep -q pattern file` legitimately
+ * exits 1 when the pattern is absent). Broken therefore means "produced no
+ * state at all": timeout, spawn failure, or a missing command. Returns the
+ * problem, or undefined when the observe ran fine.
+ */
+export const observeProblem = (result: CheckResult): string | undefined => {
+  if (result.timedOut) return "the observe timed out"
+  if (result.exitCode === undefined) return result.output.trim() || "the observe failed to run"
+  if (result.exitCode === 127) return "command not found (exit code 127)"
+  if (COMMAND_NOT_FOUND_PATTERNS.some((pattern) => result.output.includes(pattern)))
+    return `command not found (the shell reported it, exit code ${result.exitCode})`
+  return undefined
+}
+
 export interface ArmInput {
   readonly sessionID: SessionSchema.ID
-  readonly condition: string
   readonly description: string
   readonly intervalMs: number
   readonly timeoutMs: number
   readonly checkTimeoutMs: number
   readonly cwd: string
   readonly shell?: string
+  /** Legacy single-string condition; omit when arming a state check. */
+  readonly condition?: string
+  /** State check: observe prints the state, predicate judges it, metExample was proven to satisfy the predicate at arm time. */
+  readonly observe?: string
+  readonly predicate?: string
+  readonly metExample?: string
 }
 
 export interface Interface {
@@ -97,12 +124,13 @@ export interface Interface {
   readonly cancel: (sessionID: SessionSchema.ID) => Effect.Effect<boolean>
   /** Latest trigger for a session, regardless of status. */
   readonly get: (sessionID: SessionSchema.ID) => Effect.Effect<SessionSleep.Trigger | undefined>
-  /** Runs one condition check without arming anything. Used for the arm-time probe. */
+  /** Runs one condition check without arming anything. Used for the arm-time proof gate. */
   readonly probe: (input: {
     readonly condition: string
     readonly cwd: string
     readonly shell?: string
     readonly timeoutMs?: number
+    readonly stdin?: string
   }) => Effect.Effect<CheckResult>
   /** Drains all due checks now instead of waiting for the next tick. */
   readonly flush: () => Effect.Effect<void>
@@ -120,6 +148,8 @@ export const runCheck = Effect.fn("SessionSleepScheduler.runCheck")(function* (
     readonly cwd: string
     readonly shell?: string
     readonly timeoutMs: number
+    /** Text piped into the check's stdin (state documents, met examples). */
+    readonly stdin?: string
   },
 ) {
   const command = ChildProcess.make(input.condition, [], {
@@ -134,6 +164,7 @@ export const runCheck = Effect.fn("SessionSleepScheduler.runCheck")(function* (
       combineOutput: true,
       timeout: Duration.millis(input.timeoutMs),
       maxOutputBytes: MAX_CAPTURE_BYTES,
+      ...(input.stdin === undefined ? {} : { stdin: input.stdin }),
     })
     .pipe(
       Effect.map((result) => ({
@@ -149,6 +180,48 @@ export const runCheck = Effect.fn("SessionSleepScheduler.runCheck")(function* (
         }),
       ),
     )
+})
+
+/**
+ * Evaluates a state trigger: observe prints the current state document, then
+ * the predicate judges it on stdin. The two stages split the check budget.
+ * The combined output pairs the predicate's progress line with the state
+ * document, so `sleep_status` and the wake message carry the actual state.
+ */
+export const runStateCheck = Effect.fn("SessionSleepScheduler.runStateCheck")(function* (
+  appProcess: AppProcess.Interface,
+  input: {
+    readonly observe: string
+    readonly predicate: string
+    readonly cwd: string
+    readonly shell?: string
+    readonly timeoutMs: number
+  },
+) {
+  const budget = Math.max(Math.floor(input.timeoutMs / 2), 5_000)
+  const options = {
+    cwd: input.cwd,
+    ...(input.shell === undefined ? {} : { shell: input.shell }),
+  }
+  const observed = yield* runCheck(appProcess, { condition: input.observe, ...options, timeoutMs: budget })
+  const problem = observeProblem(observed)
+  if (problem !== undefined)
+    return { verdict: { kind: "broken" as const, reason: problem }, output: observed.output }
+  const judged = yield* runCheck(appProcess, {
+    condition: input.predicate,
+    ...options,
+    timeoutMs: budget,
+    stdin: observed.output,
+  })
+  const verdict = classifyCheck(judged)
+  const progress = judged.output.trim()
+  const state = observed.output.trim()
+  return {
+    verdict,
+    output: [progress.length > 0 ? progress : undefined, state.length > 0 ? `[state]\n${state}` : undefined]
+      .filter(Boolean)
+      .join("\n\n"),
+  }
 })
 
 /**
@@ -198,24 +271,32 @@ const layer = Layer.effect(
         return
       }
       if (!(yield* SessionSleep.claimCheck(db, row.id, now))) return
-      const result = yield* runCheck(appProcess, {
-        condition: row.condition,
-        cwd: row.cwd,
-        ...(row.shell === undefined ? {} : { shell: row.shell }),
-        timeoutMs: row.checkTimeoutMs,
-      })
+      const outcome = SessionSleep.isStateTrigger(row)
+        ? yield* runStateCheck(appProcess, {
+            observe: row.observe,
+            predicate: row.predicate,
+            cwd: row.cwd,
+            ...(row.shell === undefined ? {} : { shell: row.shell }),
+            timeoutMs: row.checkTimeoutMs,
+          })
+        : yield* runCheck(appProcess, {
+            condition: row.condition,
+            cwd: row.cwd,
+            ...(row.shell === undefined ? {} : { shell: row.shell }),
+            timeoutMs: row.checkTimeoutMs,
+          }).pipe(Effect.map((result) => ({ verdict: classifyCheck(result), output: result.output })))
       lastProgressAt = Date.now()
-      const verdict = classifyCheck(result)
+      const verdict = outcome.verdict
       if (verdict.kind === "met") {
-        yield* SessionSleep.finish(db, row.id, "fired", SessionSleep.wakeMessageID(row), tail(result.output, 4096))
+        yield* SessionSleep.finish(db, row.id, "fired", SessionSleep.wakeMessageID(row), tail(outcome.output, 4096))
         yield* Effect.logInfo("sleep trigger fired", { "session.id": row.sessionID, trigger: row.id })
         return
       }
       if (verdict.kind === "unmet") {
-        yield* SessionSleep.recordNotMet(db, row.id, tail(result.output, 4096))
+        yield* SessionSleep.recordNotMet(db, row.id, tail(outcome.output, 4096))
         return
       }
-      const failures = yield* SessionSleep.recordFailure(db, row.id, tail(result.output, 4096))
+      const failures = yield* SessionSleep.recordFailure(db, row.id, tail(outcome.output, 4096))
       if (failures !== undefined && failures >= MAX_BROKEN_CHECKS) {
         yield* SessionSleep.finish(db, row.id, "failed", SessionSleep.wakeMessageID(row))
         yield* Effect.logWarning("sleep trigger disarmed after broken checks", {
@@ -289,7 +370,10 @@ const layer = Layer.effect(
         SessionSleep.arm(db, {
           id: SessionSleep.ID.ascending(),
           sessionID: input.sessionID,
-          condition: input.condition,
+          ...(input.condition === undefined ? {} : { condition: input.condition }),
+          ...(input.observe === undefined ? {} : { observe: input.observe }),
+          ...(input.predicate === undefined ? {} : { predicate: input.predicate }),
+          ...(input.metExample === undefined ? {} : { metExample: input.metExample }),
           description: input.description,
           intervalMs: input.intervalMs,
           checkTimeoutMs: input.checkTimeoutMs,

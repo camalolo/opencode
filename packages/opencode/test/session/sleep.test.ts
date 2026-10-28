@@ -1,7 +1,7 @@
 import { Database } from "@opencode-ai/core/database/database"
 import { SessionSchema } from "@opencode-ai/core/session/schema"
 import { SessionSleep } from "@opencode-ai/core/session/sleep"
-import { SessionTable } from "@opencode-ai/core/session/sql"
+import { SessionSleepTable, SessionTable } from "@opencode-ai/core/session/sql"
 import { SessionV1 } from "@opencode-ai/core/v1/session"
 import { LayerNode } from "@opencode-ai/core/effect/layer-node"
 import { ProjectV2 } from "@opencode-ai/core/project"
@@ -11,6 +11,8 @@ import { ModelV2 } from "@opencode-ai/core/model"
 import { ProviderV2 } from "@opencode-ai/core/provider"
 import { expect, test } from "bun:test"
 import { Cause, Effect, Exit, Layer } from "effect"
+import { eq } from "drizzle-orm"
+import path from "path"
 import { Config } from "@/config/config"
 import type * as Tool from "@/tool/tool"
 import { InstanceBootstrap } from "@/project/bootstrap"
@@ -23,7 +25,7 @@ import { SessionSleepScheduler } from "@/session/sleep-scheduler"
 import { SessionStatus } from "@/session/status"
 import { Truncate } from "@/tool/truncate"
 import { Agent } from "@/agent/agent"
-import { conditionSelfMatch, SleepCancelTool, SleepStatusTool, SleepUntilTool } from "@/tool/sleep"
+import { conditionClock, conditionSelfMatch, SleepCancelTool, SleepStatusTool, SleepUntilTool } from "@/tool/sleep"
 import { pollWithTimeout, testEffect } from "../lib/effect"
 
 const insertSession = (db: Database.Interface["db"], sessionID: string) =>
@@ -72,6 +74,19 @@ const fakeWithParts = (sessionID: SessionID): SessionV1.WithParts => ({
 // An unmet condition must produce output: a silent exit 1 classifies as a
 // broken check and the arm-time probe refuses it.
 const unmetWithOutput = process.platform === "win32" ? "echo still waiting & exit 1" : "echo 'still waiting'; exit 1"
+
+// State-check fixtures, portable across cmd.exe and POSIX sh: the observe
+// prints a state document; the predicate greps it for the `done` marker on
+// stdin, exiting 1 with a progress line while the marker is absent. No quotes
+// on the findstr pattern: through `cmd /s /c` a quoted pattern fails to match
+// piped stdin.
+const observeState = "echo state-abc"
+const predicateDone =
+  process.platform === "win32"
+    ? `findstr done >NUL 2>&1 || (echo still waiting & exit 1)`
+    : `grep -q done || { echo 'still waiting'; exit 1; }`
+const metExample = "state-abc done"
+const stateCheck = { observe: observeState, predicate: predicateDone, met_example: metExample }
 
 // ---------------------------------------------------------------------------
 // Scheduler
@@ -589,6 +604,32 @@ test("conditionSelfMatch refuses pgrep -f patterns that match their own wrapper 
   expect(conditionSelfMatch(`test -f /tmp/done || { echo waiting; exit 1; }`)).toBeUndefined()
 })
 
+test("observeProblem only breaks on a missing state document", () => {
+  // The observe's exit code is meaningless — `grep -q pattern file` legitimately
+  // exits 1 while printing the state is what matters.
+  expect(SessionSleepScheduler.observeProblem({ exitCode: 1, output: "state-abc", timedOut: false })).toBeUndefined()
+  expect(SessionSleepScheduler.observeProblem({ exitCode: 7, output: "odd but present", timedOut: false })).toBeUndefined()
+  expect(SessionSleepScheduler.observeProblem({ exitCode: 127, output: "", timedOut: false })).toContain(
+    "command not found",
+  )
+  expect(
+    SessionSleepScheduler.observeProblem({ exitCode: undefined, output: "check timed out", timedOut: true }),
+  ).toContain("timed out")
+  expect(SessionSleepScheduler.observeProblem({ exitCode: undefined, output: "spawn failed", timedOut: false })).toBe(
+    "spawn failed",
+  )
+})
+
+test("conditionClock flags time literals in predicates", () => {
+  expect(conditionClock(`awk '$1 > "15:29" || { echo waiting; exit 1; }'`)).toContain("clock time")
+  expect(conditionClock(`grep -q '2026-10-28 done' || { echo waiting; exit 1; }`)).toContain("calendar date")
+  expect(conditionClock(`test "$(date +%s)" -gt 1790000000`)).toContain("$(date")
+  // A date *regex* matches a timestamp field of the state — a value, not a
+  // window — so it is deliberately not flagged.
+  expect(conditionClock(`grep -qE '^\\d{4}-\\d{2}-\\d{2}' || { echo waiting; exit 1; }`)).toBeUndefined()
+  expect(conditionClock(predicateDone)).toBeUndefined()
+})
+
 // ---------------------------------------------------------------------------
 // Tools
 // ---------------------------------------------------------------------------
@@ -644,20 +685,28 @@ toolIt.instance(
       const untilDef = yield* until.init()
 
       // Condition already met: no sleep armed, permission still asked.
-      const met = yield* untilDef.execute({ condition: "exit 0", description: "instant" }, ctx)
-      expect(met.output).toContain("already met")
+      const met = yield* untilDef.execute(
+        { observe: "echo state-a", predicate: "exit 0", met_example: "", description: "instant" },
+        ctx,
+      )
+      expect(met.output).toContain("already satisfies the predicate")
       expect(asks).toHaveLength(1)
       expect(yield* scheduler.get(sessionID)).toBeUndefined()
 
-      // Condition unmet: arms a pending trigger.
-      const armed = yield* untilDef.execute({ condition: unmetWithOutput, description: "forum reply" }, ctx)
+      // Live state unmet plus a met_example the predicate accepts: arms a
+      // pending trigger.
+      const armed = yield* untilDef.execute({ ...stateCheck, description: "forum reply" }, ctx)
       expect(armed.output).toContain("Sleep armed")
+      expect(armed.output).toContain("proven at arm time")
       const first = yield* scheduler.get(sessionID)
       expect(first?.status).toBe("pending")
       expect(first?.description).toBe("forum reply")
+      expect(first?.observe).toBe(observeState)
+      expect(first?.predicate).toBe(predicateDone)
+      expect(first?.metExample).toBe(metExample)
 
       // Re-arming replaces the previous trigger.
-      yield* untilDef.execute({ condition: unmetWithOutput, description: "second wait" }, ctx)
+      yield* untilDef.execute({ ...stateCheck, description: "second wait" }, ctx)
       const second = yield* scheduler.get(sessionID)
       expect(second?.id).not.toBe(first?.id)
       expect(second?.description).toBe("second wait")
@@ -689,10 +738,50 @@ toolIt.instance(
       const noop = yield* cancelDef.execute({}, ctx)
       expect(noop.output).toContain("No armed sleep trigger")
     }),
+  30_000,
 )
 
 toolIt.instance(
-  "sleep_until refuses to arm when the probe check is broken",
+  "sleep_until refuses to arm when the observe is broken",
+  () =>
+    Effect.gen(function* () {
+      yield* TestInstance
+      const sessionID = SessionID.make("ses_tool_obs_broken")
+      const db = (yield* Database.Service).db
+      yield* insertSession(db, sessionID)
+      const scheduler = yield* SessionSleepScheduler.Service
+      const ctx: Tool.Context = {
+        sessionID,
+        messageID: MessageID.make("msg_tool_obs_broken"),
+        callID: "",
+        agent: "build",
+        abort: AbortSignal.any([]),
+        messages: [],
+        metadata: () => Effect.void,
+        ask: () => Effect.void,
+      }
+      const until = yield* SleepUntilTool
+      const untilDef = yield* until.init()
+
+      // A missing command cannot print the state document: on Windows cmd.exe
+      // reports it with exit code 1, so the detection cannot rely on the code
+      // alone.
+      const refused = yield* untilDef
+        .execute(
+          { observe: "opencode-sleep-missing-cmd", predicate: predicateDone, met_example: metExample, description: "broken" },
+          ctx,
+        )
+        .pipe(Effect.exit)
+      expect(toolDieMessage(refused)).toContain("refused to arm")
+      expect(toolDieMessage(refused)).toContain("observe is broken")
+      expect(yield* scheduler.get(sessionID)).toBeUndefined()
+      expect(yield* SessionSleep.get(db, sessionID)).toBeUndefined()
+    }),
+  30_000,
+)
+
+toolIt.instance(
+  "sleep_until refuses to arm when the predicate is broken on the live state",
   () =>
     Effect.gen(function* () {
       yield* TestInstance
@@ -713,21 +802,16 @@ toolIt.instance(
       const until = yield* SleepUntilTool
       const untilDef = yield* until.init()
 
-      // Non-zero, non-1 exit code: broken contract, nothing armed.
-      const exit7 = yield* untilDef.execute({ condition: "exit 7", description: "broken" }, ctx).pipe(Effect.exit)
+      // Non-zero, non-1 exit code from the predicate: broken contract, nothing armed.
+      const exit7 = yield* untilDef
+        .execute({ observe: observeState, predicate: "exit 7", met_example: "", description: "broken" }, ctx)
+        .pipe(Effect.exit)
       expect(toolDieMessage(exit7)).toContain("refused to arm")
+      expect(toolDieMessage(exit7)).toContain("predicate is broken")
       expect(toolDieMessage(exit7)).toContain("exit code 7")
       expect(yield* scheduler.get(sessionID)).toBeUndefined()
-
-      // A missing command must also refuse: on Windows cmd.exe reports it with
-      // exit code 1, so classification cannot rely on the exit code alone.
-      const missing = yield* untilDef
-        .execute({ condition: "opencode-sleep-missing-cmd", description: "broken" }, ctx)
-        .pipe(Effect.exit)
-      expect(toolDieMessage(missing)).toContain("refused to arm")
-      expect(yield* scheduler.get(sessionID)).toBeUndefined()
-      expect(yield* SessionSleep.get(db, sessionID)).toBeUndefined()
     }),
+  30_000,
 )
 
 toolIt.instance(
@@ -752,9 +836,11 @@ toolIt.instance(
       const until = yield* SleepUntilTool
       const untilDef = yield* until.init()
 
-      // exit 1 with no output cannot prove the check is alive, so arming is
-      // refused instead of sleeping to the timeout on a dead condition.
-      const silent = yield* untilDef.execute({ condition: "exit 1", description: "silent" }, ctx).pipe(Effect.exit)
+      // exit 1 with no output cannot prove the predicate is alive, so arming
+      // is refused instead of sleeping to the timeout on a dead check.
+      const silent = yield* untilDef
+        .execute({ observe: observeState, predicate: "exit 1", met_example: "", description: "silent" }, ctx)
+        .pipe(Effect.exit)
       const message = toolDieMessage(silent)
       expect(message).toContain("refused to arm")
       expect(message).toContain("silent check")
@@ -762,11 +848,12 @@ toolIt.instance(
       expect(yield* scheduler.get(sessionID)).toBeUndefined()
       expect(yield* SessionSleep.get(db, sessionID)).toBeUndefined()
 
-      // The same condition with progress output arms fine.
-      const armed = yield* untilDef.execute({ condition: unmetWithOutput, description: "loud" }, ctx)
+      // The same predicate with progress output and a matching met_example arms fine.
+      const armed = yield* untilDef.execute({ ...stateCheck, description: "loud" }, ctx)
       expect(armed.output).toContain("Sleep armed")
       expect((yield* scheduler.get(sessionID))?.status).toBe("pending")
     }),
+  30_000,
 )
 
 toolIt.instance(
@@ -791,16 +878,19 @@ toolIt.instance(
       const until = yield* SleepUntilTool
       const untilDef = yield* until.init()
 
-      // The pgrep pattern appears in the condition text, so the check would
+      // The pgrep pattern appears in the predicate text, so the check would
       // always find its own sh -c / ssh wrapper and never report the waited
       // -for state. Refused before arming (and before the permission ask).
-      const condition = `pgrep -f dpkg-buildpackage >/dev/null || { echo running; exit 1; }; echo done`
-      const refused = yield* untilDef.execute({ condition, description: "build watch" }, ctx).pipe(Effect.exit)
+      const predicate = `pgrep -f dpkg-buildpackage >/dev/null || { echo running; exit 1; }; echo done`
+      const refused = yield* untilDef
+        .execute({ observe: observeState, predicate, met_example: "", description: "build watch" }, ctx)
+        .pipe(Effect.exit)
       expect(toolDieMessage(refused)).toContain("refused to arm")
       expect(toolDieMessage(refused)).toContain("own wrapper shell")
       expect(yield* scheduler.get(sessionID)).toBeUndefined()
       expect(yield* SessionSleep.get(db, sessionID)).toBeUndefined()
     }),
+  30_000,
 )
 
 toolIt.instance(
@@ -829,15 +919,13 @@ toolIt.instance(
       // "pod never came up, re-arm, timeout, re-arm" loop that burns billed
       // turns. The fourth arm must be refused.
       for (let i = 0; i < 3; i++) {
-        const armed = yield* untilDef.execute({ condition: unmetWithOutput, description: `wait ${i}` }, ctx)
+        const armed = yield* untilDef.execute({ ...stateCheck, description: `wait ${i}` }, ctx)
         expect(armed.output).toContain("Sleep armed")
         const trigger = yield* scheduler.get(sessionID)
         yield* SessionSleep.finish(db, trigger!.id, "timed_out", SessionSleep.wakeMessageID(trigger!))
       }
 
-      const refused = yield* untilDef.execute({ condition: unmetWithOutput, description: "wait 4" }, ctx).pipe(
-        Effect.exit,
-      )
+      const refused = yield* untilDef.execute({ ...stateCheck, description: "wait 4" }, ctx).pipe(Effect.exit)
       const message = toolDieMessage(refused)
       expect(message).toContain("refused to arm")
       expect(message).toContain("cost guard")
@@ -856,7 +944,170 @@ toolIt.instance(
         nextCheckAt: Date.now(),
       })
       yield* SessionSleep.finish(db, fresh.id, "fired", SessionSleep.wakeMessageID(fresh))
-      const recovered = yield* untilDef.execute({ condition: unmetWithOutput, description: "fresh wait" }, ctx)
+      const recovered = yield* untilDef.execute({ ...stateCheck, description: "fresh wait" }, ctx)
       expect(recovered.output).toContain("Sleep armed")
     }),
+  30_000,
+)
+
+toolIt.instance(
+  "sleep_until refuses to arm when the met_example fails the predicate",
+  () =>
+    Effect.gen(function* () {
+      yield* TestInstance
+      const sessionID = SessionID.make("ses_tool_example")
+      const db = (yield* Database.Service).db
+      yield* insertSession(db, sessionID)
+      const scheduler = yield* SessionSleepScheduler.Service
+      const ctx: Tool.Context = {
+        sessionID,
+        messageID: MessageID.make("msg_tool_example"),
+        callID: "",
+        agent: "build",
+        abort: AbortSignal.any([]),
+        messages: [],
+        metadata: () => Effect.void,
+        ask: () => Effect.void,
+      }
+      const until = yield* SleepUntilTool
+      const untilDef = yield* until.init()
+
+      // The predicate ignores stdin entirely and always reports "not met": it
+      // is the exact class of never-firing check the arm gate must reject.
+      // The fabricated positive is the only thing that can tell.
+      const predicate = process.platform === "win32" ? "echo not yet & exit 1" : "echo 'not yet'; exit 1"
+      const refused = yield* untilDef
+        .execute({ observe: observeState, predicate, met_example: "state done", description: "vague" }, ctx)
+        .pipe(Effect.exit)
+      const message = toolDieMessage(refused)
+      expect(message).toContain("refused to arm")
+      expect(message).toContain("met_example does not satisfy your own predicate")
+      expect(message).toContain("Predicate on live state")
+      expect(message).toContain("Predicate on met_example")
+      expect(yield* scheduler.get(sessionID)).toBeUndefined()
+      expect(yield* SessionSleep.get(db, sessionID)).toBeUndefined()
+    }),
+  30_000,
+)
+
+toolIt.instance(
+  "sleep_until refuses clock-window predicates unless explicitly allowed",
+  () =>
+    Effect.gen(function* () {
+      yield* TestInstance
+      const sessionID = SessionID.make("ses_tool_clock")
+      yield* insertSession((yield* Database.Service).db, sessionID)
+      const scheduler = yield* SessionSleepScheduler.Service
+      const ctx: Tool.Context = {
+        sessionID,
+        messageID: MessageID.make("msg_tool_clock"),
+        callID: "",
+        agent: "build",
+        abort: AbortSignal.any([]),
+        messages: [],
+        metadata: () => Effect.void,
+        ask: () => Effect.void,
+      }
+      const until = yield* SleepUntilTool
+      const untilDef = yield* until.init()
+
+      // The predicate compares against a clock literal: the exact time-window
+      // trap that silently expires. Refused by default, even though the
+      // met_example below would satisfy it.
+      const predicate =
+        process.platform === "win32"
+          ? `findstr 15:29 >NUL 2>&1 || (echo waiting & exit 1)`
+          : `grep -q '15:29 done' || { echo waiting; exit 1; }`
+      const refused = yield* untilDef
+        .execute(
+          { observe: observeState, predicate, met_example: "at 15:29 it is done", description: "clock" },
+          ctx,
+        )
+        .pipe(Effect.exit)
+      expect(toolDieMessage(refused)).toContain("clock time")
+      expect(toolDieMessage(refused)).toContain("allow_clock_predicate")
+      expect(yield* scheduler.get(sessionID)).toBeUndefined()
+
+      // The explicit override arms it — the escape hatch stays visible.
+      const armed = yield* untilDef.execute(
+        {
+          observe: observeState,
+          predicate,
+          met_example: "at 15:29 it is done",
+          allow_clock_predicate: true,
+          description: "clock, allowed",
+        },
+        ctx,
+      )
+      expect(armed.output).toContain("Sleep armed")
+    }),
+  30_000,
+)
+
+toolIt.instance(
+  "a state trigger fires when the state document changes",
+  () =>
+    Effect.gen(function* () {
+      const test = yield* TestInstance
+      const sessionID = SessionID.make("ses_tool_state_fire")
+      const db = (yield* Database.Service).db
+      yield* insertSession(db, sessionID)
+      const scheduler = yield* SessionSleepScheduler.Service
+      const ctx: Tool.Context = {
+        sessionID,
+        messageID: MessageID.make("msg_tool_state_fire"),
+        callID: "",
+        agent: "build",
+        abort: AbortSignal.any([]),
+        messages: [],
+        metadata: () => Effect.void,
+        ask: () => Effect.void,
+      }
+      const until = yield* SleepUntilTool
+      const untilDef = yield* until.init()
+
+      const watch = path.join(test.directory, "watch.log")
+      yield* Effect.promise(() => Bun.write(watch, "job started\n"))
+      const observe = process.platform === "win32" ? `type ${watch}` : `cat ${watch}`
+      const armed = yield* untilDef.execute(
+        { observe, predicate: predicateDone, met_example: "job done\n", description: "job completes" },
+        ctx,
+      )
+      expect(armed.output).toContain("Sleep armed")
+      const trigger = yield* scheduler.get(sessionID)
+
+      // State without the marker: the background check records progress and
+      // leaves the trigger pending.
+      yield* scheduler.flush()
+      const pending = yield* SessionSleep.byID(db, trigger!.id)
+      expect(pending?.status).toBe("pending")
+      expect(pending?.lastOutput).toContain("[state]")
+      expect(pending?.lastOutput).toContain("job started")
+      expect(pending?.lastOutput).toContain("still waiting")
+
+      // The marker appears: the wake carries the state document. The first
+      // flush claimed the check and advanced next_check_at by the interval, so
+      // backdate it to make the row due again.
+      const claimed = yield* SessionSleep.byID(db, trigger!.id)
+      yield* db
+        .update(SessionSleepTable)
+        .set({ next_check_at: Date.now() - 1 })
+        .where(eq(SessionSleepTable.id, trigger!.id))
+        .run()
+        .pipe(Effect.orDie)
+      expect(claimed?.lastOutput).toContain("still waiting")
+      yield* Effect.promise(() => Bun.write(watch, "job started\njob done\n"))
+      yield* scheduler.flush()
+      const fired = yield* pollWithTimeout(
+        Effect.gen(function* () {
+          const row = yield* SessionSleep.byID(db, trigger!.id)
+          return row?.status === "fired" ? row : undefined
+        }),
+        "state trigger never fired",
+        "30 seconds",
+      )
+      expect(fired.lastOutput).toContain("[state]")
+      expect(fired.lastOutput).toContain("job done")
+    }),
+  30_000,
 )

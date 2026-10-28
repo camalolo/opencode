@@ -190,7 +190,15 @@ export const SessionSleepTable = sqliteTable(
       .$type<SessionSchema.ID>()
       .notNull()
       .references(() => SessionTable.id, { onDelete: "cascade" }),
+    // Legacy single-string check: exit 0 = met, 1 = unmet. Empty for state
+    // triggers, which store observe/predicate/met_example instead.
     condition: text().notNull(),
+    // State-trigger check: observe prints the current state document, predicate
+    // judges it on stdin (exit 0 = met, 1 = unmet), met_example is the
+    // fabricated positive the predicate was proven to accept at arm time.
+    observe: text(),
+    predicate: text(),
+    met_example: text(),
     description: text().notNull(),
     interval_ms: integer().notNull(),
     check_timeout_ms: integer().notNull(),
