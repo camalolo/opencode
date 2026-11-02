@@ -65,7 +65,9 @@ export const DialogTasks: Component = () => {
   const directory = () => sdk().directory
   const api = createTasksApi({
     server: () => server.current?.http,
-    fetch: platform.fetch ?? globalThis.fetch,
+    // fetch must stay bound to its global receiver; calling it as an object
+    // method throws "Illegal invocation".
+    fetch: (platform.fetch ?? globalThis.fetch).bind(globalThis),
     directory,
   })
 
@@ -223,7 +225,14 @@ export const DialogTasks: Component = () => {
           <Show when={!tasksQuery.isLoading} fallback={<DialogTasksStatus text={language.t("common.loading")} />}>
             <Show
               when={!tasksQuery.error}
-              fallback={<DialogTasksStatus text={language.t("common.requestFailed")} onRetry={() => void tasksQuery.refetch()} />}
+              fallback={
+                <DialogTasksStatus
+                  text={
+                    errorMessage(tasksQuery.error) ?? language.t("common.requestFailed")
+                  }
+                  onRetry={() => void tasksQuery.refetch()}
+                />
+              }
             >
               <Show when={(tasksQuery.data ?? []).length > 0} fallback={<DialogTasksStatus text={language.t("dialog.tasks.empty")} />}>
                 <For each={tasksQuery.data ?? []}>
