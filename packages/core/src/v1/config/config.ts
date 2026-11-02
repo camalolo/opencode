@@ -185,7 +185,7 @@ export const Info = Schema.Struct({
       }),
       max_consecutive_timeouts: Schema.optional(PositiveInt).annotate({
         description:
-          "Refuse to arm a new sleep trigger after this many consecutive timed-out or failed triggers on the same session, so a never-true condition cannot loop billed wake turns forever (default: 3)",
+          "Refuse to re-arm a sleep trigger after this many timed-out or failed attempts of the same wait (identical observe and predicate) on the same session, so a never-true check cannot loop billed wake turns forever. Waiting for something different is never blocked (default: 3)",
       }),
     }),
   ).annotate({

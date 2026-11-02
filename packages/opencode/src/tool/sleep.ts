@@ -201,23 +201,23 @@ export const SleepUntilTool = Tool.define<
             )
         }
 
-        // Re-arm budget: a session whose recent triggers all timed out or
-        // broke is polling for something that never happens, and every
-        // timeout wake is a billed turn. Cut the loop and force a report to
-        // the user instead of letting the charges accrue silently.
+        // Re-arm budget: re-arming the same never-firing wait burns a billed
+        // turn on every timeout. Count terminal failures of THIS check only —
+        // failures of different waits are iteration, not a loop, and must not
+        // lock the session out.
         const recent = yield* SessionSleep.history(db, ctx.sessionID)
-        let consecutiveTimeouts = 0
+        let repeatedFailures = 0
         for (const row of recent) {
           if (row.status !== "timed_out" && row.status !== "failed") break
-          consecutiveTimeouts += 1
+          if (row.observe === params.observe && row.predicate === params.predicate) repeatedFailures += 1
         }
-        if (consecutiveTimeouts >= limits.maxConsecutiveTimeouts)
+        if (repeatedFailures >= limits.maxConsecutiveTimeouts)
           return yield* Effect.fail(
             new Error(
               [
-                `sleep_until refused to arm: the last ${consecutiveTimeouts} triggers on this session ended in timeout or failure without the condition ever being met.`,
-                "This is a cost guard — repeatedly re-arming a never-true condition burns a billed turn on every timeout.",
-                "Do not call sleep_until again. Tell the user the wait is not converging, summarize what was observed, and let them decide (they can raise sleep.max_consecutive_timeouts in config if the watch is legitimate).",
+                `sleep_until refused to arm: this exact wait (same observe and predicate) already timed out or broke ${repeatedFailures} times without ever firing.`,
+                "This is a cost guard — re-arming the same never-firing check burns a billed turn on every timeout.",
+                "Do not re-arm this wait again. Either change the approach (different observe/predicate, or a different mechanism entirely), or tell the user the wait is not converging, summarize what was observed, and let them decide (they can raise sleep.max_consecutive_timeouts in config if the watch is legitimate).",
               ].join(" "),
             ),
           )
@@ -380,7 +380,7 @@ export const SleepUntilTool = Tool.define<
         "When armed, END YOUR TURN (or do unrelated work) — never busy-wait with sleep in bash while a trigger is armed; the wake message arrives automatically, even mid-turn, carrying the final state document. To see the latest state, call sleep_status instead of polling.",
         "The trigger survives server restarts. Arming again replaces the previous trigger; cancel with sleep_cancel.",
         `Broken checks accumulate while armed: ${MAX_BROKEN_CHECKS} of them disarm the trigger and wake you with the failure, so a misbehaving check can never spin silently until the timeout.`,
-        "A session whose recent triggers all timed out without a met condition cannot re-arm: report to the user instead.",
+        "Re-arming the same wait (identical observe and predicate) that already timed out or broke repeatedly is refused after a few attempts (sleep.max_consecutive_timeouts, default 3): change the approach, or report to the user instead. Waiting for something different always remains available.",
         "Blessed shapes — file gained a line: observe `tail -n 50 /var/log/x.log`, predicate `grep -q 'pattern' && echo done || { echo 'not yet'; exit 1; }`; process exited: observe `pgrep -f '[w]ork.sh' || true`, predicate `grep -q . && { echo running; exit 1; }; echo exited`, met_example empty; URL healthy: observe `curl -s -o /dev/null -w '%{http_code}' https://example.com`, predicate `code=$(cat); [ \"$code\" = 200 ] && echo ok || { echo \"status $code\"; exit 1; }`, met_example `200`; command output contains marker: observe `<command> 2>&1`, predicate `grep -q 'Exit 0' && echo ok || { echo waiting; exit 1; }`.",
         "Use for external events: a forum reply appears, a payment lands, a long job finishes, a file changes.",
         "Do not use it as a short timer — to wait a few seconds inside a command, use sleep in bash instead.",

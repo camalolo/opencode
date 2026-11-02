@@ -908,7 +908,7 @@ toolIt.instance(
 )
 
 toolIt.instance(
-  "sleep_until stops re-arming after consecutive timeouts",
+  "sleep_until stops re-arming the same wait after repeated timeouts but allows different waits",
   () =>
     Effect.gen(function* () {
       yield* TestInstance
@@ -929,22 +929,43 @@ toolIt.instance(
       const until = yield* SleepUntilTool
       const untilDef = yield* until.init()
 
-      // Three triggers in a row that end without ever being met: the exact
-      // "pod never came up, re-arm, timeout, re-arm" loop that burns billed
-      // turns. The fourth arm must be refused.
-      for (let i = 0; i < 3; i++) {
-        const armed = yield* untilDef.execute({ ...stateCheck, description: `wait ${i}` }, ctx)
-        expect(armed.output).toContain("Sleep armed")
-        const trigger = yield* scheduler.get(sessionID)
-        yield* SessionSleep.finish(db, trigger!.id, "timed_out", SessionSleep.wakeMessageID(trigger!))
-      }
+      const stateCheckOther = { observe: "echo state-xyz", predicate: predicateDone, met_example: "state-xyz done" }
+      const failWait = (params: typeof stateCheck) =>
+        Effect.gen(function* () {
+          const armed = yield* untilDef.execute({ ...params, description: "budget loop" }, ctx)
+          expect(armed.output).toContain("Sleep armed")
+          const trigger = yield* scheduler.get(sessionID)
+          yield* SessionSleep.finish(db, trigger!.id, "timed_out", SessionSleep.wakeMessageID(trigger!))
+        })
 
+      // Two failures of the same wait are still below the budget.
+      yield* failWait(stateCheck)
+      yield* failWait(stateCheck)
+
+      // A failure of a DIFFERENT wait must not push the same-wait count over,
+      // and the different wait itself is freely re-armable.
+      yield* failWait(stateCheckOther)
+      const differentOk = yield* untilDef.execute({ ...stateCheckOther, description: "other again" }, ctx)
+      expect(differentOk.output).toContain("Sleep armed")
+      const otherTrigger = yield* scheduler.get(sessionID)
+      yield* SessionSleep.finish(db, otherTrigger!.id, "timed_out", SessionSleep.wakeMessageID(otherTrigger!))
+
+      // Third failure of the original wait: the exact "pod never came up,
+      // re-arm, timeout, re-arm" loop that burns billed turns. The next arm
+      // of the same wait must be refused.
+      yield* failWait(stateCheck)
       const refused = yield* untilDef.execute({ ...stateCheck, description: "wait 4" }, ctx).pipe(Effect.exit)
       const message = toolDieMessage(refused)
       expect(message).toContain("refused to arm")
       expect(message).toContain("cost guard")
+      expect(message).toContain("same observe and predicate")
 
-      // A met trigger breaks the streak: the budget only caps timeout loops,
+      // Still locked out of the same wait even after another wait times out.
+      yield* failWait(stateCheckOther)
+      const stillRefused = yield* untilDef.execute({ ...stateCheck, description: "wait 5" }, ctx).pipe(Effect.exit)
+      expect(toolDieMessage(stillRefused)).toContain("refused to arm")
+
+      // A met trigger breaks the scan: the budget only caps same-wait loops,
       // not sessions that get their wake and continue.
       const fresh = yield* SessionSleep.arm(db, {
         id: SessionSleep.ID.ascending(),
