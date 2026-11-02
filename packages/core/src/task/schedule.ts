@@ -13,11 +13,20 @@ export interface Schedule {
 }
 
 /**
- * Validates a five-field cron expression and optional IANA timezone.
- * Returns the error, or undefined when the schedule is valid — synchronous
- * on purpose so CRUD paths can fail fast without an effectual boundary.
+ * Validates a five-field cron expression and optional IANA timezone. Croner
+ * accepts unknown timezone names, so the timezone is checked against
+ * Intl.DateTimeFormat explicitly. Returns the error, or undefined when the
+ * schedule is valid — synchronous on purpose so CRUD paths can fail fast
+ * without an effectual boundary.
  */
 export const validate = (input: Schedule): InvalidScheduleError | undefined => {
+  if (input.timezone !== undefined) {
+    try {
+      new Intl.DateTimeFormat("en", { timeZone: input.timezone })
+    } catch {
+      return new InvalidScheduleError({ message: `Unknown timezone: ${input.timezone}` })
+    }
+  }
   try {
     new Cron(input.cron, input.timezone === undefined ? {} : { timezone: input.timezone })
     return undefined

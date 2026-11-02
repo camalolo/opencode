@@ -127,8 +127,28 @@ const modelJson = (model: Model.Ref) => ({
   ...(model.variant === undefined ? {} : { variant: model.variant }),
 })
 
-const isUniqueViolation = (error: unknown) =>
-  error instanceof Error && error.message.includes("UNIQUE constraint failed")
+/**
+ * Drizzle surfaces statement failures as a defect chain: EffectDrizzleQueryError
+ * → Effect Cause → SqlError → native sqlite error. Walk every edge looking for
+ * the uniqueness violation message; anything else is rethrown as-is.
+ */
+const findUniqueViolation = (error: unknown): boolean => {
+  if (typeof error !== "object" || error === null) return false
+  for (const key of ["message", "cause", "error", "defect", "reasons"] as const) {
+    const value = (error as Record<string, unknown>)[key]
+    if (typeof value === "string") {
+      if (value.includes("UNIQUE constraint failed")) return true
+      continue
+    }
+    if (typeof value !== "object" || value === null) continue
+    if (Array.isArray(value)) {
+      for (const item of value) if (findUniqueViolation(item)) return true
+      continue
+    }
+    if (findUniqueViolation(value)) return true
+  }
+  return false
+}
 
 /**
  * Deterministic run id per schedule slot: the insert itself is the multi-process
@@ -190,7 +210,7 @@ export const insert = Effect.fn("ScheduledTask.insert")(function* (
     .run()
     .pipe(
       Effect.catch((error) =>
-        isUniqueViolation(error)
+        findUniqueViolation(error)
           ? Effect.fail(new DuplicateError({ directory: AbsolutePath.make(input.directory), name: input.name }))
           : Effect.die(error),
       ),
@@ -243,7 +263,7 @@ export const updateTask = Effect.fn("ScheduledTask.updateTask")(function* (
     .run()
     .pipe(
       Effect.catch((error) =>
-        isUniqueViolation(error)
+        findUniqueViolation(error)
           ? Effect.fail(new DuplicateError({ directory: AbsolutePath.make(current.directory), name: updated.name }))
           : Effect.die(error),
       ),
@@ -264,7 +284,9 @@ export const removeTask = Effect.fn("ScheduledTask.removeTask")(function* (db: D
 /**
  * Claims every due enabled task: inserts the run row (the atomic claim) and
  * advances `next_run_at` past `now`, so periods missed while the server was
- * down collapse into a single catch-up run.
+ * down collapse into a single catch-up run. Skip policy: a task whose previous
+ * run is still pending or running is left untouched — its stale slot stays due
+ * and fires as catch-up once the active run finishes.
  */
 export const claimDue = Effect.fn("ScheduledTask.claimDue")(function* (db: Database.Interface["db"], now: number) {
   const due = yield* db
@@ -280,6 +302,18 @@ export const claimDue = Effect.fn("ScheduledTask.claimDue")(function* (db: Datab
     const inserted = yield* db
       .transaction((tx) =>
         Effect.gen(function* () {
+          const active = yield* tx
+            .select({ id: ScheduledTaskRunTable.id })
+            .from(ScheduledTaskRunTable)
+            .where(
+              and(
+                eq(ScheduledTaskRunTable.task_id, Task.ID.make(task.id)),
+                inArray(ScheduledTaskRunTable.status, ["pending", "running"]),
+              ),
+            )
+            .get()
+            .pipe(Effect.orDie)
+          if (active) return undefined
           const won = yield* tx
             .insert(ScheduledTaskRunTable)
             .values({
