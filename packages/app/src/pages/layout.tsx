@@ -938,6 +938,13 @@ export default function LegacyLayout(props: ParentProps) {
         onSelect: () => openServer(),
       },
       {
+        id: "tasks.open",
+        title: language.t("command.tasks.open"),
+        category: language.t("command.category.project"),
+        disabled: !params.dir,
+        onSelect: () => openTasks(),
+      },
+      {
         id: "settings.open",
         title: language.t("command.settings.open"),
         category: language.t("command.category.settings"),
@@ -1107,6 +1114,14 @@ export default function LegacyLayout(props: ParentProps) {
     void import("@/components/dialog-select-server").then((x) => {
       if (dialogDead || dialogRun !== run) return
       dialog.show(() => <x.DialogSelectServer />)
+    })
+  }
+
+  function openTasks() {
+    const run = ++dialogRun
+    void import("@/components/dialog-tasks").then((x) => {
+      if (dialogDead || dialogRun !== run) return
+      void dialog.show(() => <x.DialogTasks />)
     })
   }
 
