@@ -82,6 +82,14 @@ export type PermissionNotFoundError = {
 export const isPermissionNotFoundError = (value: unknown): value is PermissionNotFoundError =>
   typeof value === "object" && value !== null && "_tag" in value && value["_tag"] === "PermissionNotFoundError"
 
+export type TaskNotFoundError = {
+  readonly _tag: "TaskNotFoundError"
+  readonly taskID: string
+  readonly message: string
+}
+export const isTaskNotFoundError = (value: unknown): value is TaskNotFoundError =>
+  typeof value === "object" && value !== null && "_tag" in value && value["_tag"] === "TaskNotFoundError"
+
 export type PtyNotFoundError = { readonly _tag: "PtyNotFoundError"; readonly ptyID: string; readonly message: string }
 export const isPtyNotFoundError = (value: unknown): value is PtyNotFoundError =>
   typeof value === "object" && value !== null && "_tag" in value && value["_tag"] === "PtyNotFoundError"
@@ -2493,6 +2501,433 @@ export type FilesFindOutput = {
     readonly project: { readonly id: string; readonly directory: string }
   }
   readonly data: ReadonlyArray<{ readonly path: string; readonly type: "file" | "directory" }>
+}
+
+export type TasksListInput = {
+  readonly location?: {
+    readonly location?: { readonly directory?: string | undefined; readonly workspace?: string | undefined } | undefined
+  }["location"]
+}
+
+export type TasksListOutput = {
+  readonly location: {
+    readonly directory: string
+    readonly workspaceID?: string
+    readonly project: { readonly id: string; readonly directory: string }
+  }
+  readonly data: ReadonlyArray<{
+    readonly id: string
+    readonly directory: string
+    readonly name: string
+    readonly description?: string
+    readonly cron: string
+    readonly timezone?: string
+    readonly agent?: string
+    readonly model?: { readonly id: string; readonly providerID: string; readonly variant?: string }
+    readonly prompt: string
+    readonly enabled: boolean
+    readonly runTimeoutMs?: number
+    readonly retainRuns?: number
+    readonly nextRunAt?: number
+    readonly timeCreated: number
+    readonly timeUpdated: number
+  }>
+}
+
+export type TasksCreateInput = {
+  readonly location?: {
+    readonly location?: { readonly directory?: string | undefined; readonly workspace?: string | undefined } | undefined
+  }["location"]
+  readonly name: {
+    readonly name: string
+    readonly description?: string | null | null
+    readonly cron: string
+    readonly timezone?: string | null | null
+    readonly agent?: string | null
+    readonly model?: { readonly id: string; readonly providerID: string; readonly variant?: string } | null
+    readonly prompt: string
+    readonly enabled?: boolean | null
+    readonly runTimeoutMs?: number | "Infinity" | "-Infinity" | "NaN" | null | null
+    readonly retainRuns?: number | "Infinity" | "-Infinity" | "NaN" | null | null
+  }["name"]
+  readonly description?: {
+    readonly name: string
+    readonly description?: string | null | null
+    readonly cron: string
+    readonly timezone?: string | null | null
+    readonly agent?: string | null
+    readonly model?: { readonly id: string; readonly providerID: string; readonly variant?: string } | null
+    readonly prompt: string
+    readonly enabled?: boolean | null
+    readonly runTimeoutMs?: number | "Infinity" | "-Infinity" | "NaN" | null | null
+    readonly retainRuns?: number | "Infinity" | "-Infinity" | "NaN" | null | null
+  }["description"]
+  readonly cron: {
+    readonly name: string
+    readonly description?: string | null | null
+    readonly cron: string
+    readonly timezone?: string | null | null
+    readonly agent?: string | null
+    readonly model?: { readonly id: string; readonly providerID: string; readonly variant?: string } | null
+    readonly prompt: string
+    readonly enabled?: boolean | null
+    readonly runTimeoutMs?: number | "Infinity" | "-Infinity" | "NaN" | null | null
+    readonly retainRuns?: number | "Infinity" | "-Infinity" | "NaN" | null | null
+  }["cron"]
+  readonly timezone?: {
+    readonly name: string
+    readonly description?: string | null | null
+    readonly cron: string
+    readonly timezone?: string | null | null
+    readonly agent?: string | null
+    readonly model?: { readonly id: string; readonly providerID: string; readonly variant?: string } | null
+    readonly prompt: string
+    readonly enabled?: boolean | null
+    readonly runTimeoutMs?: number | "Infinity" | "-Infinity" | "NaN" | null | null
+    readonly retainRuns?: number | "Infinity" | "-Infinity" | "NaN" | null | null
+  }["timezone"]
+  readonly agent?: {
+    readonly name: string
+    readonly description?: string | null | null
+    readonly cron: string
+    readonly timezone?: string | null | null
+    readonly agent?: string | null
+    readonly model?: { readonly id: string; readonly providerID: string; readonly variant?: string } | null
+    readonly prompt: string
+    readonly enabled?: boolean | null
+    readonly runTimeoutMs?: number | "Infinity" | "-Infinity" | "NaN" | null | null
+    readonly retainRuns?: number | "Infinity" | "-Infinity" | "NaN" | null | null
+  }["agent"]
+  readonly model?: {
+    readonly name: string
+    readonly description?: string | null | null
+    readonly cron: string
+    readonly timezone?: string | null | null
+    readonly agent?: string | null
+    readonly model?: { readonly id: string; readonly providerID: string; readonly variant?: string } | null
+    readonly prompt: string
+    readonly enabled?: boolean | null
+    readonly runTimeoutMs?: number | "Infinity" | "-Infinity" | "NaN" | null | null
+    readonly retainRuns?: number | "Infinity" | "-Infinity" | "NaN" | null | null
+  }["model"]
+  readonly prompt: {
+    readonly name: string
+    readonly description?: string | null | null
+    readonly cron: string
+    readonly timezone?: string | null | null
+    readonly agent?: string | null
+    readonly model?: { readonly id: string; readonly providerID: string; readonly variant?: string } | null
+    readonly prompt: string
+    readonly enabled?: boolean | null
+    readonly runTimeoutMs?: number | "Infinity" | "-Infinity" | "NaN" | null | null
+    readonly retainRuns?: number | "Infinity" | "-Infinity" | "NaN" | null | null
+  }["prompt"]
+  readonly enabled?: {
+    readonly name: string
+    readonly description?: string | null | null
+    readonly cron: string
+    readonly timezone?: string | null | null
+    readonly agent?: string | null
+    readonly model?: { readonly id: string; readonly providerID: string; readonly variant?: string } | null
+    readonly prompt: string
+    readonly enabled?: boolean | null
+    readonly runTimeoutMs?: number | "Infinity" | "-Infinity" | "NaN" | null | null
+    readonly retainRuns?: number | "Infinity" | "-Infinity" | "NaN" | null | null
+  }["enabled"]
+  readonly runTimeoutMs?: {
+    readonly name: string
+    readonly description?: string | null | null
+    readonly cron: string
+    readonly timezone?: string | null | null
+    readonly agent?: string | null
+    readonly model?: { readonly id: string; readonly providerID: string; readonly variant?: string } | null
+    readonly prompt: string
+    readonly enabled?: boolean | null
+    readonly runTimeoutMs?: number | "Infinity" | "-Infinity" | "NaN" | null | null
+    readonly retainRuns?: number | "Infinity" | "-Infinity" | "NaN" | null | null
+  }["runTimeoutMs"]
+  readonly retainRuns?: {
+    readonly name: string
+    readonly description?: string | null | null
+    readonly cron: string
+    readonly timezone?: string | null | null
+    readonly agent?: string | null
+    readonly model?: { readonly id: string; readonly providerID: string; readonly variant?: string } | null
+    readonly prompt: string
+    readonly enabled?: boolean | null
+    readonly runTimeoutMs?: number | "Infinity" | "-Infinity" | "NaN" | null | null
+    readonly retainRuns?: number | "Infinity" | "-Infinity" | "NaN" | null | null
+  }["retainRuns"]
+}
+
+export type TasksCreateOutput = {
+  readonly location: {
+    readonly directory: string
+    readonly workspaceID?: string
+    readonly project: { readonly id: string; readonly directory: string }
+  }
+  readonly data: {
+    readonly id: string
+    readonly directory: string
+    readonly name: string
+    readonly description?: string
+    readonly cron: string
+    readonly timezone?: string
+    readonly agent?: string
+    readonly model?: { readonly id: string; readonly providerID: string; readonly variant?: string }
+    readonly prompt: string
+    readonly enabled: boolean
+    readonly runTimeoutMs?: number
+    readonly retainRuns?: number
+    readonly nextRunAt?: number
+    readonly timeCreated: number
+    readonly timeUpdated: number
+  }
+}
+
+export type TasksGetInput = {
+  readonly taskID: { readonly taskID: string }["taskID"]
+  readonly location?: {
+    readonly location?: { readonly directory?: string | undefined; readonly workspace?: string | undefined } | undefined
+  }["location"]
+}
+
+export type TasksGetOutput = {
+  readonly location: {
+    readonly directory: string
+    readonly workspaceID?: string
+    readonly project: { readonly id: string; readonly directory: string }
+  }
+  readonly data: {
+    readonly id: string
+    readonly directory: string
+    readonly name: string
+    readonly description?: string
+    readonly cron: string
+    readonly timezone?: string
+    readonly agent?: string
+    readonly model?: { readonly id: string; readonly providerID: string; readonly variant?: string }
+    readonly prompt: string
+    readonly enabled: boolean
+    readonly runTimeoutMs?: number
+    readonly retainRuns?: number
+    readonly nextRunAt?: number
+    readonly timeCreated: number
+    readonly timeUpdated: number
+  }
+}
+
+export type TasksUpdateInput = {
+  readonly taskID: { readonly taskID: string }["taskID"]
+  readonly location?: {
+    readonly location?: { readonly directory?: string | undefined; readonly workspace?: string | undefined } | undefined
+  }["location"]
+  readonly name?: {
+    readonly name?: string | null
+    readonly description?: string | null | null
+    readonly cron?: string | null
+    readonly timezone?: string | null | null
+    readonly agent?: string | null | null
+    readonly model?: { readonly id: string; readonly providerID: string; readonly variant?: string } | null | null
+    readonly prompt?: string | null
+    readonly enabled?: boolean | null
+    readonly runTimeoutMs?: number | "Infinity" | "-Infinity" | "NaN" | null | null
+    readonly retainRuns?: number | "Infinity" | "-Infinity" | "NaN" | null | null
+  }["name"]
+  readonly description?: {
+    readonly name?: string | null
+    readonly description?: string | null | null
+    readonly cron?: string | null
+    readonly timezone?: string | null | null
+    readonly agent?: string | null | null
+    readonly model?: { readonly id: string; readonly providerID: string; readonly variant?: string } | null | null
+    readonly prompt?: string | null
+    readonly enabled?: boolean | null
+    readonly runTimeoutMs?: number | "Infinity" | "-Infinity" | "NaN" | null | null
+    readonly retainRuns?: number | "Infinity" | "-Infinity" | "NaN" | null | null
+  }["description"]
+  readonly cron?: {
+    readonly name?: string | null
+    readonly description?: string | null | null
+    readonly cron?: string | null
+    readonly timezone?: string | null | null
+    readonly agent?: string | null | null
+    readonly model?: { readonly id: string; readonly providerID: string; readonly variant?: string } | null | null
+    readonly prompt?: string | null
+    readonly enabled?: boolean | null
+    readonly runTimeoutMs?: number | "Infinity" | "-Infinity" | "NaN" | null | null
+    readonly retainRuns?: number | "Infinity" | "-Infinity" | "NaN" | null | null
+  }["cron"]
+  readonly timezone?: {
+    readonly name?: string | null
+    readonly description?: string | null | null
+    readonly cron?: string | null
+    readonly timezone?: string | null | null
+    readonly agent?: string | null | null
+    readonly model?: { readonly id: string; readonly providerID: string; readonly variant?: string } | null | null
+    readonly prompt?: string | null
+    readonly enabled?: boolean | null
+    readonly runTimeoutMs?: number | "Infinity" | "-Infinity" | "NaN" | null | null
+    readonly retainRuns?: number | "Infinity" | "-Infinity" | "NaN" | null | null
+  }["timezone"]
+  readonly agent?: {
+    readonly name?: string | null
+    readonly description?: string | null | null
+    readonly cron?: string | null
+    readonly timezone?: string | null | null
+    readonly agent?: string | null | null
+    readonly model?: { readonly id: string; readonly providerID: string; readonly variant?: string } | null | null
+    readonly prompt?: string | null
+    readonly enabled?: boolean | null
+    readonly runTimeoutMs?: number | "Infinity" | "-Infinity" | "NaN" | null | null
+    readonly retainRuns?: number | "Infinity" | "-Infinity" | "NaN" | null | null
+  }["agent"]
+  readonly model?: {
+    readonly name?: string | null
+    readonly description?: string | null | null
+    readonly cron?: string | null
+    readonly timezone?: string | null | null
+    readonly agent?: string | null | null
+    readonly model?: { readonly id: string; readonly providerID: string; readonly variant?: string } | null | null
+    readonly prompt?: string | null
+    readonly enabled?: boolean | null
+    readonly runTimeoutMs?: number | "Infinity" | "-Infinity" | "NaN" | null | null
+    readonly retainRuns?: number | "Infinity" | "-Infinity" | "NaN" | null | null
+  }["model"]
+  readonly prompt?: {
+    readonly name?: string | null
+    readonly description?: string | null | null
+    readonly cron?: string | null
+    readonly timezone?: string | null | null
+    readonly agent?: string | null | null
+    readonly model?: { readonly id: string; readonly providerID: string; readonly variant?: string } | null | null
+    readonly prompt?: string | null
+    readonly enabled?: boolean | null
+    readonly runTimeoutMs?: number | "Infinity" | "-Infinity" | "NaN" | null | null
+    readonly retainRuns?: number | "Infinity" | "-Infinity" | "NaN" | null | null
+  }["prompt"]
+  readonly enabled?: {
+    readonly name?: string | null
+    readonly description?: string | null | null
+    readonly cron?: string | null
+    readonly timezone?: string | null | null
+    readonly agent?: string | null | null
+    readonly model?: { readonly id: string; readonly providerID: string; readonly variant?: string } | null | null
+    readonly prompt?: string | null
+    readonly enabled?: boolean | null
+    readonly runTimeoutMs?: number | "Infinity" | "-Infinity" | "NaN" | null | null
+    readonly retainRuns?: number | "Infinity" | "-Infinity" | "NaN" | null | null
+  }["enabled"]
+  readonly runTimeoutMs?: {
+    readonly name?: string | null
+    readonly description?: string | null | null
+    readonly cron?: string | null
+    readonly timezone?: string | null | null
+    readonly agent?: string | null | null
+    readonly model?: { readonly id: string; readonly providerID: string; readonly variant?: string } | null | null
+    readonly prompt?: string | null
+    readonly enabled?: boolean | null
+    readonly runTimeoutMs?: number | "Infinity" | "-Infinity" | "NaN" | null | null
+    readonly retainRuns?: number | "Infinity" | "-Infinity" | "NaN" | null | null
+  }["runTimeoutMs"]
+  readonly retainRuns?: {
+    readonly name?: string | null
+    readonly description?: string | null | null
+    readonly cron?: string | null
+    readonly timezone?: string | null | null
+    readonly agent?: string | null | null
+    readonly model?: { readonly id: string; readonly providerID: string; readonly variant?: string } | null | null
+    readonly prompt?: string | null
+    readonly enabled?: boolean | null
+    readonly runTimeoutMs?: number | "Infinity" | "-Infinity" | "NaN" | null | null
+    readonly retainRuns?: number | "Infinity" | "-Infinity" | "NaN" | null | null
+  }["retainRuns"]
+}
+
+export type TasksUpdateOutput = {
+  readonly location: {
+    readonly directory: string
+    readonly workspaceID?: string
+    readonly project: { readonly id: string; readonly directory: string }
+  }
+  readonly data: {
+    readonly id: string
+    readonly directory: string
+    readonly name: string
+    readonly description?: string
+    readonly cron: string
+    readonly timezone?: string
+    readonly agent?: string
+    readonly model?: { readonly id: string; readonly providerID: string; readonly variant?: string }
+    readonly prompt: string
+    readonly enabled: boolean
+    readonly runTimeoutMs?: number
+    readonly retainRuns?: number
+    readonly nextRunAt?: number
+    readonly timeCreated: number
+    readonly timeUpdated: number
+  }
+}
+
+export type TasksRemoveInput = {
+  readonly taskID: { readonly taskID: string }["taskID"]
+  readonly location?: {
+    readonly location?: { readonly directory?: string | undefined; readonly workspace?: string | undefined } | undefined
+  }["location"]
+}
+
+export type TasksRemoveOutput = void
+
+export type TasksTriggerInput = {
+  readonly taskID: { readonly taskID: string }["taskID"]
+  readonly location?: {
+    readonly location?: { readonly directory?: string | undefined; readonly workspace?: string | undefined } | undefined
+  }["location"]
+}
+
+export type TasksTriggerOutput = {
+  readonly location: {
+    readonly directory: string
+    readonly workspaceID?: string
+    readonly project: { readonly id: string; readonly directory: string }
+  }
+  readonly data: {
+    readonly id: string
+    readonly taskID: string
+    readonly sessionID?: string
+    readonly status: "pending" | "running" | "completed" | "failed" | "skipped" | "cancelled"
+    readonly trigger: "schedule" | "manual"
+    readonly scheduledAt: number
+    readonly timeStarted?: number
+    readonly timeCompleted?: number
+    readonly error?: string
+  }
+}
+
+export type TasksListRunsInput = {
+  readonly taskID: { readonly taskID: string }["taskID"]
+  readonly location?: {
+    readonly location?: { readonly directory?: string | undefined; readonly workspace?: string | undefined } | undefined
+  }["location"]
+}
+
+export type TasksListRunsOutput = {
+  readonly location: {
+    readonly directory: string
+    readonly workspaceID?: string
+    readonly project: { readonly id: string; readonly directory: string }
+  }
+  readonly data: ReadonlyArray<{
+    readonly id: string
+    readonly taskID: string
+    readonly sessionID?: string
+    readonly status: "pending" | "running" | "completed" | "failed" | "skipped" | "cancelled"
+    readonly trigger: "schedule" | "manual"
+    readonly scheduledAt: number
+    readonly timeStarted?: number
+    readonly timeCompleted?: number
+    readonly error?: string
+  }>
 }
 
 export type CommandsListInput = {
