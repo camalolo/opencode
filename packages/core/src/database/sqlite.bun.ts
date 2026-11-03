@@ -16,6 +16,12 @@ import * as Statement from "effect/unstable/sql/Statement"
 import { Sqlite } from "./sqlite"
 import type { SqliteWorkerRequest, SqliteWorkerResponse } from "./sqlite.worker"
 
+declare global {
+  // Set as a build define in packages/opencode/script/build.ts for compiled
+  // binaries, where the worker lives in bunfs instead of next to this module.
+  const OPENCODE_SQLITE_WORKER_PATH: string
+}
+
 const ATTR_DB_SYSTEM_NAME = "db.system.name"
 
 const TypeId = "~@opencode-ai/core/database/SqliteBun" as const
@@ -151,7 +157,11 @@ const makeWorkerExec = (options: Config) =>
     }
 
     const spawn = (target: "writer" | "reader") => {
-      const worker = new Worker(new URL("./sqlite.worker.ts", import.meta.url))
+      const worker = new Worker(
+        typeof OPENCODE_SQLITE_WORKER_PATH !== "undefined"
+          ? OPENCODE_SQLITE_WORKER_PATH
+          : new URL("./sqlite.worker.ts", import.meta.url),
+      )
       workers[target] = worker
       alive[target] = true
       worker.onmessage = (event: MessageEvent) => {
