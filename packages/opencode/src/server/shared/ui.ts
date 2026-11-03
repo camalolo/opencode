@@ -71,6 +71,16 @@ function notFound() {
   return HttpServerResponse.jsonUnsafe({ error: "Not Found" }, { status: 404 })
 }
 
+// The SPA fallback only applies to client-side routes. An unknown asset path
+// (e.g. a stale chunk hash after a rebuild) must 404: serving index.html with
+// 200 text/html for an .js URL gets cached as immutable content by browsers and
+// CDNs and bricks the SPA until site data is cleared (2026-11-03 incident).
+function routeFallback(embeddedWebUI: Record<string, string>, path: string) {
+  const last = path.split("/").at(-1) ?? ""
+  if (last.includes(".")) return null
+  return embeddedWebUI["index.html"]
+}
+
 function embeddedUIResponse(cached: { body: Uint8Array; contentType: string; csp: string | undefined }) {
   const headers = new Headers({ "content-type": cached.contentType })
   if (cached.csp !== undefined) headers.set("content-security-policy", cached.csp)
@@ -85,7 +95,7 @@ export function serveEmbeddedUIEffect(
   embeddedWebUI: Record<string, string>,
 ) {
   const path = requestPath.split("?")[0].replace(/^\//, "")
-  const file = embeddedWebUI[path] ?? embeddedWebUI["index.html"] ?? null
+  const file = embeddedWebUI[path] ?? routeFallback(embeddedWebUI, path)
   if (!file) return Effect.succeed(notFound())
 
   const cached = embeddedUICache.get(path)

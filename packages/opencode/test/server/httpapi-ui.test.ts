@@ -326,6 +326,37 @@ describe("HttpApi UI fallback", () => {
     }),
   )
 
+  it.live("404s unknown asset paths instead of falling back to index.html", () =>
+    Effect.gen(function* () {
+      const fs = yield* FSUtil.Service
+      const response = yield* serveEmbeddedUIEffect(
+        "/assets/stale-chunk-abc123.js",
+        {
+          ...fs,
+          readFile: () => Effect.die("index.html must not be served for unknown asset paths"),
+        },
+        { "index.html": "/$bunfs/root/index.html" },
+      ).pipe(Effect.map(HttpServerResponse.toWeb))
+
+      expect(response.status).toBe(404)
+    }),
+  )
+
+  it.live("falls back to index.html for client-side routes without a file extension", () =>
+    Effect.gen(function* () {
+      const fs = yield* FSUtil.Service
+      const response = yield* serveEmbeddedUIEffect(
+        "/new-session",
+        { ...fs, readFile: () => Effect.succeed(new TextEncoder().encode("<html>ui</html>")) },
+        { "index.html": "/$bunfs/root/index.html" },
+      ).pipe(Effect.map(HttpServerResponse.toWeb))
+
+      expect(response.status).toBe(200)
+      expect(response.headers.get("content-type")).toContain("text/html")
+      expect(yield* responseText(response)).toBe("<html>ui</html>")
+    }),
+  )
+
   it.live("allows embedded UI terminal wasm, blob attachments, and theme preload CSP", () =>
     Effect.gen(function* () {
       const script = 'document.documentElement.dataset.theme = "dark"'
