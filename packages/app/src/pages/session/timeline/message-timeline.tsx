@@ -937,8 +937,6 @@ export function MessageTimeline(props: {
   }
 
   const archiveSession = async (sessionID: string) => {
-    const session = sync().session.get(sessionID)
-    if (!session) return
     if ((await sdk().protocol) !== "v1") return
 
     const sessions = sync().data.session ?? []
@@ -955,7 +953,7 @@ export function MessageTimeline(props: {
           }),
         )
         sync().session.evict(sessionID)
-        navigateAfterSessionRemoval(sessionID, session.parentID, nextSession?.id)
+        navigateAfterSessionRemoval(sessionID, sync().session.get(sessionID)?.parentID, nextSession?.id)
         notifySessionTabsRemoved({ directory: sdk().directory, sessionIDs: [sessionID] })
       })
       .catch((err) => {
@@ -967,9 +965,12 @@ export function MessageTimeline(props: {
   }
 
   const deleteSession = async (sessionID: string) => {
-    const session = sync().session.get(sessionID)
-    if (!session) return false
-
+    // The directory-scoped store only returns sessions whose directory matches
+    // the active one, so a session from another directory (e.g. a remote
+    // server's home dir while the tab runs at "/") looks up as missing here.
+    // Deletion is a server action keyed by id — proceed without a local record
+    // and let API failures surface through the error path instead of silently
+    // doing nothing.
     const sessions = (sync().data.session ?? []).filter((s) => !s.parentID && !s.time?.archived)
     const index = sessions.findIndex((s) => s.id === sessionID)
     const nextSession = index === -1 ? undefined : (sessions[index + 1] ?? sessions[index - 1])
@@ -1015,7 +1016,7 @@ export function MessageTimeline(props: {
       }
     }
 
-    navigateAfterSessionRemoval(sessionID, session.parentID, nextSession?.id)
+    navigateAfterSessionRemoval(sessionID, sync().session.get(sessionID)?.parentID, nextSession?.id)
 
     sync().set(
       produce((draft) => {
