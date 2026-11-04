@@ -50,6 +50,14 @@ function protecteds(dir: string) {
 
 export const hasNativeBinding = () => !!watcher()
 
+/** Ad-hoc recursive subscription with a caller-supplied ignore list. Returns
+ * undefined when no native watcher binding exists for this platform. */
+export function subscribeRaw(directory: string, ignore: string[], cb: ParcelWatcher.SubscribeCallback) {
+  const w = watcher()
+  if (!w) return
+  return w.subscribe(directory, cb, { ignore, backend: getBackend() })
+}
+
 export interface Interface {}
 
 export class Service extends Context.Service<Service, Interface>()("@opencode/v2/FileWatcher") {}

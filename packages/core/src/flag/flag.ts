@@ -66,6 +66,9 @@ export const Flag = {
   get OPENCODE_PURE() {
     return truthy("OPENCODE_PURE")
   },
+  get OPENCODE_DISABLE_SNAPSHOT_WATCHER() {
+    return truthy("OPENCODE_DISABLE_SNAPSHOT_WATCHER")
+  },
   get OPENCODE_PERMISSION() {
     return process.env["OPENCODE_PERMISSION"]
   },

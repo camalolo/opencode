@@ -8,6 +8,8 @@ import { InstanceState } from "@/effect/instance-state"
 import { FSUtil } from "@opencode-ai/core/fs-util"
 import { Hash } from "@opencode-ai/core/util/hash"
 import { Config } from "@/config/config"
+import { Flag } from "@opencode-ai/core/flag/flag"
+import { Watcher } from "@opencode-ai/core/filesystem/watcher"
 import { Global } from "@opencode-ai/core/global"
 import { Info } from "@opencode-ai/schema/file-diff"
 
@@ -26,6 +28,49 @@ const limit = 2 * 1024 * 1024
 // instances in different subdirectories of one worktree share the same shadow repo;
 // the write-tree result only depends on that shared index.
 const lastTrees = new Map<string, string>()
+
+// Watcher-fed pending-change set per shadow gitdir, shared like lastTrees.
+// collect() asks: which files changed since the last full scan? An empty,
+// quiet set lets track()/patch() skip the discovery scans entirely; a small
+// non-empty set stages exactly those paths instead of rescanning the worktree.
+interface Dirty {
+  readonly files: Set<string>
+  /** Subscription confirmed active; false until the promise resolves. */
+  active: boolean
+  /** Set on subscribe failure or a watcher error; drops trust until the next full scan. */
+  failed: boolean
+  /** Epoch ms of the last completed full scan (0 = untrusted). */
+  lastScan: number
+  /** Epoch ms of the last received watcher event. */
+  lastEvent: number
+  /** Epoch ms of the last completed add, any path. */
+  lastAdd: number
+  /** Instance states currently sharing this subscription. */
+  refs: number
+  /** Resolved subscription, released when refs drops to zero. */
+  sub?: { unsubscribe: () => Promise<unknown> }
+  /** Set when the last ref was released; a late-resolving subscribe then unsubscribes itself. */
+  released?: boolean
+}
+const dirtyDirs = new Map<string, Dirty>()
+// An empty set only counts as "no changes" after this much quiet: event
+// delivery lags the write syscall by a few ms, so the tail of a fresh burst
+// must not look like "nothing happened".
+const QUIET_MS = 120
+// When the last event or add is older than this, in-flight events are no
+// longer plausible (production writes land a full provider round trip before
+// the track that observes them), so the fast path trusts the pending set
+// without waiting. Tests and fast steps stay inside the window and settle.
+const FRESH_MS = 2_000
+// A burst that never goes quiet falls back to a full scan, which is always
+// correct; the cap bounds how long the fast path may wait for it.
+const SETTLE_CAP = 1_000
+// Beyond this many pending events a full scan is cheaper than staging a huge
+// pathspec batch.
+const DELTA_LIMIT = 512
+// Bound how long event completeness is trusted without a full rescan, so
+// silently missed events (inotify overflow, exotic filesystems) heal.
+const RECONCILE_MS = 5 * 60_000
 
 // diffFull rows keyed by (path, before sha, after sha): the triple fully
 // determines the diff text, and summarize recomputes the whole-turn diff at
@@ -271,8 +316,213 @@ const layer: Layer.Layer<Service, never, FSUtil.Service | AppProcess.Service | C
           }
         })
 
+        // Get (or create) the shared dirty state for this worktree and start its
+        // filesystem subscription on first use. The subscription ignores only
+        // .git so its coverage is a superset of anything snapshotting could
+        // stage; gitignore filtering stays at use time via ignore().
+        const dirty = () => {
+          const hit = dirtyDirs.get(state.gitdir)
+          if (hit) {
+            if (!acquired) {
+              acquired = true
+              hit.refs += 1
+            }
+            return hit
+          }
+          const next: Dirty = {
+            files: new Set(),
+            active: false,
+            failed: false,
+            lastScan: 0,
+            lastEvent: 0,
+            lastAdd: 0,
+            refs: 1,
+          }
+          acquired = true
+          dirtyDirs.set(state.gitdir, next)
+          if (state.vcs !== "git" || Flag.OPENCODE_DISABLE_SNAPSHOT_WATCHER) {
+            next.failed = true
+            return next
+          }
+          const pending = Watcher.subscribeRaw(state.worktree, [".git", "**/.git", "**/.git/**"], (error, events) => {
+            if (error) {
+              next.failed = true
+              return
+            }
+            next.lastEvent = Date.now()
+            for (const event of events) {
+              const rel = path.relative(state.worktree, event.path).replaceAll("\\", "/")
+              if (rel.startsWith("..")) continue
+              next.files.add(rel)
+            }
+          })
+          if (!pending) {
+            next.failed = true
+            return next
+          }
+          pending.then(
+            (sub) => {
+              if (next.released) {
+                sub.unsubscribe().catch(() => {})
+                return
+              }
+              next.sub = sub
+              next.active = true
+            },
+            () => {
+              next.failed = true
+            },
+          )
+          return next
+        }
+
+        // Hold the shared subscription for this instance's lifetime and release
+        // it when the last instance of the worktree goes away, so visited
+        // worktrees do not leak watcher resources.
+        let acquired = false
+        yield* Effect.addFinalizer(() =>
+          Effect.sync(() => {
+            const d = dirtyDirs.get(state.gitdir)
+            if (!d) return
+            d.refs -= 1
+            if (d.refs > 0) return
+            dirtyDirs.delete(state.gitdir)
+            d.failed = true
+            d.released = true
+            d.sub?.unsubscribe().catch(() => {})
+          }),
+        )
+
+        // Only root instances use the dirty fast paths: full scans are scoped
+        // to the instance directory, so subdirectory instances keep rescanning.
+        const scoped = state.directory !== state.worktree
+        // undefined -> run a full discovery scan; [] -> skip everything;
+        // paths -> stage exactly those files.
+        const delta = (d: Dirty) => {
+          if (scoped || !d.active || d.failed) return undefined
+          if (Date.now() - d.lastScan >= RECONCILE_MS) return undefined
+          if (d.files.size === 0) return Date.now() - Math.max(d.lastScan, d.lastEvent) > QUIET_MS ? [] : undefined
+          if (d.files.size > DELTA_LIMIT) return undefined
+          return [...d.files]
+        }
+
+        const deltaAdd = Effect.fnUntraced(function* (d: Dirty, files: string[]) {
+          // Stage exactly the evented paths instead of rescanning the worktree.
+          // Mirrors the full scan's decisions for these files: ignore
+          // resolution, the untracked 2MB cap, and dropping entries that turned
+          // ignored. Returns undefined to fall back to a full scan.
+          const classified = yield* git(
+            [...quote, ...args(["ls-files", "-z", "--", ...files.map((file) => `:(top,literal)${file}`)])],
+            { cwd: state.worktree },
+          )
+          if (classified.code !== 0) return undefined
+          const tracked = new Set(classified.text.split("\0").filter(Boolean))
+
+          const stats = yield* Effect.all(
+            files.map((file) =>
+              fs.stat(path.join(state.worktree, file)).pipe(Effect.catch(() => Effect.succeed(undefined))),
+            ),
+            { concurrency: 8 },
+          )
+          const statOf = new Map(files.map((file, i) => [file, stats[i]]))
+          // A new directory means its contents were created before the watcher
+          // started observing it — their events are invisible, so only a full
+          // scan can capture them (the directory's own create event always
+          // arrives via the parent's watch, so this stays airtight).
+          if (files.some((file) => statOf.get(file)?.type === "Directory")) return undefined
+          // Vanished untracked paths stage nothing themselves; a pathspec
+          // matching nothing fails the whole staging batch.
+          const candidates = files.filter((file) => tracked.has(file) || statOf.get(file) !== undefined)
+
+          const scannedAt = Date.now()
+          d.files.clear()
+          if (!candidates.length) {
+            d.lastScan = scannedAt
+            return { changed: false }
+          }
+
+          const ignored = yield* ignore(candidates)
+          let changed = false
+          const unstage = [...ignored].filter((file) => tracked.has(file))
+          if (unstage.length) {
+            yield* Effect.logInfo("removing gitignored files from snapshot", { count: unstage.length })
+            yield* drop(unstage)
+            changed = true
+          }
+          const allow = candidates.filter((file) => !ignored.has(file))
+          if (allow.length) {
+            const large = new Set(
+              allow.filter((file) => {
+                if (tracked.has(file)) return false
+                const stat = statOf.get(file)
+                if (!stat || stat.type !== "File") return false
+                const size = typeof stat.size === "bigint" ? Number(stat.size) : stat.size
+                return size > limit
+              }),
+            )
+            if (large.size) yield* sync([...large])
+            const stageFiles = allow.filter((file) => !large.has(file))
+            if (stageFiles.length) {
+              yield* stage(stageFiles)
+              changed = true
+            }
+          }
+          // The index moved without a matching write-tree, so any cached tree is
+          // now stale.
+          if (changed) lastTrees.delete(state.gitdir)
+          d.lastScan = scannedAt
+          return { changed }
+        })
+
         const add = Effect.fnUntraced(function* () {
+          const d = dirty()
+          const result = yield* addInner(d)
+          d.lastAdd = Date.now()
+          return result
+        })
+
+        const addInner = Effect.fnUntraced(function* (d: Dirty) {
+          let candidates = delta(d)
+          if (candidates !== undefined && Date.now() - Math.max(d.lastEvent, d.lastAdd) < FRESH_MS) {
+            // Fresh activity: event batches may still be in flight (the watcher
+            // delivers bursts in multiple rounds). Wait until the stream goes
+            // quiet, then take the pending set as complete; a burst that never
+            // settles falls back to a full scan, which is always correct.
+            const started = Date.now()
+            do {
+              yield* Effect.sleep(10)
+              if (Date.now() - started > SETTLE_CAP) {
+                candidates = undefined
+                break
+              }
+            } while (Date.now() - d.lastEvent < QUIET_MS)
+            if (candidates !== undefined) candidates = [...d.files]
+          }
+          // Quiet and empty: skip the exclude sync, ignore resolution, stats,
+          // and staging entirely.
+          if (candidates && !candidates.length) return { changed: false }
+
           yield* sync()
+          if (candidates) {
+            // Stage the pending set, folding in stragglers that land mid-staging
+            // (event batches can trail a burst). Only a fully drained delta may
+            // return; anything else falls through to a full scan.
+            let result: AddResult | undefined
+            let drained = false
+            for (let round = 0; round < 3; round++) {
+              result = yield* deltaAdd(d, candidates)
+              if (!result) break
+              drained = d.files.size === 0
+              if (drained) break
+              candidates = [...d.files]
+            }
+            if (result && drained) return result
+          }
+
+          // Full discovery scan. Clearing the pending set up front keeps events
+          // that arrive while the scan runs pending for the next one.
+          d.files.clear()
+          const scannedAt = Date.now()
           const [diff, other] = yield* Effect.all(
             [
               git([...quote, ...args(["diff-files", "--name-only", "-z", "--", "."])], {
@@ -285,6 +535,7 @@ const layer: Layer.Layer<Service, never, FSUtil.Service | AppProcess.Service | C
             { concurrency: 2 },
           )
           if (diff.code !== 0 || other.code !== 0) {
+            d.lastScan = 0
             yield* Effect.logWarning("failed to list snapshot files", {
               diffCode: diff.code,
               diffStderr: diff.stderr,
@@ -299,7 +550,10 @@ const layer: Layer.Layer<Service, never, FSUtil.Service | AppProcess.Service | C
           const all = Array.from(new Set([...tracked, ...untracked]))
           // Nothing changed since the last scan: skip ignore resolution,
           // stats, and staging entirely.
-          if (!all.length) return { changed: false }
+          if (!all.length) {
+            d.lastScan = scannedAt
+            return { changed: false }
+          }
 
           // Resolve source-repo ignore rules against the exact candidate set.
           // --no-index keeps this pattern-based even when a path is already tracked.
@@ -319,6 +573,7 @@ const layer: Layer.Layer<Service, never, FSUtil.Service | AppProcess.Service | C
             // The index moved without a matching write-tree, so any cached tree
             // is now stale.
             if (changed) lastTrees.delete(state.gitdir)
+            d.lastScan = scannedAt
             return { changed }
           }
 
@@ -351,6 +606,7 @@ const layer: Layer.Layer<Service, never, FSUtil.Service | AppProcess.Service | C
           // The index moved without a matching write-tree, so any cached tree is
           // now stale.
           if (changed) lastTrees.delete(state.gitdir)
+          d.lastScan = scannedAt
           return { changed }
         })
 
@@ -463,6 +719,10 @@ const layer: Layer.Layer<Service, never, FSUtil.Service | AppProcess.Service | C
               // read-tree replaces the shadow index behind the cache's back, so the
               // cached tree no longer describes it.
               lastTrees.delete(state.gitdir)
+              // Files created after the snapshot reappear as untracked for the
+              // next full scan; an empty pending set must not hide them.
+              const d = dirtyDirs.get(state.gitdir)
+              if (d) d.lastScan = 0
               yield* Effect.logInfo("restore", { commit: snapshot })
               // Only rewrite files whose worktree content drifted from the snapshot.
               // `checkout-index -a -f` rewrites every tracked file in the worktree,
@@ -556,6 +816,8 @@ const layer: Layer.Layer<Service, never, FSUtil.Service | AppProcess.Service | C
               // `git checkout <tree> -- <file>` below updates the shadow index, so
               // the cached tree no longer describes it.
               lastTrees.delete(state.gitdir)
+              const d = dirtyDirs.get(state.gitdir)
+              if (d) d.lastScan = 0
               const ops: { hash: string; file: string; rel: string }[] = []
               const seen = new Set<string>()
               for (const item of patches) {

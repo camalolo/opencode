@@ -3,6 +3,7 @@ import { $ } from "bun"
 import { CrossSpawnSpawner } from "@opencode-ai/core/cross-spawn-spawner"
 import { LayerNode } from "@opencode-ai/core/effect/layer-node"
 import { FSUtil } from "@opencode-ai/core/fs-util"
+import { AppProcess } from "@opencode-ai/core/process"
 import fs from "fs/promises"
 import path from "path"
 import { Effect, Fiber, Layer } from "effect"
@@ -19,6 +20,42 @@ import { testEffect } from "../lib/effect"
 const it = testEffect(
   Layer.mergeAll(LayerNode.compile(LayerNode.group([Snapshot.node, FSUtil.node])), testInstanceStoreLayer),
 )
+
+// Records the argv of every spawned git process so tests can assert which
+// snapshot code path ran (fast paths spawn distinct command sets).
+const gitSpawns: string[][] = []
+const countingAppProcess = Layer.effect(AppProcess.Service, Effect.gen(function* () {
+  const inner = yield* AppProcess.Service
+  return AppProcess.Service.of({
+    ...inner,
+    run: (command, options) => {
+      if (command._tag === "StandardCommand") gitSpawns.push([...command.args])
+      return inner.run(command, options)
+    },
+  })
+})).pipe(Layer.provide(LayerNode.compile(AppProcess.node)))
+const itCounting = testEffect(
+  Layer.mergeAll(
+    LayerNode.compile(LayerNode.group([Snapshot.node, FSUtil.node]), [[AppProcess.node, countingAppProcess]]),
+    testInstanceStoreLayer,
+  ),
+)
+const gitArgv = () => gitSpawns.map((args) => args.join(" "))
+
+// Wait until a no-op track runs zero git commands: the watcher subscription is
+// active and the fast path is engaged (first activation can lag under load).
+const waitForFastPath = (snapshot: Snapshot.Interface, timeoutMs = 5_000) =>
+  Effect.gen(function* () {
+    const deadline = Date.now() + timeoutMs
+    while (Date.now() < deadline) {
+      gitSpawns.length = 0
+      const hash = yield* snapshot.track()
+      if (gitSpawns.length === 0) return hash
+      // Must exceed the fast path's quiet window so the next track can idle.
+      yield* Effect.sleep(150)
+    }
+    throw new Error("snapshot watcher fast path never became available")
+  })
 // Windows forbids both * and : in directory names.
 const nonWindowsIt = process.platform === "win32" ? it.live.skip : it.live
 // Reserved device names (NUL) only exist on Windows.
@@ -1347,5 +1384,87 @@ windowsInstanceIt(
       expect(patch.files).not.toContain(fwd(tmp.path, "NUL"))
     }),
   ),
+  { git: true },
+)
+
+itCounting.instance(
+  "idle track runs no git commands",
+  Effect.gen(function* () {
+    const tmp = yield* bootstrap()
+    const snapshot = yield* Snapshot.Service
+    const before = yield* snapshot.track()
+    expect(before).toBeTruthy()
+    // The first track starts the watcher subscription; stragglers from the
+    // fixture writes land here and are drained by the next track.
+    const again = yield* waitForFastPath(snapshot)
+    expect(again).toBe(before)
+  }),
+  { git: true },
+)
+
+itCounting.instance(
+  "changed files are captured through the watcher fast path",
+  Effect.gen(function* () {
+    const tmp = yield* bootstrap()
+    const snapshot = yield* Snapshot.Service
+    const before = yield* snapshot.track()
+    expect(before).toBeTruthy()
+    yield* waitForFastPath(snapshot)
+    gitSpawns.length = 0
+    yield* write(`${tmp.path}/watched.txt`, "watched content")
+    const patch = yield* snapshot.patch(before!)
+    expect(patch.files).toContain(fwd(tmp.path, "watched.txt"))
+    // The delta path classifies candidates with ls-files instead of running
+    // the diff-files worktree discovery scan.
+    expect(gitArgv().some((cmd) => cmd.includes(" ls-files -z --"))).toBe(true)
+    expect(gitArgv().some((cmd) => cmd.includes(" diff-files "))).toBe(false)
+  }),
+  { git: true },
+)
+
+itCounting.live(
+  "OPENCODE_DISABLE_SNAPSHOT_WATCHER falls back to full scans",
+  Effect.gen(function* () {
+    process.env.OPENCODE_DISABLE_SNAPSHOT_WATCHER = "1"
+    yield* Effect.addFinalizer(() =>
+      Effect.sync(() => {
+        delete process.env.OPENCODE_DISABLE_SNAPSHOT_WATCHER
+      }),
+    )
+    const dir = yield* scopedGitTmpdir()
+    yield* write(`${dir}/a.txt`, "initial")
+    yield* exec(dir, ["git", "add", "."])
+    yield* exec(dir, ["git", "commit", "-m", "init"])
+    yield* Effect.gen(function* () {
+      const snapshot = yield* Snapshot.Service
+      const before = yield* snapshot.track()
+      expect(before).toBeTruthy()
+      yield* write(`${dir}/changed.txt`, "changed content")
+      gitSpawns.length = 0
+      const patch = yield* snapshot.patch(before!)
+      expect(patch.files).toContain(fwd(dir, "changed.txt"))
+      expect(gitArgv().some((cmd) => cmd.includes(" diff-files "))).toBe(true)
+    }).pipe(provideInstance(dir))
+  }),
+)
+
+it.instance(
+  "track after restore re-stages post-snapshot files",
+  Effect.gen(function* () {
+    const tmp = yield* bootstrap()
+    const snapshot = yield* Snapshot.Service
+    const before = yield* snapshot.track()
+    expect(before).toBeTruthy()
+    yield* write(`${tmp.path}/after-snap.txt`, "created after the snapshot")
+    const after = yield* snapshot.track()
+    expect(after).toBeTruthy()
+    expect(after).not.toBe(before)
+    yield* snapshot.restore(before!)
+    // The file is not part of the restored snapshot index, but it is still in
+    // the worktree: the next track must rescan and stage it again.
+    const next = yield* snapshot.track()
+    expect(next).toBeTruthy()
+    expect(next).toBe(after)
+  }),
   { git: true },
 )
