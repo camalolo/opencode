@@ -1160,6 +1160,33 @@ it.instance(
 )
 
 it.instance(
+  "diffFull with identical trees returns empty",
+  withTrackedSnapshot(({ snapshot, before }) =>
+    Effect.gen(function* () {
+      expect(yield* snapshot.diffFull(before, before)).toEqual([])
+    }),
+  ),
+  { git: true },
+)
+
+it.instance(
+  "diffFull repeated calls return consistent results",
+  withTrackedSnapshot(({ tmp, snapshot, before }) =>
+    Effect.gen(function* () {
+      yield* write(`${tmp.path}/one.txt`, "one content\nsecond line")
+      yield* write(`${tmp.path}/b.txt`, "changed")
+      const after = yield* snapshot.track()
+      expect(after).toBeTruthy()
+      const first = yield* snapshot.diffFull(before, after!)
+      const second = yield* snapshot.diffFull(before, after!)
+      expect(second).toEqual(first)
+      expect(first.length).toBe(2)
+    }),
+  ),
+  { git: true },
+)
+
+it.instance(
   "revert with overlapping files across patches uses first patch hash",
   Effect.gen(function* () {
     const tmp = yield* bootstrap()
