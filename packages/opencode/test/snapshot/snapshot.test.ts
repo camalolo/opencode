@@ -813,6 +813,25 @@ it.instance(
 )
 
 it.instance(
+  "restore only rewrites files that drifted from the snapshot",
+  Effect.gen(function* () {
+    const tmp = yield* bootstrap()
+    const snapshot = yield* Snapshot.Service
+    const before = yield* snapshot.track()
+    expect(before).toBeTruthy()
+    yield* write(`${tmp.path}/b.txt`, "modified")
+    // An old timestamp proves a.txt is not rewritten by the restore.
+    const stamp = new Date(Date.now() - 3_600_000)
+    yield* Effect.promise(() => fs.utimes(`${tmp.path}/a.txt`, stamp, stamp))
+    yield* snapshot.restore(before!)
+    expect(yield* readText(`${tmp.path}/b.txt`)).toBe(tmp.extra.bContent)
+    const stat = yield* Effect.promise(() => fs.stat(`${tmp.path}/a.txt`))
+    expect(stat.mtimeMs).toBeLessThan(Date.now() - 60_000)
+  }),
+  { git: true },
+)
+
+it.instance(
   "revert should not delete files that existed but were deleted in snapshot",
   Effect.gen(function* () {
     const tmp = yield* bootstrap()

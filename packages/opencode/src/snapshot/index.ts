@@ -455,8 +455,66 @@ const layer: Layer.Layer<Service, never, FSUtil.Service | AppProcess.Service | C
               // cached tree no longer describes it.
               lastTrees.delete(state.gitdir)
               yield* Effect.logInfo("restore", { commit: snapshot })
+              // Only rewrite files whose worktree content drifted from the snapshot.
+              // `checkout-index -a -f` rewrites every tracked file in the worktree,
+              // which costs seconds on large checkouts. The drift set is computed
+              // BEFORE read-tree (which zeroes index stat data): staged drift via a
+              // tree-to-tree diff, worktree drift via the porcelain diff (plumbing
+              // diff-files is stat-based and would list touch-only files). Paths
+              // absent from the snapshot (D status) must be excluded:
+              // checkout-index cannot write them and would fail the batch.
+              let files: string[] | undefined
+              const currentTree = yield* git(args(["write-tree"]), { cwd: state.worktree })
+              if (currentTree.code === 0 && currentTree.text.trim()) {
+                const [staged, worktree] = yield* Effect.all(
+                  [
+                    git(
+                      [
+                        ...quote,
+                        ...args(["diff", "--no-ext-diff", "--no-renames", "--name-status", "-z", currentTree.text.trim(), snapshot, "--", "."]),
+                      ],
+                      { cwd: state.worktree },
+                    ),
+                    git(
+                      [
+                        "--no-optional-locks",
+                        ...quote,
+                        ...args(["diff", "--no-ext-diff", "--no-renames", "--name-only", "-z", "--", "."]),
+                      ],
+                      { cwd: state.worktree },
+                    ),
+                  ],
+                  { concurrency: 2 },
+                )
+                if (staged.code === 0 && worktree.code === 0) {
+                  const gone = new Set<string>()
+                  const changed: string[] = []
+                  const parts = staged.text.split("\0")
+                  for (let i = 0; i + 1 < parts.length; ) {
+                    const code = parts[i++]!
+                    const file = parts[i++]!
+                    if (code.startsWith("D")) gone.add(file)
+                    else changed.push(file)
+                  }
+                  files = [
+                    ...new Set([
+                      ...changed,
+                      ...worktree.text.split("\0").filter((file) => file && !gone.has(file)),
+                    ]),
+                  ]
+                }
+              }
               const result = yield* git([...core, ...args(["read-tree", snapshot])], { cwd: state.worktree })
-              if (result.code === 0) {
+              if (result.code !== 0) {
+                yield* Effect.logError("failed to restore snapshot", {
+                  snapshot,
+                  exitCode: result.code,
+                  stderr: result.stderr,
+                })
+                return
+              }
+              if (!files) {
+                // Drift listing failed; fall back to rewriting everything.
                 const checkout = yield* git([...core, ...args(["checkout-index", "-a", "-f"])], {
                   cwd: state.worktree,
                 })
@@ -468,10 +526,16 @@ const layer: Layer.Layer<Service, never, FSUtil.Service | AppProcess.Service | C
                 })
                 return
               }
+              if (!files.length) return
+              const checkout = yield* git([...core, ...args(["checkout-index", "-f", "-z", "--stdin"])], {
+                cwd: state.worktree,
+                stdin: encodeNulTerminatedPaths(files),
+              })
+              if (checkout.code === 0) return
               yield* Effect.logError("failed to restore snapshot", {
                 snapshot,
-                exitCode: result.code,
-                stderr: result.stderr,
+                exitCode: checkout.code,
+                stderr: checkout.stderr,
               })
             }),
           )
