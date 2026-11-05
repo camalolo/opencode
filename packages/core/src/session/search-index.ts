@@ -233,31 +233,39 @@ const layer = Layer.effect(
         ])
         const values = rowsToValues(rows, roles, projects)
         yield* search
-          .transaction((tx) =>
-            Effect.gen(function* () {
-              // Another sync loop (a second layer build in this process, or
-              // another process sharing the search database) may have indexed
-              // parts of this range already. Replace its rows so the unique
-              // (part_id, ordinal) guard never trips and FTS stays exact.
-              const prior = yield* tx
-                .select({ rowid: sql<number>`rowid`, text: PartSearchTextTable.text })
-                .from(PartSearchTextTable)
-                .where(and(gt(PartSearchTextTable.part_rowid, frontier), lte(PartSearchTextTable.part_rowid, last)))
-                .all()
-                .pipe(Effect.orDie)
-              yield* ftsDelete(tx, prior)
-              yield* tx.run(
-                sql`DELETE FROM part_search_text WHERE part_rowid > ${frontier} AND part_rowid <= ${last}`,
-              )
-              for (const chunk of chunks(values, 400)) yield* tx.insert(PartSearchTextTable).values(chunk).run()
-              const inserted = yield* tx
-                .select({ rowid: sql<number>`rowid`, text: PartSearchTextTable.text })
-                .from(PartSearchTextTable)
-                .where(and(gt(PartSearchTextTable.part_rowid, frontier), lte(PartSearchTextTable.part_rowid, last)))
-                .all()
-                .pipe(Effect.orDie)
-              yield* ftsInsert(tx, inserted)
-            }),
+          .transaction(
+            (tx) =>
+              Effect.gen(function* () {
+                // Another sync loop (a second layer build in this process, or
+                // another process sharing the search database) may have indexed
+                // parts of this range already. Replace its rows so the unique
+                // (part_id, ordinal) guard never trips and FTS stays exact.
+                const prior = yield* tx
+                  .select({ rowid: sql<number>`rowid`, text: PartSearchTextTable.text })
+                  .from(PartSearchTextTable)
+                  .where(and(gt(PartSearchTextTable.part_rowid, frontier), lte(PartSearchTextTable.part_rowid, last)))
+                  .all()
+                  .pipe(Effect.orDie)
+                yield* ftsDelete(tx, prior)
+                yield* tx.run(
+                  sql`DELETE FROM part_search_text WHERE part_rowid > ${frontier} AND part_rowid <= ${last}`,
+                )
+                for (const chunk of chunks(values, 400)) yield* tx.insert(PartSearchTextTable).values(chunk).run()
+                const inserted = yield* tx
+                  .select({ rowid: sql<number>`rowid`, text: PartSearchTextTable.text })
+                  .from(PartSearchTextTable)
+                  .where(and(gt(PartSearchTextTable.part_rowid, frontier), lte(PartSearchTextTable.part_rowid, last)))
+                  .all()
+                  .pipe(Effect.orDie)
+                yield* ftsInsert(tx, inserted)
+              }),
+            // BEGIN IMMEDIATE takes the write lock up front: a deferred
+            // transaction that reads first fails instantly with "database is
+            // locked" when another connection commits in between (SQLite
+            // cannot upgrade a stale snapshot, and busy_timeout does not
+            // apply to upgrades). With the lock held from the start,
+            // concurrent writers serialize through busy_timeout instead.
+            { behavior: "immediate" },
           )
           .pipe(Effect.orDie)
         frontier = last
@@ -326,23 +334,25 @@ const layer = Layer.effect(
         })
         if (changed.length === 0) return
         yield* search
-          .transaction((tx) =>
-            Effect.gen(function* () {
-              for (const row of changed) {
-                const old = kept.get(row.id) ?? []
-                yield* ftsDelete(tx, old)
-                yield* tx.delete(PartSearchTextTable).where(eq(PartSearchTextTable.part_id, row.id)).run()
-              }
-              for (const chunk of chunks(rowsToValues(changed, roles, projects), 400))
-                yield* tx.insert(PartSearchTextTable).values(chunk).run()
-              const inserted = yield* tx
-                .select({ rowid: sql<number>`rowid`, text: PartSearchTextTable.text })
-                .from(PartSearchTextTable)
-                .where(inArray(PartSearchTextTable.part_id, changed.map((row) => row.id)))
-                .all()
-                .pipe(Effect.orDie)
-              yield* ftsInsert(tx, inserted)
-            }),
+          .transaction(
+            (tx) =>
+              Effect.gen(function* () {
+                for (const row of changed) {
+                  const old = kept.get(row.id) ?? []
+                  yield* ftsDelete(tx, old)
+                  yield* tx.delete(PartSearchTextTable).where(eq(PartSearchTextTable.part_id, row.id)).run()
+                }
+                for (const chunk of chunks(rowsToValues(changed, roles, projects), 400))
+                  yield* tx.insert(PartSearchTextTable).values(chunk).run()
+                const inserted = yield* tx
+                  .select({ rowid: sql<number>`rowid`, text: PartSearchTextTable.text })
+                  .from(PartSearchTextTable)
+                  .where(inArray(PartSearchTextTable.part_id, changed.map((row) => row.id)))
+                  .all()
+                  .pipe(Effect.orDie)
+                yield* ftsInsert(tx, inserted)
+              }),
+            { behavior: "immediate" },
           )
           .pipe(Effect.orDie)
       })
@@ -384,11 +394,13 @@ const layer = Layer.effect(
             .all()
             .pipe(Effect.orDie)
           yield* search
-            .transaction((tx) =>
-              Effect.gen(function* () {
-                yield* ftsDelete(tx, doomed)
-                yield* tx.delete(PartSearchTextTable).where(eq(PartSearchTextTable.session_id, id)).run()
-              }),
+            .transaction(
+              (tx) =>
+                Effect.gen(function* () {
+                  yield* ftsDelete(tx, doomed)
+                  yield* tx.delete(PartSearchTextTable).where(eq(PartSearchTextTable.session_id, id)).run()
+                }),
+              { behavior: "immediate" },
             )
             .pipe(Effect.orDie)
         }
@@ -430,16 +442,18 @@ const layer = Layer.effect(
         .all()
         .pipe(Effect.orDie)
       yield* search
-        .transaction((tx) =>
-          Effect.gen(function* () {
-            yield* ftsDelete(tx, doomed)
-            yield* tx.run(
-              sql`DELETE FROM part_search_text WHERE part_id IN (${sql.join(
-                missing.map((id) => sql`${id}`),
-                sql`, `,
-              )})`,
-            )
-          }),
+        .transaction(
+          (tx) =>
+            Effect.gen(function* () {
+              yield* ftsDelete(tx, doomed)
+              yield* tx.run(
+                sql`DELETE FROM part_search_text WHERE part_id IN (${sql.join(
+                  missing.map((id) => sql`${id}`),
+                  sql`, `,
+                )})`,
+              )
+            }),
+          { behavior: "immediate" },
         )
         .pipe(Effect.orDie)
     })
