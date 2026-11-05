@@ -1448,6 +1448,33 @@ itCounting.live(
   }),
 )
 
+itCounting.instance(
+  "idle dirty subscriptions are released",
+  Effect.gen(function* () {
+    process.env.OPENCODE_SNAPSHOT_DIR_IDLE_MS = "1"
+    yield* Effect.addFinalizer(() =>
+      Effect.sync(() => {
+        delete process.env.OPENCODE_SNAPSHOT_DIR_IDLE_MS
+      }),
+    )
+    const tmp = yield* bootstrap()
+    const snapshot = yield* Snapshot.Service
+    const before = yield* snapshot.track()
+    expect(before).toBeTruthy()
+    yield* waitForFastPath(snapshot)
+    // Exceed the 1ms idle threshold, then force the sweep: the subscription is
+    // released and the next track must fall back to a full discovery scan.
+    yield* Effect.sleep(50)
+    Snapshot.releaseIdleDirty()
+    yield* Effect.sleep(50)
+    gitSpawns.length = 0
+    const again = yield* snapshot.track()
+    expect(again).toBe(before)
+    expect(gitArgv().some((cmd) => cmd.includes(" diff-files "))).toBe(true)
+  }),
+  { git: true },
+)
+
 it.instance(
   "track after restore re-stages post-snapshot files",
   Effect.gen(function* () {

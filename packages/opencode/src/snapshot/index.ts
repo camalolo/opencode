@@ -72,6 +72,32 @@ const DELTA_LIMIT = 512
 // silently missed events (inotify overflow, exotic filesystems) heal.
 const RECONCILE_MS = 5 * 60_000
 
+// Watcher subscriptions pin worktree directories for as long as they live
+// (ReadDirectoryChangesW holds an open handle on Windows, which blocks
+// delete/rename of the directory) and consume watch resources, so worktrees
+// idle this long release their subscription; the next add() resubscribes and
+// re-establishes trust with a full scan.
+const dirIdleMs = () => Number(process.env.OPENCODE_SNAPSHOT_DIR_IDLE_MS) || 10 * 60_000
+
+/** Releases watcher subscriptions of worktrees idle past the threshold. */
+export const releaseIdleDirty = () => {
+  const now = Date.now()
+  for (const [gitdir, d] of dirtyDirs) {
+    if (now - Math.max(d.lastEvent, d.lastAdd, d.lastScan) < dirIdleMs()) continue
+    dirtyDirs.delete(gitdir)
+    d.failed = true
+    d.released = true
+    d.sub?.unsubscribe().catch(() => {})
+  }
+}
+let dirtySweeper: { unref?: () => void } | undefined
+const ensureDirtySweeper = () => {
+  if (dirtySweeper !== undefined) return
+  const timer = setInterval(() => releaseIdleDirty(), 60_000) as unknown as { unref?: () => void }
+  timer.unref?.()
+  dirtySweeper = timer
+}
+
 // diffFull rows keyed by (path, before sha, after sha): the triple fully
 // determines the diff text, and summarize recomputes the whole-turn diff at
 // every step-finish while most per-file pairs repeat between consecutive steps.
@@ -340,6 +366,7 @@ const layer: Layer.Layer<Service, never, FSUtil.Service | AppProcess.Service | C
           }
           acquired = true
           dirtyDirs.set(state.gitdir, next)
+          ensureDirtySweeper()
           if (state.vcs !== "git" || Flag.OPENCODE_DISABLE_SNAPSHOT_WATCHER) {
             next.failed = true
             return next
