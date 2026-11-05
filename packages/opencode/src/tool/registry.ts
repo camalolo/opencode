@@ -22,6 +22,7 @@ import { WriteTool } from "./write"
 import { InvalidTool } from "./invalid"
 import { SkillTool } from "./skill"
 import { SleepCancelTool, SleepStatusTool, SleepUntilTool } from "./sleep"
+import { BrowserTools } from "@/browser/tools"
 import * as Tool from "./tool"
 import { Config } from "@/config/config"
 import { type ToolContext as PluginToolContext, type ToolDefinition } from "@opencode-ai/plugin"
@@ -119,6 +120,8 @@ const layer = Layer.effect(
     const sleepUntilTool = yield* SleepUntilTool
     const sleepCancelTool = yield* SleepCancelTool
     const sleepStatusTool = yield* SleepStatusTool
+    const browserInfos = yield* Effect.all(BrowserTools.all)
+    const browser = yield* Effect.all(browserInfos.map((info) => Tool.init(info)))
     const agent = yield* Agent.Service
     const codeMode = flags.experimentalCodeMode ? yield* Effect.promise(() => import("./code-mode")) : undefined
     const codeModeTool = codeMode ? yield* codeMode.CodeModeTool : undefined
@@ -256,6 +259,7 @@ const layer = Layer.effect(
             tool.sleepCancel,
             tool.sleepStatus,
             tool.patch,
+            ...browser,
             ...(tool.execute ? [tool.execute] : []),
             ...(flags.experimentalLspTool ? [tool.lsp] : []),
             ...(flags.experimentalPlanMode && flags.client === "cli" ? [tool.plan] : []),
