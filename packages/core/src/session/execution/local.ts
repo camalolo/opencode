@@ -1,6 +1,7 @@
 import { Cause, Effect, Layer } from "effect"
 import { LocationServiceMap } from "../../location-service-map"
 import { makeGlobalNode } from "../../effect/app-node"
+import { Idle } from "../../idle"
 import { SessionRunCoordinator } from "../run-coordinator"
 import { SessionRunner } from "../runner"
 import { SessionSchema } from "../schema"
@@ -15,8 +16,12 @@ const layer = Layer.effect(
     const locations = yield* LocationServiceMap.Service
     const coordinator = yield* SessionRunCoordinator.make<SessionSchema.ID, SessionRunner.RunError>({
       drain: Effect.fnUntraced(function* (sessionID: SessionSchema.ID, force) {
+        Idle.drainInc()
         const session = yield* store.get(sessionID)
-        if (!session) return yield* Effect.die(`Session not found: ${sessionID}`)
+        if (!session)
+          return yield* Effect.die(`Session not found: ${sessionID}`).pipe(
+            Effect.ensuring(Effect.sync(Idle.drainDec)),
+          )
         return yield* SessionRunner.Service.use((runner) => runner.run({ sessionID, force })).pipe(
           Effect.provide(locations.get(session.location)),
           Effect.tapCause((cause) =>
@@ -24,6 +29,7 @@ const layer = Layer.effect(
               ? Effect.void
               : Effect.logError("Failed to drain Session", cause).pipe(Effect.annotateLogs({ sessionID })),
           ),
+          Effect.ensuring(Effect.sync(Idle.drainDec)),
         )
       }),
     })

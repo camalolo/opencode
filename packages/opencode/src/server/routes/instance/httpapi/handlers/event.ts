@@ -2,6 +2,7 @@ import { EventV2Bridge } from "@/event-v2-bridge"
 import { InstanceState } from "@/effect/instance-state"
 import { GlobalBus } from "@/bus/global"
 import { EventV2 } from "@opencode-ai/core/event"
+import { Idle } from "@opencode-ai/core/idle"
 import { Effect, Queue } from "effect"
 import * as Stream from "effect/Stream"
 import { HttpServerResponse } from "effect/unstable/http"
@@ -66,13 +67,19 @@ function eventResponse(events: EventV2.Interface) {
     )
 
     yield* Effect.logInfo("event connected")
+    Idle.clientInc()
     return HttpServerResponse.stream(
       Stream.make({ id: eventID(), type: "server.connected", properties: {} }).pipe(
         Stream.concat(output.pipe(Stream.merge(heartbeat, { haltStrategy: "left" }))),
         Stream.map(eventData),
         Stream.pipeThroughChannel(Sse.encode()),
         Stream.encodeText,
-        Stream.ensuring(Effect.logInfo("event disconnected")),
+        Stream.ensuring(
+          Effect.gen(function* () {
+            yield* Effect.logInfo("event disconnected")
+            Idle.clientDec()
+          }),
+        ),
       ),
       {
         contentType: "text/event-stream",

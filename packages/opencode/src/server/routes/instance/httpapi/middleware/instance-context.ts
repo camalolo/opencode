@@ -1,5 +1,6 @@
 import { InstanceRef, WorkspaceRef } from "@/effect/instance-ref"
 import { InstanceStore } from "@/project/instance-store"
+import { Idle } from "@opencode-ai/core/idle"
 import { Effect, Layer } from "effect"
 import { HttpServerResponse } from "effect/unstable/http"
 import { HttpApiMiddleware } from "effect/unstable/httpapi"
@@ -26,6 +27,10 @@ function provideInstanceContext<E>(
 ): Effect.Effect<HttpServerResponse.HttpServerResponse, E, WorkspaceRouteContext> {
   return Effect.gen(function* () {
     const route = yield* WorkspaceRouteContext
+    // Instance routes are real client traffic; liveness endpoints (global
+    // health) bypass this middleware and must not keep the idle governor
+    // awake.
+    Idle.mark()
     const ctx = yield* store.load({ directory: decode(route.directory) })
     return yield* effect.pipe(
       Effect.provideService(InstanceRef, ctx),

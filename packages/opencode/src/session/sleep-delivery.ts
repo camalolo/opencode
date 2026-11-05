@@ -3,6 +3,7 @@ export * as SessionSleepDelivery from "./sleep-delivery"
 import { Context, Duration, Effect, Layer, Schedule } from "effect"
 import { Database, Database as DatabaseNode } from "@opencode-ai/core/database/database"
 import { makeGlobalNode } from "@opencode-ai/core/effect/app-node"
+import { Idle } from "@opencode-ai/core/idle"
 import { SessionStore } from "@opencode-ai/core/session/store"
 import { SessionSleep, MAX_BROKEN_CHECKS, MAX_DELIVER_ATTEMPTS as MAX_WAKE_ATTEMPTS } from "@opencode-ai/core/session/sleep"
 import { SupervisedLoop } from "@/effect/supervised"
@@ -144,6 +145,8 @@ const layer = Layer.effect(
           ),
         { concurrency: 3, discard: true },
       )
+      // Fired-but-undelivered wakes keep the fast tick even while idle.
+      yield* Idle.backgroundDelay(TICK, () => undelivered.length > 0)
     })
 
     // The catch sits inside the repeated effect on purpose: `Effect.repeat`

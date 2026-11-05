@@ -8,6 +8,7 @@ import { makeGlobalNode } from "@opencode-ai/core/effect/app-node"
 import { SessionSchema } from "@opencode-ai/core/session/schema"
 import { SessionStore } from "@opencode-ai/core/session/store"
 import { MAX_BROKEN_CHECKS, SessionSleep } from "@opencode-ai/core/session/sleep"
+import { Idle } from "@opencode-ai/core/idle"
 import { SupervisedLoop } from "@/effect/supervised"
 import { SessionStatus } from "./status"
 
@@ -317,6 +318,10 @@ const layer = Layer.effect(
         Effect.catchCause((cause) => Effect.logWarning("sleep deadline sweep failed", { cause })),
       )
       const due = yield* SessionSleep.due(db, Date.now())
+      // Armed triggers keep the fast tick even while the process is idle:
+      // their checks run on this loop, and check precision is the trigger's
+      // contract.
+      const pending = yield* SessionSleep.pendingAll(db)
       lastProgressAt = Date.now()
       // Each row is caught on its own so one defecting row cannot take the
       // whole batch (and with it the loop's progress heartbeat) down.
@@ -328,6 +333,7 @@ const layer = Layer.effect(
           ),
         { concurrency: 4, discard: true },
       )
+      yield* Idle.backgroundDelay(TICK, () => pending.length > 0)
     })
 
     const watchdog = Effect.fn("SessionSleepScheduler.watchdog")(function* () {

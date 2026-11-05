@@ -6,6 +6,7 @@ import type { EffectDrizzleSqlite } from "@opencode-ai/effect-drizzle-sqlite"
 import { Database } from "../database/database"
 import { SearchDatabase, PartSearchTextTable } from "../database/search-database"
 import { makeGlobalNode } from "../effect/app-node"
+import { Idle } from "../idle"
 import { MessageTable, PartTable, SessionTable } from "./sql"
 import { SessionV1 } from "../v1/session"
 import type { SessionSchema } from "./schema"
@@ -497,6 +498,10 @@ const layer = Layer.effect(
             batch = BATCH_MIN
           }
           yield* Effect.sleep(Duration.millis(tickMs))
+          // Idle pacing: stretch the cadence while the process is quiet; a
+          // catch-up backlog keeps the fast tick, and explicit sync callers
+          // (e.g. search_sessions) never wait on this loop.
+          yield* Idle.backgroundDelay(tickMs, () => !caughtUp)
         })
       }),
     ).pipe(Effect.forkScoped)

@@ -1,4 +1,5 @@
 import { Context, Effect, Layer, Option } from "effect"
+import { Idle } from "@opencode-ai/core/idle"
 import { LayerNode } from "@opencode-ai/core/effect/layer-node"
 import * as Socket from "effect/unstable/socket/Socket"
 
@@ -53,7 +54,13 @@ export const register = (close: Close) =>
     if (Option.isNone(tracker)) return true
     const registered = yield* tracker.value.add(close)
     if (!registered) return false
-    yield* Effect.addFinalizer(() => tracker.value.remove(close))
+    Idle.clientInc()
+    yield* Effect.addFinalizer(() =>
+      Effect.gen(function* () {
+        yield* tracker.value.remove(close)
+        Idle.clientDec()
+      }),
+    )
     return true
   })
 

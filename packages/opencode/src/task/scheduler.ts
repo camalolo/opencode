@@ -4,6 +4,7 @@ import { Cause, Context, Duration, Effect, Layer, Schedule } from "effect"
 import { Database } from "@opencode-ai/core/database/database"
 import { EventV2 } from "@opencode-ai/core/event"
 import { makeGlobalNode } from "@opencode-ai/core/effect/app-node"
+import { Idle } from "@opencode-ai/core/idle"
 import { SessionV2 } from "@opencode-ai/core/session"
 import { SessionExecution } from "@opencode-ai/core/session/execution"
 import { SessionExecutionLocal } from "@opencode-ai/core/session/execution/local"
@@ -145,6 +146,10 @@ const layer = Layer.effect(
         )
         if (entry.run.sessionID !== undefined) yield* execution.interrupt(entry.run.sessionID)
       }
+
+      // Claims, pending runs, and overdue runs keep the fast tick even while
+      // idle; scheduled future runs may stretch by one idle pace.
+      yield* Idle.backgroundDelay(TICK, () => claimed.length + pending.length + overdue.length > 0)
 
       if (now - lastPruneAt >= PRUNE_EVERY_MS) {
         lastPruneAt = now

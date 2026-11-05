@@ -12,6 +12,11 @@ function enabledByExperimental(key: string) {
   return process.env[key] === undefined ? truthy("OPENCODE_EXPERIMENTAL") : truthy(key)
 }
 
+function durationMs(key: string) {
+  const value = Number(process.env[key])
+  return Number.isFinite(value) && value > 0 ? value : undefined
+}
+
 export const Flag = {
   OTEL_EXPORTER_OTLP_ENDPOINT: process.env["OTEL_EXPORTER_OTLP_ENDPOINT"],
   OTEL_EXPORTER_OTLP_HEADERS: process.env["OTEL_EXPORTER_OTLP_HEADERS"],
@@ -32,6 +37,24 @@ export const Flag = {
   OPENCODE_SERVER_PASSWORD: process.env["OPENCODE_SERVER_PASSWORD"],
   OPENCODE_SERVER_USERNAME: process.env["OPENCODE_SERVER_USERNAME"],
   OPENCODE_DISABLE_FFF: fff === undefined ? process.platform === "win32" : truthy("OPENCODE_DISABLE_FFF"),
+
+  // Idle governor: paces background tick loops while the process has no real
+  // work (see core/src/idle.ts). Durations in ms; undefined = module default.
+  get OPENCODE_IDLE_DISABLE() {
+    return truthy("OPENCODE_IDLE_DISABLE")
+  },
+  get OPENCODE_IDLE_AFTER_MS() {
+    return durationMs("OPENCODE_IDLE_AFTER_MS")
+  },
+  get OPENCODE_QUIET_AFTER_MS() {
+    return durationMs("OPENCODE_QUIET_AFTER_MS")
+  },
+  get OPENCODE_IDLE_PACE_MS() {
+    return durationMs("OPENCODE_IDLE_PACE_MS")
+  },
+  get OPENCODE_IDLE_SLICE_MS() {
+    return durationMs("OPENCODE_IDLE_SLICE_MS")
+  },
 
   // Experimental
   OPENCODE_EXPERIMENTAL_FILEWATCHER: Config.boolean("OPENCODE_EXPERIMENTAL_FILEWATCHER").pipe(

@@ -6,6 +6,7 @@ import type { Data, Definition, Payload } from "@opencode-ai/schema/event"
 import { and, asc, eq, gt, inArray } from "drizzle-orm"
 import { Database } from "./database/database"
 import { EventSequenceTable, EventTable } from "./event/sql"
+import { Idle } from "./idle"
 import { Location } from "./location"
 import { makeGlobalNode } from "./effect/app-node"
 import { isDeepStrictEqual } from "node:util"
@@ -417,6 +418,7 @@ export const layerWith = (options?: LayerOptions) =>
       }
 
       function publish<D extends Definition>(definition: D, data: Data<D>, options?: PublishOptions) {
+        Idle.mark()
         return Effect.gen(function* () {
           const serviceLocation = Option.getOrUndefined(yield* Effect.serviceOption(Location.Service))
           const location =

@@ -2,6 +2,7 @@ import { Config } from "@/config/config"
 import { GlobalBus, bootId as globalBootId, replay as globalReplay, type GlobalEvent as GlobalBusEvent } from "@/bus/global"
 import { EffectBridge } from "@/effect/bridge"
 import { EventV2 } from "@opencode-ai/core/event"
+import { Idle } from "@opencode-ai/core/idle"
 import { Installation } from "@/installation"
 import { disposeAllInstancesAndEmitGlobalDisposed } from "@/server/global-lifecycle"
 import { InstallationVersion } from "@opencode-ai/core/installation/version"
@@ -79,13 +80,19 @@ function eventResponse() {
       Stream.map(() => ({ payload: { id: EventV2.ID.create(), type: "server.heartbeat", properties: {} } })),
     )
 
+    Idle.clientInc()
     return HttpServerResponse.stream(
       Stream.fromIterable(prelude).pipe(
         Stream.concat(events.pipe(Stream.merge(heartbeat, { haltStrategy: "left" }))),
         Stream.map(eventData),
         Stream.pipeThroughChannel(Sse.encode()),
         Stream.encodeText,
-        Stream.ensuring(Effect.logInfo("global event disconnected")),
+        Stream.ensuring(
+          Effect.gen(function* () {
+            yield* Effect.logInfo("global event disconnected")
+            Idle.clientDec()
+          }),
+        ),
       ),
       {
         contentType: "text/event-stream",
