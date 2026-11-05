@@ -129,6 +129,33 @@ function isExecutable(path: string): boolean {
   }
 }
 
+// Provision the browser binaries the pinned daemon version expects (the
+// fleet replacement for the weekly playwright-browser-update repair job).
+// Runs the binary's own idempotent installer: a no-op when the matching
+// browser is cached, a download when it is not. Non-fatal on failure — the
+// daemon still tries whatever it finds.
+async function ensureBrowserBinaries(): Promise<void> {
+  if (process.env.OPENCODE_BROWSER_AGENT_SKIP_INSTALL === "1") return
+  const { path, args } = daemonCommand()
+  // Only our own binary layout is provisionable; custom entrypoints are not.
+  if (args[0] !== "daemon") return
+  await new Promise<void>((resolve) => {
+    const child = spawn(path, ["install"], { stdio: "ignore", env: process.env })
+    const timer = setTimeout(() => {
+      child.kill("SIGKILL")
+      resolve()
+    }, 10 * 60 * 1000)
+    child.once("exit", () => {
+      clearTimeout(timer)
+      resolve()
+    })
+    child.once("error", () => {
+      clearTimeout(timer)
+      resolve()
+    })
+  })
+}
+
 function binaryPlatform(): string {
   if (platform() !== "linux") return platform()
   // glibc distros ship /lib/<arch>-linux-gnu/libc.so.6; musl systems (Alpine)
@@ -153,6 +180,7 @@ function connect(): Promise<net.Socket> {
 async function ensureSpawned(): Promise<void> {
   if (spawning) return await spawning
   await sweepOrphans()
+  await ensureBrowserBinaries()
   spawning = new Promise<void>((resolve) => {
     const { path, args } = daemonCommand()
     const child = spawn(path, args, {
