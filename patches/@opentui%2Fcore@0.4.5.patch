@@ -1,0 +1,16 @@
+diff --git a/chunk-bun-tkm837n2.js b/chunk-bun-tkm837n2.js
+index e5e5874f758a2e8c622ca8e9301f20c60c245546..f31a42aeda9728dbf1df651e5fa336dcc12990bb 100644
+--- a/chunk-bun-tkm837n2.js
++++ b/chunk-bun-tkm837n2.js
+@@ -9689,6 +9689,11 @@ Captured external output:
+       this.rendering = false;
+       if (this._destroyPending) {
+         this.finalizeDestroy();
++      } else if (this.immediateRerenderRequested) {
++        this.immediateRerenderRequested = false;
++        setImmediate(() => {
++          if (!this._isDestroyed) this.requestRender();
++        });
+       }
+       this.resolveIdleIfNeeded();
+     }
