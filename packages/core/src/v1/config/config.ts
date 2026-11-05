@@ -48,7 +48,10 @@ export const Info = Schema.Struct({
   reference: Schema.optional(ConfigReference.Info).annotate({
     description: "@deprecated Use 'references' field instead. Named git or local directory references",
   }),
-  watcher: Schema.optional(Schema.Struct({ ignore: Schema.optional(Schema.mutable(Schema.Array(Schema.String))) })),
+  watcher: Schema.optional(Schema.Struct({ ignore: Schema.optional(Schema.mutable(Schema.Array(Schema.String))) })).annotate({
+    description:
+      "Filesystem watcher ignore globs, applied on top of built-in ignores. Entries without a slash or wildcard also suppress everything inside the directory (e.g. 'var' ignores var and its contents). Useful for churny directories (build output, caches) that should not wake the snapshot watcher.",
+  }),
   snapshot: Schema.optional(Schema.Boolean).annotate({
     description:
       "Enable or disable snapshot tracking. When false, filesystem snapshots are not recorded and undoing or reverting will not undo/redo file changes. Defaults to true.",

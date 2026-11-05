@@ -154,6 +154,15 @@ const layer: Layer.Layer<Service, never, FSUtil.Service | AppProcess.Service | C
 
     const state = yield* InstanceState.make<State>(
       Effect.fn("Snapshot.state")(function* (ctx) {
+        // watcher.ignore globs from config extend the snapshot watcher's
+        // ignores on top of the .git baseline; staging filters gitignored
+        // paths at scan time regardless, so suppressed events are pure noise
+        // saved. Bare directory names gain a `/**` companion so both the
+        // directory's own create/delete event and its children are
+        // suppressed.
+        const watchIgnores = (yield* config.get()).watcher?.ignore?.flatMap((pattern) =>
+          pattern.includes("*") || pattern.includes("/") ? [pattern] : [pattern, `${pattern}/**`],
+        ) ?? []
         const state = {
           directory: ctx.directory,
           worktree: ctx.worktree,
@@ -343,9 +352,10 @@ const layer: Layer.Layer<Service, never, FSUtil.Service | AppProcess.Service | C
         })
 
         // Get (or create) the shared dirty state for this worktree and start its
-        // filesystem subscription on first use. The subscription ignores only
-        // .git so its coverage is a superset of anything snapshotting could
-        // stage; gitignore filtering stays at use time via ignore().
+        // filesystem subscription on first use. The subscription ignores .git
+        // plus the config's watcher.ignore globs; anything else still reaches
+        // the pending set, keeping coverage a superset of anything snapshotting
+        // could stage - gitignore filtering stays at use time via ignore().
         const dirty = () => {
           const hit = dirtyDirs.get(state.gitdir)
           if (hit) {
@@ -371,18 +381,22 @@ const layer: Layer.Layer<Service, never, FSUtil.Service | AppProcess.Service | C
             next.failed = true
             return next
           }
-          const pending = Watcher.subscribeRaw(state.worktree, [".git", "**/.git", "**/.git/**"], (error, events) => {
-            if (error) {
-              next.failed = true
-              return
-            }
-            next.lastEvent = Date.now()
-            for (const event of events) {
-              const rel = path.relative(state.worktree, event.path).replaceAll("\\", "/")
-              if (rel.startsWith("..")) continue
-              next.files.add(rel)
-            }
-          })
+          const pending = Watcher.subscribeRaw(
+            state.worktree,
+            [".git", "**/.git", "**/.git/**", ...watchIgnores],
+            (error, events) => {
+              if (error) {
+                next.failed = true
+                return
+              }
+              next.lastEvent = Date.now()
+              for (const event of events) {
+                const rel = path.relative(state.worktree, event.path).replaceAll("\\", "/")
+                if (rel.startsWith("..")) continue
+                next.files.add(rel)
+              }
+            },
+          )
           if (!pending) {
             next.failed = true
             return next
