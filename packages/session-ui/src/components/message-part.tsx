@@ -1240,7 +1240,9 @@ export function UserMessageDisplay(props: {
     const match = data.store.provider?.all?.get(providerID)
     return match?.models?.[modelID]?.name ?? modelID
   })
-  const timefmt = createMemo(() => new Intl.DateTimeFormat(i18n.locale(), { timeStyle: "short" }))
+  const timefmt = createMemo(() =>
+    new Intl.DateTimeFormat(i18n.locale(), { dateStyle: "medium", timeStyle: "short" }),
+  )
 
   const stamp = createMemo(() => {
     const created = props.message.time?.created
@@ -1690,6 +1692,17 @@ PART_MAPPING["text"] = function TextPartDisplay(props) {
     return match?.models?.[message.modelID]?.name ?? message.modelID
   })
 
+  const receivedFmt = createMemo(() =>
+    new Intl.DateTimeFormat(i18n.locale(), { dateStyle: "medium", timeStyle: "short" }),
+  )
+
+  const received = createMemo(() => {
+    if (props.message.role !== "assistant") return ""
+    const completed = (props.message as AssistantMessage).time.completed
+    if (typeof completed !== "number") return ""
+    return receivedFmt().format(completed)
+  })
+
   const duration = createMemo(() => {
     if (props.message.role !== "assistant") return ""
     const message = props.message as AssistantMessage
@@ -1717,6 +1730,7 @@ PART_MAPPING["text"] = function TextPartDisplay(props) {
     const items = [
       agent ? agent[0]?.toUpperCase() + agent.slice(1) : "",
       model(),
+      received(),
       duration(),
       interrupted() ? i18n.t("ui.message.interrupted") : "",
     ]
