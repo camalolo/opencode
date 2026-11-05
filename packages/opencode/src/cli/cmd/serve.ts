@@ -17,7 +17,8 @@ export const ServeCommand = effectCmd({
     }
     const opts = yield* resolveNetworkOptions(args)
     const server = yield* Effect.promise(() => Server.listen(opts))
-    console.log(`opencode server listening on http://${server.hostname}:${server.port}`)
+    const addresses = server.hostnames.map((host) => `http://${host}:${server.port}`).join(", ")
+    console.log(`opencode server listening on ${addresses}`)
 
     yield* Effect.never
   }),

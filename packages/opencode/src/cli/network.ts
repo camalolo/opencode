@@ -34,6 +34,12 @@ const options = {
 
 export type NetworkOptions = InferredOptionTypes<typeof options>
 
+/** Splits a comma-separated --hostname value ("127.0.0.1,192.168.1.20") into
+ * unique, trimmed bind addresses. A single address passes through unchanged. */
+export function parseHostnames(input: string) {
+  return [...new Set(input.split(",").map((item) => item.trim()).filter(Boolean))]
+}
+
 export function withNetworkOptions<T>(yargs: Argv<T>) {
   return yargs.options(options)
 }
@@ -72,9 +78,12 @@ export function resolveNetworkOptionsNoConfig(args: NetworkOptions, config?: Con
     : mdns && !config?.server?.hostname
       ? "0.0.0.0"
       : (config?.server?.hostname ?? args.hostname)
+  // The first address stays `hostname` (logs, URLs, mDNS checks); any further
+  // comma-separated addresses become additional listener binds.
+  const hostnames = parseHostnames(hostname)
   const configCors = config?.server?.cors ?? []
   const argsCors = Array.isArray(args.cors) ? args.cors : args.cors ? [args.cors] : []
   const cors = [...configCors, ...argsCors]
 
-  return { hostname, port, mdns, mdnsDomain, cors }
+  return { hostname: hostnames[0] ?? hostname, hostnames, port, mdns, mdnsDomain, cors }
 }

@@ -379,6 +379,64 @@ describe("HttpApi Server.listen", () => {
     }
   })
 
+  test("binds multiple comma-separated hostnames and serves on all of them", async () => {
+    Flag.OPENCODE_SERVER_PASSWORD = auth.password
+    Flag.OPENCODE_SERVER_USERNAME = auth.username
+    process.env.OPENCODE_SERVER_PASSWORD = auth.password
+    process.env.OPENCODE_SERVER_USERNAME = auth.username
+    // 127.0.0.0/8 is loopback everywhere, so the second address needs no extra
+    // interfaces or privileges.
+    const listener = await Server.listen({ hostname: "127.0.0.1", hostnames: ["127.0.0.1", "127.0.0.2"], port: 0 })
+    try {
+      expect(listener.hostname).toBe("127.0.0.1")
+      expect(listener.hostnames).toEqual(["127.0.0.1", "127.0.0.2"])
+      expect(listener.url.hostname).toBe("127.0.0.1")
+      for (const host of listener.hostnames) {
+        const response = await fetch(`http://${host}:${listener.port}/status`, {
+          headers: { authorization: authorization() },
+        })
+        expect(response.status, `GET /status via ${host}`).toBe(200)
+      }
+    } finally {
+      await stop(listener, "timed out cleaning up multibind listener")
+    }
+    for (const host of ["127.0.0.1", "127.0.0.2"]) {
+      await expect(
+        fetch(`http://${host}:${listener.port}/status`, { headers: { authorization: authorization() } }),
+        `connection via ${host} after stop`,
+      ).rejects.toThrow()
+    }
+  })
+
+  test("a failed extra bind address fails the listener", async () => {
+    Flag.OPENCODE_SERVER_PASSWORD = auth.password
+    Flag.OPENCODE_SERVER_USERNAME = auth.username
+    process.env.OPENCODE_SERVER_PASSWORD = auth.password
+    process.env.OPENCODE_SERVER_USERNAME = auth.username
+    const blocker = await new Promise<net.Server | undefined>((resolve) => {
+      const server = net.createServer()
+      server.once("error", () => resolve(undefined))
+      server.listen(0, "127.0.0.3", () => resolve(server))
+    })
+    if (!blocker) return
+    const takenPort = (blocker.address() as net.AddressInfo).port
+    try {
+      await expect(
+        Server.listen({ hostname: "127.0.0.1", hostnames: ["127.0.0.1", "127.0.0.3"], port: takenPort }),
+      ).rejects.toThrow()
+      // The primary socket must not leak when an extra address cannot bind.
+      const probe = net.createServer()
+      await new Promise<void>((resolve, reject) => {
+        probe.once("error", reject)
+        probe.listen(takenPort, "127.0.0.1", () => {
+          probe.close(() => resolve())
+        })
+      })
+    } finally {
+      await new Promise<void>((resolve) => blocker.close(() => resolve()))
+    }
+  })
+
   testPty("rejects unsafe PTY ticket mint and connect requests", async () => {
     await using tmp = await tmpdir({ config: { formatter: false, lsp: false } })
     const listener = await startListener()
