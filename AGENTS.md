@@ -166,37 +166,46 @@ Three servers run this fork, all tracking `laurent-dev`:
 
 | Host | Server URL | Service control | Notes |
 |------|------------|-----------------|-------|
-| local (Windows, this repo) | http://localhost:4096 | `pwsh -NoProfile -File C:/Users/camal/scripts/restart-services.ps1` | dev box; safe to restart freely. Running the script from the bash tool restarts the server the tool session depends on, so the tool call returns interrupted mid-output even though the restart succeeds — treat the interruption as expected and verify via `/global/health` + a fresh `boot` id instead of re-running |
-| `home` (ssh alias) | http://127.0.0.1:4096 (via ssh) | `systemctl --user restart opencode` | production; user runs real sessions here |
+| `home` (this machine, cubi-n200) | http://127.0.0.1:4096 | `systemctl --user restart opencode` | dev box AND production; the user's real sessions run here and phone access goes through `https://home.opencode.camalolo.com`. Repo: `~/Sources/opencode`. A restart kills active sessions, so check the idle rule first even for dev work. Restarting this server from the bash tool kills the tool session's own server: the call returns interrupted mid-output even though the restart succeeds — treat the interruption as expected and verify via `/global/health` + a fresh `boot` id instead of re-running |
 | `m2dev-laurent` (ssh alias) | http://127.0.0.1:4096 (via ssh) | `systemctl --user restart opencode` | Magento production/dev box (`app2.m2.shop.lomography.com`, 142.132.174.83). SAME HOST as `m2app2` (`ssh -J home laurent@m2app2`; the bare `m2app2` alias defaults to user `carlsen`, which has no opencode access). Real user sessions (Stripe/Magento work) run here — treat as production, check the idle rule. |
+| `desktop` (ssh alias, Windows, `LAURENT-DESKTOP`) | http://localhost:4096 (via ssh; `https://desktop.opencode.camalolo.com` from outside) | `pwsh -NoProfile -File C:/Users/camal/scripts/restart-services.ps1` (self-elevates) | Production user sessions; NOT a dev box since 2026-11-04 (development moved to home), but still runs the fork from the repo. Repo: `C:\Program Files\Opencode` (moved there 2026-11-05 from `D:\Development\External`, before that `E:\Development\External`). The repo dir is ACL-granted to user `laurent` (the Windows account; `camal` is only the profile folder name), so git/bun/build run unprivileged there — but ANY repo move dangles bun's absolute-path junctions in `node_modules`; after a move, delete `node_modules` and run a fresh `bun install` (moving into Program Files needs one elevated step). Server started by `C:\Users\camal\scripts\opencode-server-patched.ps1`; `bun run --conditions=browser "C:/Program Files/Opencode/packages/opencode/src/index.ts" serve --hostname 0.0.0.0 --port 4096`. ssh lands in cmd.exe, not pwsh (inline pwsh one-liners lose `$_` through the ssh→cmd→pwsh chain — scp a .ps1 script file and run it with `-File` instead). `git pull` only works in an interactive session there (the GitHub SSH key isn't available to non-interactive ssh sessions and fetches hang; deploy via interactive pull, or `git bundle` + scp). The snapshot watcher (ReadDirectoryChangesW) holds open handles on tracked worktree dirs while they are active, briefly blocking delete/rename; handles release automatically after ~10 min idle (configurable via `OPENCODE_SNAPSHOT_DIR_IDLE_MS`) or on restart. The agent-browser daemon there is a scheduled task (`opencode-agent-browser-daemon`), not owned by the restart script. Historical Windows infra notes: `HANDOVER.md` (repo root, untracked on purpose — never commit or push it). |
 
 ### Fleet customizations (outside this repo)
 
 These live on the servers, not in git. They survive `git pull`/rebuilds — a future agent must not assume stock behavior.
 
-- **Server runtime (local)**: repo TS runs directly via bun (`C:/Users/camal/scripts/opencode-server-patched.ps1`, launched by `restart-services.ps1`). `Set-Location $env:USERPROFILE` and `OPENCODE_DISABLE_CHANNEL_DB=1` there are load-bearing (backslash `session.directory`; channel DB selection). Server-code rollback = `git revert`, no rebuild (UI needs build + manifest, see Deploying).
-- **Browser stack (all 3 servers)**: global config loads plugin `@different-ai/opencode-browser@4.6.1` with `OPENCODE_BROWSER_BACKEND=agent` → one shared browser per server via the `agent-browser` daemon (0.37.1, native binary; remotes: `agent-browser.service`, local: `agent-browser-daemon.ps1`; socket `$XDG_RUNTIME_DIR/agent-browser/<session>.sock`, mirrored into `OPENCODE_BROWSER_AGENT_SOCKET` in `opencode.service`; `RuntimeMaxSec` recycles it every 6h).
-  - The plugin bundle is LOCALLY PATCHED (master copy: local `~/.cache/opencode/packages/@different-ai/opencode-browser/node_modules/@different-ai/opencode-browser/dist/plugin.js`; servers load the copy under the dir matching the config spec — `@latest` for bare spec, `@4.6.1` for pinned; backups `*.bak-pre-console` alongside). Patches: `browser_console`/`browser_errors` mapped to the agent backend, `browser_query` page_text newline fix, `browser_cdp` tool (returns live CDP endpoint from `DevToolsActivePort`). Any plugin version bump WIPES the patch — re-push from master and restart.
-  - Raw-CDP rules (baked into `browser_cdp` output): re-attach fresh every time (port + UUIDs change on recycle), never send an `Origin` header (Chromium 403). Helper `~/.local/bin/agent-browser-cdp-info` on remotes. Tab cleanup: `agent-browser-cleanup.sh` + 15min timer (remotes), `agent-browser-cleanup.ps1` (local).
-- **OCR**: vendored patched `opencode-parser` at `~/.config/opencode/vendor/opencode-parser` + shim `~/.config/opencode/plugins/parser.ts` (all 3). Bun+Arborist installs npm-specifier plugins hollow — never add `opencode-parser` to the plugin array (Windows hits it deterministically); keep the shim. Patch: image attachments for text-only models are saved to a temp file with a `parse` instruction instead of being sent as data URLs.
+- **Server runtime (home)**: repo TS runs directly via bun through a systemd drop-in (`~/.config/systemd/user/opencode.service.d/patched.conf` overrides `ExecStart` to `bun run --conditions=browser ~/Sources/opencode/packages/opencode/src/index.ts serve ...`). `OPENCODE_DISABLE_CHANNEL_DB=1` there is load-bearing (channel DB selection for source builds); other drop-ins hold the RunPod API key and `SSH_AUTH_SOCK`. Server-code rollback = `git revert` + restart, no rebuild (UI needs build + manifest, see Deploying).
+- **Browser stack (all servers)**: global config loads plugin `@different-ai/opencode-browser@4.6.1` with `OPENCODE_BROWSER_BACKEND=agent` → one shared browser per server via the `agent-browser` daemon (0.37.1, native binary; `agent-browser.service` + `agent-browser-cleanup.timer` on every server; socket `$XDG_RUNTIME_DIR/agent-browser/<session>.sock`, mirrored into `OPENCODE_BROWSER_AGENT_SOCKET` in `opencode.service`; `RuntimeMaxSec` recycles it every 6h).
+  - The plugin bundle is LOCALLY PATCHED (master copy: home `~/.cache/opencode/packages/@different-ai/opencode-browser/node_modules/@different-ai/opencode-browser/dist/plugin.js`; servers load the copy under the dir matching the config spec — `@latest` for bare spec, `@4.6.1` for pinned; backups `*.bak-pre-console` alongside). Patches: `browser_console`/`browser_errors` mapped to the agent backend, `browser_query` page_text newline fix, `browser_cdp` tool (returns live CDP endpoint from `DevToolsActivePort`). Any plugin version bump WIPES the patch — re-push from master and restart.
+  - Raw-CDP rules (baked into `browser_cdp` output): re-attach fresh every time (port + UUIDs change on recycle), never send an `Origin` header (Chromium 403). Helper `~/.local/bin/agent-browser-cdp-info` on every server. Tab cleanup: `agent-browser-cleanup.sh` + 15min timer on every server.
+- **OCR**: vendored patched `opencode-parser` at `~/.config/opencode/vendor/opencode-parser` + shim `~/.config/opencode/plugins/parser.ts` (all servers). Bun+Arborist installs npm-specifier plugins hollow — never add `opencode-parser` to the plugin array; keep the shim. Patch: image attachments for text-only models are saved to a temp file with a `parse` instruction instead of being sent as data URLs.
 - **Providers**: `camalolo.com` is the user's llm-proxy (source: home `~/Sources/llm-proxy`, Express+TS). Custom-proxy providers don't inherit models.dev metadata by model ID — declare `attachment`/`modalities` per model or images get stripped. Phone/remote access: `https://home.opencode.camalolo.com` (nginx TLS on home).
-- **nginx on home**: opencode vhosts (`home.`/`desktop.`/`m2app2.opencode.camalolo.com`) have an anti-port-scan guard `if ($server_addr != "192.168.1.16") { return 444; }` — curl tests must use `--resolve <host>:443:192.168.1.16` or they get instant 000/PROTOCOL_ERROR even on the box itself. Asset caching lives in `/etc/nginx/conf.d/00-opencode-asset-cache.conf`: `/assets/*` responses get `Cache-Control: immutable, max-age=31536000` **only for 2xx/304** (status-scoped map, fixed 2026-11-04 after an incident; backup at `*.bak-statusfix`). NEVER let error responses carry that header — a cached 404 for a chunk URL bricks the client's SPA for a year.
+- **nginx on home**: opencode vhosts (`home.`/`m2app2.`/`desktop.opencode.camalolo.com`; `desktop.` proxies to the Windows box) have an anti-port-scan guard `if ($server_addr != "192.168.1.16") { return 444; }` — curl tests must use `--resolve <host>:443:192.168.1.16` or they get instant 000/PROTOCOL_ERROR even on the box itself. Asset caching lives in `/etc/nginx/conf.d/00-opencode-asset-cache.conf`: `/assets/*` responses get `Cache-Control: immutable, max-age=31536000` **only for 2xx/304** (status-scoped map, fixed 2026-11-04 after an incident; backup at `*.bak-statusfix`). NEVER let error responses carry that header — a cached 404 for a chunk URL bricks the client's SPA for a year.
 - **Never build the UI into a server's dist outside the deploy chain**: `bun run --cwd packages/app build` empties `packages/app/dist`, deleting the chunk files live SPAs are lazily importing mid-session. Incident 2026-11-03: a session built the UI on home with the wrong channel flavor (`OPENCODE_CHANNEL` difference changes vite hashes), the phone's live SPA got 404s for its chunks (new-session page crashed, session-delete died silently — the click never issued a request), and nginx's always-on immutable header cached the 404s client-side. The running server serves `index.html`/assets via the embedded ui manifest from the last `gen-web-ui-manifest.ts` + restart, but chunk imports resolve per-request — dist must stay hash-consistent with the manifest era.
 
 ### Deploying
 
-UI changes need build + manifest regen + restart on EVERY server (restarting alone keeps serving the old UI). Remotes: repo at `~/Sources/opencode`.
+UI changes need build + manifest regen + restart on EVERY server (restarting alone keeps serving the old UI). Repos: `~/Sources/opencode` on the Linux boxes, `C:\Program Files\Opencode` on desktop.
 
 ```sh
-ssh <host> 'export PATH=$HOME/.bun/bin:$PATH; cd ~/Sources/opencode && git pull --ff-only origin laurent-dev && bun install && bun run --cwd packages/app build && bun deploy/gen-web-ui-manifest.ts && systemctl --user restart opencode'
+# home (this machine, run locally; respect the idle rule — this restarts production)
+cd ~/Sources/opencode && git pull --ff-only origin laurent-dev && bun install && bun run --cwd packages/app build && bun deploy/gen-web-ui-manifest.ts && systemctl --user restart opencode
+
+# m2dev-laurent
+ssh m2dev-laurent 'export PATH=$HOME/.bun/bin:$PATH; cd ~/Sources/opencode && git pull --ff-only origin laurent-dev && bun install && bun run --cwd packages/app build && bun deploy/gen-web-ui-manifest.ts && systemctl --user restart opencode'
+
+# desktop (Windows; ssh lands in cmd.exe. For server-only changes, skip build+manifest)
+ssh desktop "cd /d \"C:\Program Files\Opencode\" && git pull --ff-only origin laurent-dev && bun install && bun run --cwd packages/app build && bun deploy/gen-web-ui-manifest.ts"
+ssh desktop "pwsh -NoProfile -File C:/Users/camal/scripts/restart-services.ps1"
 ```
 
+On desktop the `git pull` in that chain only works in an interactive session (see the desktop row above). Non-interactive alternative: `git bundle create /tmp/x.bundle <prev-tip>..laurent-dev` on home, `scp` it, then `git pull C:/Users/camal/<name>.bundle laurent-dev --ff-only` on desktop before the build chain.
+
 - `m2dev-laurent` additionally needs `/home/laurent/.nvm/versions/node/v24.8.0/bin` first in PATH.
-- Local: build in the repo (`bun run --cwd packages/app build && bun deploy/gen-web-ui-manifest.ts`), then the restart script.
 
 ### Idle rule (mandatory)
 
-A restart kills active sessions. Before pulling/restarting a remote, verify it is idle:
+A restart kills active sessions. Before pulling/restarting any server (home included — it is production), verify it is idle (run the grep locally on home, via ssh on m2dev; on desktop the same log lives at `C:\Users\camal\.local\share\opencode\log\opencode.log` — grep it via `findstr` through cmd or a pwsh one-liner):
 
 ```sh
 ssh <host> 'grep -a "message=stream\|message=loop" ~/.local/share/opencode/log/opencode.log | tail -1'
@@ -206,14 +215,14 @@ Compare the entry's `timestamp=` (UTC) against `date -u`: require >= 300s of qui
 
 ### Verify after deploy
 
-- Health: `curl -s http://127.0.0.1:4096/global/health` -> 200 (on Windows use `curl --noproxy "*" -o NUL`).
+- Health: `curl -s http://127.0.0.1:4096/global/health` -> 200.
 - New process: `curl -sN -m 3 http://127.0.0.1:4096/global/event | sed -n 2p` -> `server.connected` prelude carries a fresh `boot` id.
 - `git log --oneline -1` matches the `laurent-dev` tip.
 - Pushes need `git push --no-verify origin laurent-dev` (pre-push bun-version gate fails otherwise).
 
 ### Local testing
 
-- Sessions must live in directory `C:/Users/camal/.agent-browser` to appear in the UI (registered project; sessions in other dirs don't show in the sidebar).
+- Sessions must live in directory `~/.agent-browser` to appear in the UI (registered project; sessions in other dirs don't show in the sidebar).
 - Session-scoped API calls need `?directory=` or the `x-opencode-directory` header.
 
 ### Deferred deploy (busy server)
