@@ -131,9 +131,12 @@ function isExecutable(path: string): boolean {
 
 function binaryPlatform(): string {
   if (platform() !== "linux") return platform()
-  for (const name of [`ld-musl-${arch}.so.1`, process.arch === "arm64" ? "ld-musl-aarch64.so.1" : "ld-musl-x86_64.so.1"]) {
-    if (existsSync(`/lib/${name}`)) return "linux-musl"
-  }
+  // glibc distros ship /lib/<arch>-linux-gnu/libc.so.6; musl systems (Alpine)
+  // only have /lib/ld-musl-<arch>.so.1. Presence of the musl loader alone
+  // (e.g. left by containers) does not mean musl is the system libc.
+  const gnu = process.arch === "arm64" ? "aarch64" : "x86_64"
+  if (existsSync(`/lib/${gnu}-linux-gnu/libc.so.6`)) return "linux"
+  if (existsSync(`/lib/ld-musl-${gnu}.so.1`)) return "linux-musl"
   return "linux"
 }
 
