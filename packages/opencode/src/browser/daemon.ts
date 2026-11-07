@@ -136,6 +136,12 @@ function isExecutable(path: string): boolean {
 // daemon still tries whatever it finds.
 async function ensureBrowserBinaries(): Promise<void> {
   if (process.env.OPENCODE_BROWSER_AGENT_SKIP_INSTALL === "1") return
+  // The Windows exe daemonizes when spawned without a TTY: it ignores the
+  // install subcommand and listens forever, so a server-side install can only
+  // stall until the kill timer (600s per cold start). Windows relies on the
+  // daemon's system-browser fallback or a manually provisioned cache in
+  // ~/.agent-browser/browsers instead.
+  if (platform() === "win32") return
   const { path, args } = daemonCommand()
   // Only our own binary layout is provisionable; custom entrypoints are not.
   if (args[0] !== "daemon") return
