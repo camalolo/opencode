@@ -1580,7 +1580,6 @@ function ToolImages(props: { part: ToolPart }) {
                 data-slot="tool-attachment-image"
                 src={file.url}
                 alt={file.filename ?? i18n.t("ui.message.attachment.alt")}
-                loading="lazy"
               />
             </button>
           )}
