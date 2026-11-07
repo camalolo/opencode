@@ -117,6 +117,23 @@ This tool reads files and returns their contents. It supports reading specific l
 
 ---
 
+### show_image
+
+Display a local image file in the chat.
+
+```json title="opencode.json" {4}
+{
+  "$schema": "https://opencode.ai/config.json",
+  "permission": {
+    "read": "allow"
+  }
+}
+```
+
+Embeds the image in the conversation so you can see it, and attaches it to the model's context so it can reason about it. Supports PNG, JPEG, GIF, and WebP up to 10 MB. Useful after generating, editing, or downloading an image. This tool requires the `read` permission.
+
+---
+
 ### grep
 
 Search file contents using regular expressions.

@@ -149,6 +149,7 @@ export const dict: Record<string, string> = {
   "ui.scrollView.ariaLabel": "scrollable content",
 
   "ui.tool.read": "Read",
+  "ui.tool.showImage": "Show image",
   "ui.tool.loaded": "Loaded",
   "ui.tool.list": "List",
   "ui.tool.glob": "Glob",

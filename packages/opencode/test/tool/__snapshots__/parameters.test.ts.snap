@@ -517,3 +517,19 @@ exports[`tool parameters JSON Schema (wire shape) search_sessions 1`] = `
   "type": "object",
 }
 `;
+
+exports[`tool parameters JSON Schema (wire shape) show_image 1`] = `
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "properties": {
+    "filePath": {
+      "description": "The absolute path to the image file to display",
+      "type": "string",
+    },
+  },
+  "required": [
+    "filePath",
+  ],
+  "type": "object",
+}
+`;

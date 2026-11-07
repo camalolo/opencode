@@ -20,6 +20,7 @@ import { Parameters as Question } from "../../src/tool/question"
 import { Parameters as Read } from "../../src/tool/read"
 import { Parameters as SearchSessions } from "../../src/tool/search-sessions"
 import { Parameters as Shell } from "../../src/tool/shell"
+import { Parameters as ShowImage } from "../../src/tool/show-image"
 import { Parameters as Skill } from "../../src/tool/skill"
 import { Parameters as Task } from "../../src/tool/task"
 import { Parameters as Todo } from "../../src/tool/todo"
@@ -48,6 +49,7 @@ describe("tool parameters", () => {
     test("question", () => expect(toJsonSchema(Question)).toMatchSnapshot())
     test("read", () => expect(toJsonSchema(Read)).toMatchSnapshot())
     test("search_sessions", () => expect(toJsonSchema(SearchSessions)).toMatchSnapshot())
+    test("show_image", () => expect(toJsonSchema(ShowImage)).toMatchSnapshot())
     test("skill", () => expect(toJsonSchema(Skill)).toMatchSnapshot())
     test("task", () => expect(toJsonSchema(Task)).toMatchSnapshot())
     test("todo", () => expect(toJsonSchema(Todo)).toMatchSnapshot())

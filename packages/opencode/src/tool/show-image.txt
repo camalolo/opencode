@@ -1,0 +1,8 @@
+Display a local image file in the chat. The image is embedded in the conversation so the user can see it, and it is also attached to your context so you can view it.
+
+Usage:
+- The filePath parameter should be an absolute path (a path relative to the project directory also works).
+- Supported formats: PNG, JPEG, GIF, and WebP.
+- Use this after generating, editing, converting, or downloading an image (for example via shell commands, scripts, or the browser screenshot tool) so the result is visible to the user.
+- Images larger than 10 MB are rejected; resize or convert the file first.
+- SVG and other text-based formats are not supported; share those as text with the read tool instead.

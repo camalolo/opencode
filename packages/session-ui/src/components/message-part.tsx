@@ -1162,6 +1162,7 @@ export function ContextToolGroup(props: {
                       </div>
                     </div>
                   </div>
+                  <ToolImages part={partAccessor()} />
                 </div>
               )
             }}
@@ -1555,6 +1556,40 @@ function ToolFileAccordion(props: { path: string; actions?: JSX.Element; childre
   )
 }
 
+function ToolImages(props: { part: ToolPart }) {
+  const dialog = useDialog()
+  const i18n = useI18n()
+  const images = createMemo(() => {
+    const state = props.part.state
+    if (state.status !== "completed") return []
+    return (state.attachments ?? []).filter((file) => file.mime.startsWith("image/"))
+  })
+
+  return (
+    <Show when={images().length > 0}>
+      <div data-slot="tool-attachments">
+        <For each={images()}>
+          {(file) => (
+            <button
+              type="button"
+              data-slot="tool-attachment"
+              title={file.filename}
+              onClick={() => dialog.show(() => <ImagePreview src={file.url} alt={file.filename} />)}
+            >
+              <img
+                data-slot="tool-attachment-image"
+                src={file.url}
+                alt={file.filename ?? i18n.t("ui.message.attachment.alt")}
+                loading="lazy"
+              />
+            </button>
+          )}
+        </For>
+      </div>
+    </Show>
+  )
+}
+
 PART_MAPPING["tool"] = function ToolPartDisplay(props) {
   const data = useData()
   const i18n = useI18n()
@@ -1651,6 +1686,7 @@ PART_MAPPING["tool"] = function ToolPartDisplay(props) {
             />
           </Match>
         </Switch>
+        <ToolImages part={part()} />
       </div>
     </Show>
   )
@@ -1871,6 +1907,23 @@ ToolRegistry.register({
           )}
         </For>
       </>
+    )
+  },
+})
+
+ToolRegistry.register({
+  name: "show_image",
+  render(props) {
+    const i18n = useI18n()
+    return (
+      <BasicTool
+        {...props}
+        icon="eye"
+        trigger={{
+          title: i18n.t("ui.tool.showImage"),
+          subtitle: props.input.filePath ? getFilename(props.input.filePath) : "",
+        }}
+      />
     )
   },
 })

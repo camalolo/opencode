@@ -12,6 +12,7 @@ import { GlobTool } from "./glob"
 import { GrepTool } from "./grep"
 import { SearchSessionsTool } from "./search-sessions"
 import { ReadTool } from "./read"
+import { ShowImageTool } from "./show-image"
 import { TaskTool } from "./task"
 import { Database } from "@opencode-ai/core/database/database"
 import { SearchIndex } from "@opencode-ai/core/session/search-index"
@@ -103,6 +104,7 @@ const layer = Layer.effect(
     const invalid = yield* InvalidTool
     const task = yield* TaskTool
     const read = yield* ReadTool
+    const showImage = yield* ShowImageTool
     const question = yield* QuestionTool
     const todo = yield* TodoWriteTool
     const lsptool = yield* LspTool
@@ -218,6 +220,7 @@ const layer = Layer.effect(
           invalid: Tool.init(invalid),
           shell: Tool.init(shell),
           read: Tool.init(read),
+          showImage: Tool.init(showImage),
           glob: Tool.init(globtool),
           grep: Tool.init(greptool),
           searchSessions: Tool.init(searchSessionsTool),
@@ -245,6 +248,7 @@ const layer = Layer.effect(
             ...(questionEnabled ? [tool.question] : []),
             tool.shell,
             tool.read,
+            tool.showImage,
             tool.glob,
             tool.grep,
             tool.searchSessions,
