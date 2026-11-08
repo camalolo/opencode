@@ -81,6 +81,7 @@ export namespace Timeline {
       turnByUserID.set(user.id, turn)
     })
     const activeMessageID = turns.at(-1)?.user.id
+    const inFlight = sessionInFlight(turns, getMessageParts)
     return {
       activeMessageID,
       rows: turns.flatMap((turn, index) =>
@@ -93,6 +94,7 @@ export namespace Timeline {
           status,
           turn.user.id === activeMessageID,
           inlineComments,
+          inFlight,
         ),
       ),
     }
@@ -108,6 +110,7 @@ export namespace Timeline {
     isActive: boolean,
     // v2 renders comments inside the user message attachments row instead of a strip row
     inlineComments: boolean,
+    inFlight?: { tool?: string; streaming: boolean },
   ) {
     const rows: TimelineRow.TimelineRow[] = []
 
@@ -190,25 +193,44 @@ export namespace Timeline {
       assistantGroupIndex += 1
     })
 
-    // Composing placeholder: the shimmer is the liveness signal for phases
-    // where nothing else moves — before first output, and during silent
-    // inter-step thinking (models that do not stream reasoning). While a tool
-    // runs its own row glows, so the shim would only add noise below it.
-    const toolInFlight = assistantPartRefs.some(
+    // Composing placeholder: keeps a liveness signal in phases where nothing
+    // else moves, but names what the wait actually is. A tool running in any
+    // turn, an input queued behind the active turn, and the silent gap between
+    // provider steps each get their own label; only composing the turn's first
+    // output reads "Thinking". While output streams or the turn's own tool row
+    // glows, those carry liveness and the shim would only add noise.
+    const ownToolInFlight = assistantPartRefs.some(
       ({ part }) => part.type === "tool" && (part.state.status === "pending" || part.state.status === "running"),
     )
-    if (isActive && status === "busy" && !error && !toolInFlight) {
-      const heading = assistantMessages
-        .flatMap((message) => getMessageParts(message.id))
-        .map((part) => (part.type === "reasoning" && part.text ? reasoningHeading(part.text) : undefined))
-        .find((value): value is string => !!value)
-
-      rows.push(
-        new TimelineRow.Thinking({
-          userMessageID: userMessage.id,
-          reasoningHeading: heading,
-        }),
+    if (isActive && status === "busy" && !error && !ownToolInFlight) {
+      const streaming = inFlight?.streaming ?? false
+      // The active turn's own unfinished message is this turn composing, not
+      // something it is queued behind.
+      const ownStreaming = assistantMessages.some(
+        (message) => !message.error && typeof message.time.completed !== "number",
       )
+      const phase = inFlight?.tool
+        ? ({ phase: "tool" as const, tool: inFlight.tool })
+        : assistantPartRefs.length === 0
+          ? { phase: streaming && !ownStreaming ? ("queued" as const) : undefined }
+          : streaming
+            ? undefined
+            : ({ phase: "between" as const })
+      if (phase) {
+        const heading = assistantMessages
+          .flatMap((message) => getMessageParts(message.id))
+          .map((part) => (part.type === "reasoning" && part.text ? reasoningHeading(part.text) : undefined))
+          .find((value): value is string => !!value)
+
+        rows.push(
+          new TimelineRow.Thinking({
+            userMessageID: userMessage.id,
+            reasoningHeading: heading,
+            phase: phase.phase,
+            tool: phase.tool,
+          }),
+        )
+      }
     }
 
     if (isActive && status === "retry") rows.push(new TimelineRow.Retry({ userMessageID: userMessage.id }))
@@ -236,6 +258,26 @@ export namespace Timeline {
     }
 
     return rows
+  }
+
+  function sessionInFlight(
+    turns: { assistants: AssistantMessage[] }[],
+    getMessageParts: (messageID: string) => Part[],
+  ) {
+    let tool: string | undefined
+    let streaming = false
+    for (const turn of turns) {
+      for (const message of turn.assistants) {
+        // An interrupted message never completes but is not in flight either.
+        if (!message.error && typeof message.time.completed !== "number") streaming = true
+        for (const part of getMessageParts(message.id)) {
+          if (part.type === "tool" && (part.state.status === "pending" || part.state.status === "running")) {
+            tool = part.tool
+          }
+        }
+      }
+    }
+    return { tool, streaming }
   }
 
   function reasoningHeading(text: string) {

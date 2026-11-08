@@ -166,6 +166,120 @@ describe("current session timeline rows", () => {
       "user-message:msg_a",
       "thinking:msg_a",
     ])
+    const thinking = result.rows.find((row) => row._tag === "Thinking")
+    if (thinking?._tag !== "Thinking") throw new Error("expected a thinking row")
+    expect(thinking.phase).toBeUndefined()
+  })
+
+  test("labels the composing shim as waiting for a tool still running in an earlier turn", () => {
+    const source = [
+      { id: "msg_user_1", type: "user", text: "build it", time: { created: 1 } },
+      {
+        id: "msg_assistant_1",
+        type: "assistant",
+        agent: "build",
+        model: { id: "model", providerID: "provider" },
+        content: [
+          {
+            type: "tool",
+            id: "tool_1",
+            name: "bash",
+            state: { status: "running", input: { command: "cargo build --release" }, metadata: {} },
+            time: { created: 2 },
+          },
+        ],
+        time: { created: 2, completed: 3 },
+      },
+      { id: "msg_user_2", type: "user", text: "trigger fired", time: { created: 4 } },
+    ] satisfies SessionMessageInfo[]
+    const normalized = normalizeSessionMessages("ses_1", source)
+    const messages = new Map(normalized.messages.map((message) => [message.id, message]))
+
+    const result = Timeline.constructSessionMessageRows(
+      source,
+      (messageID) => messages.get(messageID),
+      (messageID) => normalized.parts.get(messageID) ?? [],
+      true,
+      "busy",
+      true,
+      normalized.messages.filter((message) => message.role === "user"),
+    )
+
+    expect(result.activeMessageID).toBe("msg_user_2")
+    expect(result.rows.map(TimelineRow.key)).toEqual([
+      "user-message:msg_user_1",
+      "assistant-part:msg_user_1:tool_1",
+      "turn-gap:msg_user_2",
+      "user-message:msg_user_2",
+      "thinking:msg_user_2",
+    ])
+    const thinking = result.rows.find((row) => row._tag === "Thinking")
+    if (thinking?._tag !== "Thinking") throw new Error("expected a thinking row")
+    expect(thinking.phase).toBe("tool")
+    expect(thinking.tool).toBe("bash")
+  })
+
+  test("labels the composing shim as queued while an earlier turn still streams", () => {
+    const source = [
+      { id: "msg_user_1", type: "user", text: "go", time: { created: 1 } },
+      {
+        id: "msg_assistant_1",
+        type: "assistant",
+        agent: "build",
+        model: { id: "model", providerID: "provider" },
+        content: [{ type: "text", text: "working on it" }],
+        time: { created: 2 },
+      },
+      { id: "msg_user_2", type: "user", text: "steer", time: { created: 4 } },
+    ] satisfies SessionMessageInfo[]
+    const normalized = normalizeSessionMessages("ses_1", source)
+    const messages = new Map(normalized.messages.map((message) => [message.id, message]))
+
+    const result = Timeline.constructSessionMessageRows(
+      source,
+      (messageID) => messages.get(messageID),
+      (messageID) => normalized.parts.get(messageID) ?? [],
+      true,
+      "busy",
+      true,
+      normalized.messages.filter((message) => message.role === "user"),
+    )
+
+    expect(result.activeMessageID).toBe("msg_user_2")
+    const thinking = result.rows.find((row) => row._tag === "Thinking")
+    if (thinking?._tag !== "Thinking") throw new Error("expected a thinking row")
+    expect(thinking.phase).toBe("queued")
+  })
+
+  test("labels the composing shim as between steps when output is visible and nothing streams", () => {
+    const source = [
+      { id: "msg_user", type: "user", text: "go", time: { created: 1 } },
+      {
+        id: "msg_assistant",
+        type: "assistant",
+        agent: "build",
+        model: { id: "model", providerID: "provider" },
+        content: [{ type: "text", text: "step one done" }],
+        time: { created: 2, completed: 3 },
+      },
+    ] satisfies SessionMessageInfo[]
+    const normalized = normalizeSessionMessages("ses_1", source)
+    const messages = new Map(normalized.messages.map((message) => [message.id, message]))
+
+    const result = Timeline.constructSessionMessageRows(
+      source,
+      (messageID) => messages.get(messageID),
+      (messageID) => normalized.parts.get(messageID) ?? [],
+      true,
+      "busy",
+      true,
+      normalized.messages.filter((message) => message.role === "user"),
+    )
+
+    expect(result.activeMessageID).toBe("msg_user")
+    const thinking = result.rows.find((row) => row._tag === "Thinking")
+    if (thinking?._tag !== "Thinking") throw new Error("expected a thinking row")
+    expect(thinking.phase).toBe("between")
   })
 
   test("removes a failed assistant error when the turn continues streaming", () => {

@@ -27,6 +27,11 @@ export namespace TimelineRow {
   export class Thinking extends Data.TaggedClass("Thinking")<{
     userMessageID: string
     reasoningHeading?: string
+    // What the wait actually is; absent = composing the turn's first output.
+    // tool: a tool from any turn is still running; queued: this input is
+    // waiting for the active turn to finish; between: silent inter-step gap.
+    phase?: "tool" | "queued" | "between"
+    tool?: string
   }> {}
   export class DiffSummary extends Data.TaggedClass("DiffSummary")<{
     userMessageID: string

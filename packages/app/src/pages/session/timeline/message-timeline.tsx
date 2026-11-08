@@ -25,6 +25,7 @@ import {
   MessageDivider,
   Part as MessagePart,
   partDefaultOpen,
+  getToolInfo,
   type UserActions,
 } from "@opencode-ai/session-ui/message-part"
 import { DiffChanges } from "@opencode-ai/ui/diff-changes"
@@ -137,13 +138,27 @@ const markBoundaryGesture = (input: {
   }
 }
 
-function TimelineThinkingRow(props: { reasoningHeading?: string; showReasoningSummaries: boolean }) {
+function TimelineThinkingRow(props: {
+  reasoningHeading?: string
+  showReasoningSummaries: boolean
+  phase?: "tool" | "queued" | "between"
+  tool?: string
+}) {
   const language = useLanguage()
+
+  const label = () => {
+    if (props.phase === "tool" && props.tool) {
+      return language.t("ui.sessionTurn.status.waitingForTool", { tool: getToolInfo(props.tool).title })
+    }
+    if (props.phase === "queued") return language.t("ui.sessionTurn.status.queued")
+    if (props.phase === "between") return language.t("ui.sessionTurn.status.consideringNextSteps")
+    return language.t("ui.sessionTurn.status.thinking")
+  }
 
   return (
     <div data-slot="session-turn-thinking">
-      <TextShimmer text={language.t("ui.sessionTurn.status.thinking")} />
-      <Show when={!props.showReasoningSummaries}>
+      <TextShimmer text={label()} />
+      <Show when={!props.showReasoningSummaries && !props.phase}>
         <TextReveal text={props.reasoningHeading} class="session-turn-thinking-heading" travel={25} duration={700} />
       </Show>
     </div>
@@ -1339,6 +1354,8 @@ export function MessageTimeline(props: {
               <TimelineThinkingRow
                 reasoningHeading={thinkingRow().reasoningHeading}
                 showReasoningSummaries={settings.general.showReasoningSummaries()}
+                phase={thinkingRow().phase}
+                tool={thinkingRow().tool}
               />
             </div>
           </TimelineRowFrame>
