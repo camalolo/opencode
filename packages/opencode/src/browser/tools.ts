@@ -122,7 +122,13 @@ export const CloseTabParameters = Schema.Struct({ tabId: OptionalNumber })
 export const EmptyParameters = Schema.Struct({})
 
 type Result = Tool.ExecuteResult<{}>
-const run = (input: () => Promise<Result>): Effect.Effect<Result> => Effect.tryPromise(input).pipe(Effect.orDie)
+// tryPromise's default catch swallows the real message ("An error occurred in
+// Effect.tryPromise"); map it back so daemon/tool failures stay diagnosable.
+const run = (input: () => Promise<Result>): Effect.Effect<Result> =>
+  Effect.tryPromise({
+    try: input,
+    catch: (error) => new Error(error instanceof Error ? error.message : String(error)),
+  }).pipe(Effect.orDie)
 
 export const NavigateTool = Tool.define(
   "browser_navigate",
@@ -253,7 +259,8 @@ export const QueryTool = Tool.define(
 export const DownloadTool = Tool.define(
   "browser_download",
   Effect.succeed({
-    description: "Download a file via URL or by clicking an element on the page.",
+    description:
+      "Download a file via URL (fetched server-side, no browser involved) or by clicking an element on the page (uses the browser session context).",
     parameters: DownloadParameters,
     execute: (params: Schema.Schema.Type<typeof DownloadParameters>, ctx: Tool.Context): Effect.Effect<Result> =>
       run(async () => {

@@ -1,6 +1,6 @@
 export * as BrowserAgent from "./agent"
 
-import { mkdirSync, readFileSync, readdirSync, statSync } from "node:fs"
+import { existsSync, mkdirSync, readFileSync, readdirSync, statSync } from "node:fs"
 import { basename, dirname, isAbsolute, join, resolve } from "node:path"
 import { homedir, tmpdir } from "node:os"
 import { BrowserDaemon } from "./daemon"
@@ -193,6 +193,33 @@ function listScript(selector: string, limit: number): string {
   `)
 }
 
+function highlightScript(selector: string, index: number, color: string, durationMs: number, showInfo: boolean): string {
+  const payload = JSON.stringify({ selector, index, color, durationMs, showInfo })
+  return evalScript(`
+    const payload = ${payload};
+    let matches = [];
+    try { matches = Array.from(document.querySelectorAll(payload.selector)); } catch { return { ok: false, error: "Invalid selector" }; }
+    const element = matches[payload.index];
+    if (!element) return { ok: false, error: "Element not found", matched: matches.length };
+    const rect = element.getBoundingClientRect();
+    const previous = element.getAttribute("style") || "";
+    element.style.outline = "2px solid " + payload.color;
+    element.style.outlineOffset = "1px";
+    let info = null;
+    if (payload.showInfo) {
+      info = document.createElement("div");
+      info.textContent = payload.selector + " " + Math.round(rect.width) + "x" + Math.round(rect.height);
+      info.style.cssText = "position:fixed;z-index:2147483647;top:" + Math.max(0, rect.top - 18) + "px;left:" + Math.max(0, rect.left) + "px;background:" + payload.color + ";color:#fff;font:12px monospace;padding:2px 5px;border-radius:3px;pointer-events:none;";
+      document.documentElement.appendChild(info);
+    }
+    setTimeout(() => {
+      if (previous) element.setAttribute("style", previous); else element.removeAttribute("style");
+      if (info) info.remove();
+    }, payload.durationMs);
+    return { ok: true, matched: matches.length, rect: { x: Math.round(rect.x), y: Math.round(rect.y), width: Math.round(rect.width), height: Math.round(rect.height) }, durationMs: payload.durationMs };
+  `)
+}
+
 function nthScript(kind: "value" | "attribute" | "property" | "html", selector: string, index: number, key?: string): string {
   const payload = JSON.stringify({ selector, index, key: key ?? null })
   const readValue =
@@ -282,40 +309,41 @@ async function query(args: any): Promise<{ content: string | object }> {
 }
 
 async function download(args: any): Promise<{ content: string | object }> {
+  const url = (stringArg(args.url) ?? "").trim()
+  const selector = (stringArg(args.selector) ?? "").trim()
+  const filename = (stringArg(args.filename) ?? "").trim()
+  const timeout = numberArg(args.downloadTimeoutMs) ?? 120_000
+  if (!url && !selector) throw new Error("url or selector is required")
+  if (url && selector) throw new Error("Provide either url or selector, not both")
+  // URL downloads are fetched server-side: the daemon's browser-managed
+  // downloads get canceled by headless Chrome-for-Testing, so the browser
+  // path is reserved for clicks that need the page's session context.
+  if (url) {
+    const res = await fetch(url, { signal: AbortSignal.timeout(timeout) })
+    if (!res.ok) throw new Error(`Download failed: HTTP ${res.status} for ${url}`)
+    let name = filename
+    if (!name) {
+      try {
+        name = basename(new URL(res.url || url).pathname)
+      } catch {}
+    }
+    if (!name || name === "/") name = `download-${Date.now()}`
+    const path = resolveDownloadPath(name)
+    await Bun.write(path, res)
+    const entry = { path, filename: name, url, size: statSync(path).size }
+    recordDownload(entry)
+    return { content: JSON.stringify({ ok: true, ...entry }, null, 2) }
+  }
   return await withTab(args.tabId, async () => {
-    const url = (stringArg(args.url) ?? "").trim()
-    const selector = (stringArg(args.selector) ?? "").trim()
-    const filename = (stringArg(args.filename) ?? "").trim()
-    const wait = args.wait === undefined ? false : !!args.wait
-    const timeout = numberArg(args.downloadTimeoutMs) ?? undefined
-    if (!url && !selector) throw new Error("url or selector is required")
-    if (url && selector) throw new Error("Provide either url or selector, not both")
-    if (!wait) {
-      if (selector) {
-        await BrowserDaemon.command("click", { selector })
-        return { content: JSON.stringify({ ok: true, started: true, selector }, null, 2) }
-      }
-      await BrowserDaemon.command("navigate", { url })
-      return { content: JSON.stringify({ ok: true, started: true, url }, null, 2) }
+    if (!args.wait) {
+      await BrowserDaemon.command("click", { selector })
+      return { content: JSON.stringify({ ok: true, started: true, selector }, null, 2) }
     }
-    if (selector) {
-      const path = resolveDownloadPath(filename || undefined)
-      const data = await BrowserDaemon.command("download", { selector, path })
-      const entry = {
-        path: String(data?.path || path),
-        filename: typeof data?.suggestedFilename === "string" ? data.suggestedFilename : undefined,
-        url: url || undefined,
-      }
-      recordDownload(entry)
-      return { content: JSON.stringify({ ok: true, ...entry }, null, 2) }
-    }
-    const path = resolveDownloadPath(filename || undefined, url)
-    await BrowserDaemon.command("navigate", { url })
-    const data = await BrowserDaemon.command("waitfordownload", { path, timeout })
+    const path = resolveDownloadPath(filename || undefined)
+    const data = await BrowserDaemon.command("download", { selector, path })
     const entry = {
       path: String(data?.path || path),
-      filename: typeof data?.filename === "string" ? data.filename : undefined,
-      url: typeof data?.url === "string" ? data.url : url,
+      filename: typeof data?.suggestedFilename === "string" ? data.suggestedFilename : undefined,
     }
     recordDownload(entry)
     return { content: JSON.stringify({ ok: true, ...entry }, null, 2) }
@@ -461,9 +489,13 @@ export async function run(tool: string, args: any, sessionID: string): Promise<{
         const rawPath = String(args.filePath ?? "").trim()
         if (!rawPath) throw new Error("filePath is required")
         const absPath = isAbsolute(rawPath) ? rawPath : resolve(process.cwd(), rawPath)
-        const data = await BrowserDaemon.command("upload", { selector: args.selector, files: absPath })
+        if (!existsSync(absPath)) throw new Error(`File not found: ${absPath}`)
+        // The daemon expects files as an array; a bare string attaches zero files.
+        const data = await BrowserDaemon.command("upload", { selector: args.selector, files: [absPath] })
+        const uploaded = Number(data?.uploaded ?? 0)
+        if (uploaded < 1) throw new Error(`Attached 0 files to ${args.selector} — verify the selector matches an <input type="file">`)
         return {
-          content: JSON.stringify({ ok: true, selector: args.selector, uploaded: data?.uploaded ?? [absPath] }, null, 2),
+          content: JSON.stringify({ ok: true, selector: args.selector, uploaded }, null, 2),
         }
       })
     case "screenshot":
@@ -510,6 +542,19 @@ export async function run(tool: string, args: any, sessionID: string): Promise<{
       return await withTab(args.tabId, async () => {
         const data = await BrowserDaemon.command("errors", { clear: args.clear })
         return { content: JSON.stringify(data?.errors ?? []) }
+      })
+    case "highlight":
+      return await withTab(args.tabId, async () => {
+        if (!args.selector) throw new Error("Selector is required")
+        const index = numberArg(args.index) ?? 0
+        if ((numberArg(args.timeoutMs) ?? 0) > 0) {
+          await waitForCount(args.selector, index + 1, numberArg(args.timeoutMs)!, numberArg(args.pollMs) ?? POLL_MS)
+        }
+        const result = await evaluate(
+          highlightScript(args.selector, index, stringArg(args.color) ?? "#ff0000", numberArg(args.duration) ?? 2000, args.showInfo !== false),
+        )
+        if (!result?.ok) throw new Error(result?.error || `Highlight failed (${result?.matched ?? 0} matches for ${args.selector})`)
+        return { content: JSON.stringify({ ok: true, selector: args.selector, ...result }, null, 2) }
       })
     case "cdp":
       return await cdpEndpoint()
