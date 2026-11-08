@@ -213,6 +213,16 @@ function makeQueryOptionsApi(
 }
 export type QueryOptionsApi = ReturnType<typeof makeQueryOptionsApi>
 
+export function scheduleEventStreamStart(input: { visible: boolean; raf?: (fn: () => void) => void }, kick: () => void) {
+  // rAF defers the stream start past first paint on visible loads, but it
+  // never fires in a hidden document — a tab discarded/reloaded in the
+  // background (memory saver, session restore) would boot its stores from one
+  // snapshot and then miss every event until visited. Kick through the timer
+  // path instead when hidden.
+  if (input.visible && input.raf) input.raf(kick)
+  else kick()
+}
+
 export function createServerSyncContextInner(serverSDK: ServerSDK, queryClientOverride?: QueryClient) {
   const language = useLanguage()
   const owner = getOwner()
@@ -680,20 +690,23 @@ export function createServerSyncContextInner(serverSDK: ServerSDK, queryClientOv
   })
 
   onMount(() => {
-    if (typeof requestAnimationFrame === "function") {
-      eventFrame = requestAnimationFrame(() => {
-        eventFrame = undefined
+    scheduleEventStreamStart(
+      {
+        visible: document.visibilityState === "visible",
+        raf:
+          typeof requestAnimationFrame === "function"
+            ? (fn) => {
+                eventFrame = requestAnimationFrame(fn)
+              }
+            : undefined,
+      },
+      () => {
         eventTimer = setTimeout(() => {
           eventTimer = undefined
           void serverSDK.event.start()
         }, 0)
-      })
-    } else {
-      eventTimer = setTimeout(() => {
-        eventTimer = undefined
-        void serverSDK.event.start()
-      }, 0)
-    }
+      },
+    )
   })
 
   const projectApi = {

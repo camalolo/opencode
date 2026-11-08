@@ -283,6 +283,13 @@ function createServerSdkContextBase(server: ServerConnection.Any, scope: ServerS
   // replay cannot vouch for the gap (buffer overflow, restart) — see the
   // server.resumed / server.snapshot-required handling below.
   const snapshotListeners = new Set<() => void>()
+  // A first stream connect long after this context was created (document
+  // loaded while its tab was hidden, or the server was unreachable at boot)
+  // cannot vouch for events between the boot fetches and the stream, and a
+  // fresh document has no Last-Event-ID cursor to replay them — treat it
+  // like any other bridged gap and resync.
+  const FIRST_CONNECT_RESYNC_MS = 5_000
+  const created = Date.now()
   // Lightweight liveness refresh: unlike the full-refetch reconnect listeners
   // (which only fire when a gap actually had events), this runs on EVERY
   // successful (re)connect so sessions that started or finished a turn during
@@ -378,7 +385,7 @@ function createServerSdkContextBase(server: ServerConnection.Any, scope: ServerS
           // skipped. Any other first event (old server, snapshot-required,
           // fresh connect) falls through to the listener path: the first event
           // proves the stream is live and listeners close the gap.
-          let pendingReconnect = everConnected
+          let pendingReconnect = everConnected || Date.now() - created > FIRST_CONNECT_RESYNC_MS
           for await (const event of events) {
             streamErrorLogged = false
             lastEventAt = Date.now()
@@ -487,6 +494,10 @@ function createServerSdkContextBase(server: ServerConnection.Any, scope: ServerS
       // stays frozen at an old checkpoint until a manual reload.
       void start()
       abortStaleStream()
+      // Background timers are throttled down to once per minute after a while
+      // hidden; apply anything still sitting in the event queue at once
+      // instead of showing stale content until the next throttled flush.
+      flush()
       // A slept/frozen tab can miss status transitions without ever dropping
       // the stream (or reconnecting with an empty gap): refresh liveness on
       // return so a turn started/ended while away is not shown stale.

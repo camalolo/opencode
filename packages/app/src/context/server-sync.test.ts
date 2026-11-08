@@ -10,7 +10,7 @@ import type {
 import { QueryClient } from "@tanstack/solid-query"
 import { canDisposeDirectory, pickDirectoriesToEvict } from "./global-sync/eviction"
 import { estimateRootSessionTotal, loadRootSessions } from "./global-sync/session-load"
-import { loadActiveSessionsQuery, loadMcpQuery, loadMcpResourcesQuery, seedActiveSessionStatuses } from "./server-sync"
+import { loadActiveSessionsQuery, loadMcpQuery, loadMcpResourcesQuery, scheduleEventStreamStart, seedActiveSessionStatuses } from "./server-sync"
 import { ServerScope } from "@/utils/server-scope"
 import { createServerSession } from "./server-session"
 import type { ServerApi } from "@/utils/server"
@@ -99,6 +99,34 @@ describe("active session query", () => {
       message: "retrying",
       next: 10,
     })
+  })
+})
+
+describe("scheduleEventStreamStart", () => {
+  test("defers the kick past first paint on visible documents", () => {
+    const kicks: string[] = []
+    const frames: Array<() => void> = []
+
+    scheduleEventStreamStart({ visible: true, raf: (fn) => frames.push(fn) }, () => kicks.push("kick"))
+    expect(kicks).toEqual([])
+    frames[0]?.()
+    expect(kicks).toEqual(["kick"])
+  })
+
+  test("kicks immediately when the document booted hidden", () => {
+    const kicks: string[] = []
+
+    scheduleEventStreamStart({ visible: false, raf: (fn) => void fn }, () => kicks.push("kick"))
+
+    expect(kicks).toEqual(["kick"])
+  })
+
+  test("kicks through the timer path when rAF is unavailable", () => {
+    const kicks: string[] = []
+
+    scheduleEventStreamStart({ visible: true }, () => kicks.push("kick"))
+
+    expect(kicks).toEqual(["kick"])
   })
 })
 
