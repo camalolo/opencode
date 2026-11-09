@@ -15,7 +15,7 @@ import { makeGlobalNode } from "./effect/app-node"
 // the largest fleet database the journal was 6 GB of a 9 GB file). Prune
 // those two types after the retention window; everything else is kept.
 const RETENTION_MS = 14 * 24 * 60 * 60 * 1000
-const BATCH = 4000
+const BATCH = 2000
 const SWEEP_EVERY = "6 hours"
 const PRUNED_TYPES = ["message.part.updated.1", "message.updated.1"]
 
@@ -56,6 +56,10 @@ export const sweep = Effect.fn("EventRetention.sweep")(function* (db: Database.I
       .run()
       .pipe(Effect.orDie)
     deleted += rows.length
+    // A first-run backlog deletes hundreds of thousands of rows; breathing
+    // between batches keeps the write lock available for foreground session
+    // writes instead of monopolizing it (and the disk) for the whole pass.
+    yield* Effect.sleep("200 millis")
     if (deleted % (BATCH * 10) === 0) yield* Effect.logInfo("event retention pruning", { deleted })
   }
   if (deleted > 0) yield* Effect.logInfo("event retention pruned journal rows", { deleted })
