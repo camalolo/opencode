@@ -804,6 +804,8 @@ export const dict = {
   "session.revertDock.summary.other": "{{count}} geri alınan mesaj",
   "session.revertDock.collapse": "Geri alınan mesajları daralt",
   "session.revertDock.expand": "Geri alınan mesajları genişlet",
+  "session.undo.interrupt.title": 'Çalışan turu kesintiye uğratıp bu mesajı geri almak istiyor musunuz?',
+  "session.undo.interrupt.confirm": 'Kes ve geri al',
   "session.revertDock.restore": "Mesajı geri yükle",
 
   "session.new.title": "Her şeyi geliştirin",

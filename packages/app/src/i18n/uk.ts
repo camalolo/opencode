@@ -834,6 +834,8 @@ export const dict = {
   "session.revertDock.summary.other": "{{count}} скасованих повідомлень",
   "session.revertDock.collapse": "Згорнути скасовані повідомлення",
   "session.revertDock.expand": "Розгорнути скасовані повідомлення",
+  "session.undo.interrupt.title": 'Перервати поточний хід і скасувати це повідомлення?',
+  "session.undo.interrupt.confirm": 'Перервати й скасувати',
   "session.revertDock.restore": "Відновити повідомлення",
 
   "session.new.title": "Створити що завгодно",

@@ -762,6 +762,8 @@ export const dict = {
   "session.revertDock.summary.other": "{{count}} xabarlarni orqaga qaytardi",
   "session.revertDock.collapse": "Orqaga qaytarilgan xabarlarni yig'ish",
   "session.revertDock.expand": "Orqaga qaytarilgan xabarlarni yoyish",
+  "session.undo.interrupt.title": 'Joriy turni to\'xtatib, bu xabarni bekor qilasizmi?',
+  "session.undo.interrupt.confirm": 'To\'xtatish va bekor qilish',
   "session.revertDock.restore": "Xabarni tiklash",
   "session.new.title": "Har qanday narsani qurish",
   "session.new.project.new": "Yangi loyiha",

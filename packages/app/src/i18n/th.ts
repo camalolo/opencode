@@ -791,6 +791,8 @@ export const dict = {
   "session.revertDock.summary.other": "{{count}} ข้อความที่ถูกย้อนกลับ",
   "session.revertDock.collapse": "ย่อข้อความที่ถูกย้อนกลับ",
   "session.revertDock.expand": "ขยายข้อความที่ถูกย้อนกลับ",
+  "session.undo.interrupt.title": 'ขัดจังหวะรอบที่กำลังดำเนินอยู่และย้อนกลับข้อความนี้?',
+  "session.undo.interrupt.confirm": 'ขัดจังหวะและย้อนกลับ',
   "session.revertDock.restore": "กู้คืนข้อความ",
 
   "session.new.title": "สร้างอะไรก็ได้",

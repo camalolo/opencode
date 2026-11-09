@@ -763,6 +763,8 @@ export const dict = {
   "session.revertDock.summary.other": "{{count}} отменени съобщения",
   "session.revertDock.collapse": "Свиване на върнатите съобщения",
   "session.revertDock.expand": "Разгъване на върнатите съобщения",
+  "session.undo.interrupt.title": 'Да прекъсна ли текущия ход и да отменя това съобщение?',
+  "session.undo.interrupt.confirm": 'Прекъсни и откажи',
   "session.revertDock.restore": "Възстановяване на съобщението",
   "session.new.title": "Изградете каквото и да било",
   "session.new.project.new": "Нов проект",

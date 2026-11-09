@@ -769,6 +769,8 @@ export const dict = {
   "session.revertDock.summary.other": "{{count}} ރޯލްބެކް މެސެޖުތައް",
   "session.revertDock.collapse": "ކޮލަޕްސް ރޯލް ބެކް މެސެޖުތަކެވެ",
   "session.revertDock.expand": "ރޯލް ބެކް މެސެޖުތައް ފުޅާކުރުން",
+  "session.undo.interrupt.title": 'Interrupt the running turn and undo this message?',
+  "session.undo.interrupt.confirm": 'Interrupt and undo',
   "session.revertDock.restore": "މެސެޖު ރިސްޓޯރ ކުރާށެވެ",
   "session.new.title": "ކޮންމެ އެއްޗެއް ބިނާކުރާށެވެ",
   "session.new.project.new": "އާ މަޝްރޫއެއް",

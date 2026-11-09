@@ -759,6 +759,8 @@ export const dict: Record<string, string> = {
   "session.revertDock.summary.other": "{{count}} रोल्ड ब्याक सन्देशहरू",
   "session.revertDock.collapse": "रोल्ड ब्याक सन्देशहरू संक्षिप्त गर्नुहोस्",
   "session.revertDock.expand": "घुमाइएको सन्देशहरू विस्तार गर्नुहोस्",
+  "session.undo.interrupt.title": 'चलिरहेको टर्न रोकी यो सन्देश पूर्ववत गर्ने?',
+  "session.undo.interrupt.confirm": 'रोक्नुहोस् र पूर्ववत गर्नुहोस्',
   "session.revertDock.restore": "सन्देश पुनर्स्थापित गर्नुहोस्",
   "session.new.title": "जे पनि बनाउनुहोस्",
   "session.new.project.new": "नयाँ परियोजना",

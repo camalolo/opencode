@@ -803,6 +803,8 @@ export const dict = {
   "session.revertDock.summary.other": "{{count}} vraćenih poruka",
   "session.revertDock.collapse": "Sažmi vraćene poruke",
   "session.revertDock.expand": "Proširi vraćene poruke",
+  "session.undo.interrupt.title": 'Prekinuti tekuću rundu i opozvati ovu poruku?',
+  "session.undo.interrupt.confirm": 'Prekini i opozovi',
   "session.revertDock.restore": "Vrati poruku",
 
   "session.new.title": "Napravi bilo šta",

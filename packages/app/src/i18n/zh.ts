@@ -790,6 +790,8 @@ export const dict = {
   "session.revertDock.summary.other": "{{count}} 条已回滚消息",
   "session.revertDock.collapse": "折叠已回滚消息",
   "session.revertDock.expand": "展开已回滚消息",
+  "session.undo.interrupt.title": '中断正在进行的回合并撤销此消息？',
+  "session.undo.interrupt.confirm": '中断并撤销',
   "session.revertDock.restore": "恢复消息",
   "session.new.title": "构建任何内容",
   "session.new.project.new": "新建项目",

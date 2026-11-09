@@ -762,6 +762,8 @@ export const dict = {
   "session.revertDock.summary.other": "{{count}} վերադարձված հաղորդագրություններ",
   "session.revertDock.collapse": "Ծալել վերադարձված հաղորդագրությունները",
   "session.revertDock.expand": "Ընդլայնել վերադարձված հաղորդագրությունները",
+  "session.undo.interrupt.title": 'Ընդհատե՞լ ընթացող քայլը և հետարկել այս հաղորդագրությունը։',
+  "session.undo.interrupt.confirm": 'Ընդհատել և հետարկել',
   "session.revertDock.restore": "Վերականգնել հաղորդագրությունը",
   "session.new.title": "Կառուցել որեւէ բան",
   "session.new.project.new": "Նոր նախագիծ",

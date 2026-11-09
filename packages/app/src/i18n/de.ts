@@ -638,6 +638,8 @@ export const dict = {
   "session.revertDock.summary.other": "{{count}} zurückgesetzte Nachrichten",
   "session.revertDock.collapse": "Zurückgesetzte Nachrichten einklappen",
   "session.revertDock.expand": "Zurückgesetzte Nachrichten ausklappen",
+  "session.undo.interrupt.title": 'Laufenden Turn unterbrechen und diese Nachricht zurücknehmen?',
+  "session.undo.interrupt.confirm": 'Unterbrechen und zurücknehmen',
   "session.revertDock.restore": "Nachricht wiederherstellen",
   "session.new.title": "Alles entwickeln",
   "session.new.project.new": "Neues Projekt",

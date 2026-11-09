@@ -763,6 +763,8 @@ export const dict = {
   "session.revertDock.summary.other": "{{count}} буцаасан зурвасууд",
   "session.revertDock.collapse": "Буцаасан мессежүүдийг буулгах",
   "session.revertDock.expand": "Буцаасан мессежүүдийг дэлгэх",
+  "session.undo.interrupt.title": 'Ажиллаж байгаа ээлжийг таслан энэ мессежийг буцаах уу?',
+  "session.undo.interrupt.confirm": 'Таслаад буцаах',
   "session.revertDock.restore": "Зурвасыг сэргээх",
   "session.new.title": "Юу ч барина",
   "session.new.project.new": "Шинэ төсөл",

@@ -749,6 +749,8 @@ export const dict = {
   "session.revertDock.summary.other": "{{count}} رسائل تم التراجع عنها",
   "session.revertDock.collapse": "طي الرسائل التي تم التراجع عنها",
   "session.revertDock.expand": "توسيع الرسائل التي تم التراجع عنها",
+  "session.undo.interrupt.title": 'مقاطعة الدورة الجارية والتراجع عن هذه الرسالة؟',
+  "session.undo.interrupt.confirm": 'مقاطعة والتراجع',
   "session.revertDock.restore": "استعادة الرسالة",
   "session.new.title": "ابنِ أي شيء",
   "session.new.project.new": "مشروع جديد",

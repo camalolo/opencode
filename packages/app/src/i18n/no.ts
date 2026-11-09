@@ -674,6 +674,8 @@ export const dict = {
   "session.revertDock.summary.other": "{{count}} tilbakestilte meldinger",
   "session.revertDock.collapse": "Skjul tilbakestilte meldinger",
   "session.revertDock.expand": "Utvid tilbakestilte meldinger",
+  "session.undo.interrupt.title": 'Avbryte runden som kjører og angre denne meldingen?',
+  "session.undo.interrupt.confirm": 'Avbryt og angre',
   "session.revertDock.restore": "Gjenopprett melding",
 
   "session.new.title": "Bygg hva som helst",

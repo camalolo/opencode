@@ -1,6 +1,8 @@
 import { useNavigate } from "@solidjs/router"
 import { useCommand, type CommandOption } from "@/context/command"
 import { useDialog } from "@opencode-ai/ui/context/dialog"
+import { Button } from "@opencode-ai/ui/button"
+import { Dialog } from "@opencode-ai/ui/dialog"
 import { previewSelectedLines } from "@opencode-ai/session-ui/pierre/selection-bridge"
 import { useFile, selectionFromLines, type FileSelection, type SelectedLineRange } from "@/context/file"
 import { useLanguage } from "@/context/language"
@@ -329,6 +331,38 @@ export const useSessionCommands = (actions: SessionCommandContext) => {
     })
   }
 
+  const confirmUndoInterrupt = () =>
+    new Promise<boolean>((resolve) => {
+      dialog.show(() => (
+        <Dialog title={language.t("session.undo.interrupt.title")} fit>
+          <div class="flex flex-col gap-4 pl-6 pr-2.5 pb-3">
+            <div class="flex justify-end gap-2">
+              <Button
+                variant="ghost"
+                size="large"
+                onClick={() => {
+                  dialog.close()
+                  resolve(false)
+                }}
+              >
+                {language.t("common.cancel")}
+              </Button>
+              <Button
+                variant="primary"
+                size="large"
+                onClick={() => {
+                  dialog.close()
+                  resolve(true)
+                }}
+              >
+                {language.t("session.undo.interrupt.confirm")}
+              </Button>
+            </div>
+          </div>
+        </Dialog>
+      ))
+    })
+
   const undo = async () => {
     const sessionID = params.id
     if (!sessionID) return
@@ -345,6 +379,7 @@ export const useSessionCommands = (actions: SessionCommandContext) => {
     const parts = sync().data.part[message.id]
 
     if (sync().data.session_working(sessionID)) {
+      if (!(await confirmUndoInterrupt())) return
       await session.interrupt({ sessionID }).catch(() => {})
     }
 

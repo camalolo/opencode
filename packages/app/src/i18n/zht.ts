@@ -786,6 +786,8 @@ export const dict = {
   "session.revertDock.summary.other": "{{count}} 則已還原的訊息",
   "session.revertDock.collapse": "收合已還原的訊息",
   "session.revertDock.expand": "展開已還原的訊息",
+  "session.undo.interrupt.title": '中斷正在進行的回合並撤銷此訊息？',
+  "session.undo.interrupt.confirm": '中斷並撤銷',
   "session.revertDock.restore": "還原訊息",
 
   "session.new.title": "實現任何想法",

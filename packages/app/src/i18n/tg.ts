@@ -760,6 +760,8 @@ export const dict = {
   "session.revertDock.summary.other": "{{count}} паёмҳоро баргардонд",
   "session.revertDock.collapse": "Паёмҳои баргардонидашуда",
   "session.revertDock.expand": "Паёмҳои баргардонидашударо васеъ кунед",
+  "session.undo.interrupt.title": 'Қатъ кардани даври ҷорӣ ва бекор кардани ин паём?',
+  "session.undo.interrupt.confirm": 'Қатъ ва бекоркунӣ',
   "session.revertDock.restore": "Барқарор кардани паём",
   "session.new.title": "Ҳар чизеро созед",
   "session.new.project.new": "Лоиҳаи нав",

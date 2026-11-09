@@ -803,6 +803,8 @@ export const dict = {
   "session.revertDock.summary.other": "Возвращено сообщений: {{count}}",
   "session.revertDock.collapse": "Свернуть возвращённые сообщения",
   "session.revertDock.expand": "Развернуть возвращённые сообщения",
+  "session.undo.interrupt.title": 'Прервать текущий ход и отменить это сообщение?',
+  "session.undo.interrupt.confirm": 'Прервать и отменить',
   "session.revertDock.restore": "Восстановить сообщение",
 
   "session.new.title": "Создавайте что угодно",

@@ -771,6 +771,8 @@ export const dict = {
   "session.revertDock.summary.other": "{{count}} rolled back messages",
   "session.revertDock.collapse": "Collapse rolled back messages",
   "session.revertDock.expand": "Expand rolled back messages",
+  "session.undo.interrupt.title": "Interrupt the running turn and undo this message?",
+  "session.undo.interrupt.confirm": "Interrupt and undo",
   "session.revertDock.restore": "Restore message",
 
   "session.new.title": "Build anything",

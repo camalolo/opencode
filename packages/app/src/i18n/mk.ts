@@ -761,6 +761,8 @@ export const dict = {
   "session.revertDock.summary.other": "{{count}} вратени пораки",
   "session.revertDock.collapse": "Собери ги вратените пораки",
   "session.revertDock.expand": "Проширете ги вратените пораки",
+  "session.undo.interrupt.title": 'Да го прекинам тековниот круг и да ја поништам оваа порака?',
+  "session.undo.interrupt.confirm": 'Прекини и поништи',
   "session.revertDock.restore": "Врати порака",
   "session.new.title": "Изгради било што",
   "session.new.project.new": "Нов проект",

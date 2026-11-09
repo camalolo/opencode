@@ -765,6 +765,8 @@ export const dict = {
   "session.revertDock.summary.other": "{{count}} teruggedraaide berichten",
   "session.revertDock.collapse": "Teruggedraaide berichten samenvouwen",
   "session.revertDock.expand": "Teruggedraaide berichten uitvouwen",
+  "session.undo.interrupt.title": 'De lopende beurt onderbreken en dit bericht ongedaan maken?',
+  "session.undo.interrupt.confirm": 'Onderbreken en ongedaan maken',
   "session.revertDock.restore": "Bericht herstellen",
   "session.new.title": "Bouw wat je wilt",
   "session.new.project.new": "Nieuw project",

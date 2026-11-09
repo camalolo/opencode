@@ -770,6 +770,8 @@ export const dict = {
   "session.revertDock.summary.many": "{{count}} atšaukto pranešimo",
   "session.revertDock.collapse": "Sutraukti atšauktus pranešimus",
   "session.revertDock.expand": "Išplėskite atšauktus pranešimus",
+  "session.undo.interrupt.title": 'Nutraukti vykstanį etapą ir atšaukti šį pranešimą?',
+  "session.undo.interrupt.confirm": 'Nutraukti ir atšaukti',
   "session.revertDock.restore": "Atkurti pranešimą",
   "session.new.title": "Statyti bet ką",
   "session.new.project.new": "Naujas projektas",

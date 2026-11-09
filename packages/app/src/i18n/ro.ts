@@ -762,6 +762,8 @@ export const dict = {
   "session.revertDock.summary.few": "{{count}} mesaje anulate",
   "session.revertDock.collapse": "Restrânge mesajele anulate",
   "session.revertDock.expand": "Extinde mesajele anulate",
+  "session.undo.interrupt.title": 'Întrerupeți turul în curs și anulați acest mesaj?',
+  "session.undo.interrupt.confirm": 'Întrerupeți și anulați',
   "session.revertDock.restore": "Restaurează mesajul",
   "session.new.title": "Construiește orice",
   "session.new.project.new": "Proiect nou",

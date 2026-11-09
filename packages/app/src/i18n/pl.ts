@@ -750,6 +750,8 @@ export const dict = {
   "session.revertDock.summary.other": "{{count}} cofnięte wiadomości",
   "session.revertDock.collapse": "Zwiń cofnięte wiadomości",
   "session.revertDock.expand": "Rozwiń cofnięte wiadomości",
+  "session.undo.interrupt.title": 'Przerwać bieżącą turę i cofnąć tę wiadomość?',
+  "session.undo.interrupt.confirm": 'Przerwij i cofnij',
   "session.revertDock.restore": "Przywróć wiadomość",
   "session.new.title": "Zbuduj cokolwiek",
   "session.new.project.new": "Nowy projekt",

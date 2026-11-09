@@ -767,6 +767,8 @@ export const dict = {
   "session.revertDock.summary.few": "{{count}} vraćene poruke",
   "session.revertDock.collapse": "Sažmi vraćene poruke",
   "session.revertDock.expand": "Proširi vraćene poruke",
+  "session.undo.interrupt.title": 'Prekinuti tekuću rundu i poništiti ovu poruku?',
+  "session.undo.interrupt.confirm": 'Prekini i poništi',
   "session.revertDock.restore": "Vrati poruku",
   "session.new.title": "Gradite bilo što",
   "session.new.project.new": "Novi projekt",

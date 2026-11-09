@@ -752,6 +752,8 @@ export const dict = {
   "session.revertDock.summary.other": "{{count}} ມ້ວນຂໍ້ຄວາມກັບຄືນ",
   "session.revertDock.collapse": "ຫຍໍ້ຂໍ້ຄວາມທີ່ມ້ວນຄືນ",
   "session.revertDock.expand": "ຂະຫຍາຍຂໍ້ຄວາມທີ່ມ້ວນຄືນ",
+  "session.undo.interrupt.title": 'ຢຸດການເຮັດວຽກທີ່ກຳລັງເຮັດຢູ່ ແລະ ຍົກເລີກຂໍ້ຄວາມນີ້?',
+  "session.undo.interrupt.confirm": 'ຢຸດ ແລະ ຍົກເລີກ',
   "session.revertDock.restore": "ຟື້ນຟູຂໍ້ຄວາມ",
   "session.new.title": "ສ້າງສິ່ງໃດ",
   "session.new.project.new": "ໂຄງການໃໝ່",

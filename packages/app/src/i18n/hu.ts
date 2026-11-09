@@ -764,6 +764,8 @@ export const dict = {
   "session.revertDock.summary.other": "{{count}} visszavont üzenetek",
   "session.revertDock.collapse": "A visszagörgetett üzenetek összecsukása",
   "session.revertDock.expand": "A visszagörgetett üzenetek kibontása",
+  "session.undo.interrupt.title": 'Megszakítja a folyamatban lévő kört, és visszavonja ezt az üzenetet?',
+  "session.undo.interrupt.confirm": 'Megszakítás és visszavonás',
   "session.revertDock.restore": "Üzenet visszaállítása",
   "session.new.title": "Építsen bármit",
   "session.new.project.new": "Új projekt",

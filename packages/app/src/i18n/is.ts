@@ -760,6 +760,8 @@ export const dict = {
   "session.revertDock.summary.other": "{{count}} afturkallað skilaboð",
   "session.revertDock.collapse": "Dragðu saman skilaboð sem eru afturkölluð",
   "session.revertDock.expand": "Stækka afturkölluð skilaboð",
+  "session.undo.interrupt.title": 'Hættta við keyrsluna og afturkalla þennan skilaboð?',
+  "session.undo.interrupt.confirm": 'Hættta og afturkalla',
   "session.revertDock.restore": "Endurheimta skilaboð",
   "session.new.title": "Byggja hvað sem er",
   "session.new.project.new": "Nýtt verkefni",

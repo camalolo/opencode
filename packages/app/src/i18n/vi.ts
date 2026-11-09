@@ -767,6 +767,8 @@ export const dict = {
   "session.revertDock.summary.other": "{{count}} tin nhắn đã hoàn tác",
   "session.revertDock.collapse": "Thu gọn tin nhắn đã hoàn tác",
   "session.revertDock.expand": "Mở rộng tin nhắn đã hoàn tác",
+  "session.undo.interrupt.title": 'Gián đoạn lượt đang chạy và hoàn tác tin nhắn này?',
+  "session.undo.interrupt.confirm": 'Gián đoạn và hoàn tác',
   "session.revertDock.restore": "Khôi phục tin nhắn",
   "session.new.title": "Xây dựng bất cứ thứ gì",
   "session.new.project.new": "Dự án mới",

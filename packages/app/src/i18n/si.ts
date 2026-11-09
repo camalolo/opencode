@@ -754,6 +754,8 @@ export const dict: Record<string, string> = {
   "session.revertDock.summary.other": "{{count}} පණිවිඩ ආපසු හරවන ලදී",
   "session.revertDock.collapse": "පෙරළන ලද පණිවිඩ හකුළන්න",
   "session.revertDock.expand": "පෙරළන ලද පණිවිඩ පුළුල් කරන්න",
+  "session.undo.interrupt.title": 'Interrupt the running turn and undo this message?',
+  "session.undo.interrupt.confirm": 'Interrupt and undo',
   "session.revertDock.restore": "පණිවිඩය ප්‍රතිසාධනය කරන්න",
   "session.new.title": "ඕනෑම දෙයක් ගොඩනඟන්න",
   "session.new.project.new": "නව ව්යාපෘතිය",

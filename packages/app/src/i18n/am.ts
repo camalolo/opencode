@@ -744,6 +744,8 @@ export const dict = {
   "session.revertDock.summary.other": "{{count}}የተመለሱ መልዕክቶች",
   "session.revertDock.collapse": "የተመለሱ መልዕክቶችን ሰብስብ",
   "session.revertDock.expand": "የተጠቀለሉ መልዕክቶችን ዘርጋ",
+  "session.undo.interrupt.title": 'በሂደት ላይ ያለውን ዙር በማቋረጥ ይህንን መልእክት መተው?',
+  "session.undo.interrupt.confirm": 'ቁረጥ እና መተው',
   "session.revertDock.restore": "መልዕክት እነበረበት መልስ",
   "session.new.title": "ማንኛውም ነገር ገንባ",
   "session.new.project.new": "አዲስ ፕሮጀክት",

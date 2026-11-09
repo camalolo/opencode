@@ -760,6 +760,8 @@ export const dict = {
   "session.revertDock.summary.other": "{{count}} i ktheu mesazhet",
   "session.revertDock.collapse": "Palos mesazhet e kthyera",
   "session.revertDock.expand": "Zgjero mesazhet e kthyera",
+  "session.undo.interrupt.title": 'Të ndërpritet turri në zhvillim dhe të zhbëhet kjo mesazh?',
+  "session.undo.interrupt.confirm": 'Ndërprit dhe zhbëj',
   "session.revertDock.restore": "Rivendos mesazhin",
   "session.new.title": "Ndërtoni ndonjë gjë",
   "session.new.project.new": "Projekt i ri",

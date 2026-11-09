@@ -753,6 +753,8 @@ export const dict = {
   "session.revertDock.summary.other": "{{count}} tagasipööratud sõnumit",
   "session.revertDock.collapse": "Ahenda tagasi keritud sõnumid",
   "session.revertDock.expand": "Laienda tagasipööratud sõnumeid",
+  "session.undo.interrupt.title": 'Kas katkestada käimasolev voor ja tühistada see sõnum?',
+  "session.undo.interrupt.confirm": 'Katkesta ja tühistada',
   "session.revertDock.restore": "Taasta sõnum",
   "session.new.title": "Ehitage midagi",
   "session.new.project.new": "Uus projekt",

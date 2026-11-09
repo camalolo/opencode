@@ -763,6 +763,8 @@ export const dict = {
   "session.revertDock.summary.few": "{{count}} razveljavljena sporočila",
   "session.revertDock.collapse": "Strni povratna sporočila",
   "session.revertDock.expand": "Razširi povrnjena sporočila",
+  "session.undo.interrupt.title": 'Prekiniti tekočo rundo in razveljaviti to sporočilo?',
+  "session.undo.interrupt.confirm": 'Prekini in razveljavi',
   "session.revertDock.restore": "Obnovi sporočilo",
   "session.new.title": "Zgradi karkoli",
   "session.new.project.new": "Nov projekt",

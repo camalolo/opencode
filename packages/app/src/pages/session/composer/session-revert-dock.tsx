@@ -18,13 +18,14 @@ export function SessionRevertDock(props: {
   const language = useLanguage()
   const settings = useSettings()
   const [store, setStore] = createStore({
-    collapsed: true,
+    collapsed: false,
   })
 
+  // Re-expand when a different revert boundary is staged, but keep the
+  // user's toggle while new messages land in the same branch.
   createEffect(() => {
-    props.items.length
     props.items[0]?.id
-    setStore("collapsed", true)
+    setStore("collapsed", false)
   })
 
   const toggle = () => setStore("collapsed", (value) => !value)

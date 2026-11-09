@@ -762,6 +762,8 @@ export const dict = {
   "session.revertDock.summary.zero": "{{count}} atsauktu ziņu",
   "session.revertDock.collapse": "Sakļaut atsauktās ziņas",
   "session.revertDock.expand": "Izvērst atsauktās ziņas",
+  "session.undo.interrupt.title": 'Pārtraukt pašreizējo kārtu un atsaukt šo ziņojumu?',
+  "session.undo.interrupt.confirm": 'Pārtraukt un atsaukt',
   "session.revertDock.restore": "Atjaunot ziņu",
   "session.new.title": "Izveido jebko",
   "session.new.project.new": "Jauns projekts",

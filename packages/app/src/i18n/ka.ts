@@ -757,6 +757,8 @@ export const dict = {
   "session.revertDock.summary.other": "{{count}} შემობრუნებული შეტყობინებები",
   "session.revertDock.collapse": "გაბრუნებული შეტყობინებების ჩაკეცვა",
   "session.revertDock.expand": "გაფართოვებული შეტყობინებების გაფართოება",
+  "session.undo.interrupt.title": 'შევწყვიტოთ მიმდინარე ტური და გავაუქმოთ ეს შეტყობინება?',
+  "session.undo.interrupt.confirm": 'შეწყვეტა და გაუქმება',
   "session.revertDock.restore": "წერილის აღდგენა",
   "session.new.title": "აშენეთ რამე",
   "session.new.project.new": "ახალი პროექტი",

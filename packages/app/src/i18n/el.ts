@@ -765,6 +765,8 @@ export const dict = {
   "session.revertDock.summary.other": "{{count}} επαναλαμβανόμενα μηνύματα",
   "session.revertDock.collapse": "Σύμπτυξη επαναλαμβανόμενων μηνυμάτων",
   "session.revertDock.expand": "Ανάπτυξη επαναλαμβανόμενων μηνυμάτων",
+  "session.undo.interrupt.title": 'Διακοπή της τρέχουσας στροφής και αναίρεση αυτού του μηνύματος;',
+  "session.undo.interrupt.confirm": 'Διακοπή και αναίρεση',
   "session.revertDock.restore": "Επαναφορά μηνύματος",
   "session.new.title": "Δημιουργία οτιδήποτε",
   "session.new.project.new": "Νέο έργο",

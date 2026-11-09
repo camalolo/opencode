@@ -765,6 +765,8 @@ export const dict = {
   "session.revertDock.summary.other": "{{count}} သည် မက်ဆေ့ဂျ်များကို ပြန်ဖွင့်ခဲ့သည်။",
   "session.revertDock.collapse": "ပြန်လှန်ထားသော စာတိုများကို ခေါက်သိမ်းပါ။",
   "session.revertDock.expand": "ပြန်လှန်ထားသော စာတိုများကို ချဲ့ပါ။",
+  "session.undo.interrupt.title": 'Interrupt the running turn and undo this message?',
+  "session.undo.interrupt.confirm": 'Interrupt and undo',
   "session.revertDock.restore": "မက်ဆေ့ဂျ်ကို ပြန်ယူပါ။",
   "session.new.title": "မည်သည့်အရာကိုမဆို တည်ဆောက်ပါ။",
   "session.new.project.new": "ပရောဂျက်အသစ်",

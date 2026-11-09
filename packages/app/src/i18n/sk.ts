@@ -761,6 +761,8 @@ export const dict = {
   "session.revertDock.summary.many": "{{count}} vrátenej správy",
   "session.revertDock.collapse": "Zbaliť vrátené správy",
   "session.revertDock.expand": "Rozbaliť vrátené správy",
+  "session.undo.interrupt.title": 'Prerušiť bežiaci priebeh a vrátiť túto správu?',
+  "session.undo.interrupt.confirm": 'Prerušiť a vrátiť',
   "session.revertDock.restore": "Obnoviť správu",
   "session.new.title": "Vytvorte čokoľvek",
   "session.new.project.new": "Nový projekt",

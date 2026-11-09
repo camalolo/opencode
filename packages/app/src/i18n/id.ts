@@ -824,6 +824,8 @@ export const dict = {
   "session.revertDock.summary.other": "{{count}} pesan diurungkan",
   "session.revertDock.collapse": "Ciutkan pesan yang diurungkan",
   "session.revertDock.expand": "Bentangkan pesan yang diurungkan",
+  "session.undo.interrupt.title": 'Hentikan giliran yang berjalan dan batalkan pesan ini?',
+  "session.undo.interrupt.confirm": 'Hentikan dan batalkan',
   "session.revertDock.restore": "Pulihkan pesan",
 
   "session.new.title": "Buat apa saja",

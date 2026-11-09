@@ -766,6 +766,8 @@ export const dict = {
   "session.revertDock.summary.many": "{{count}} missatges revertits",
   "session.revertDock.collapse": "Replega els missatges desfets",
   "session.revertDock.expand": "Amplieu els missatges revertits",
+  "session.undo.interrupt.title": 'Interrompre el torn en curs i desfer aquest missatge?',
+  "session.undo.interrupt.confirm": 'Interrompre i desfer',
   "session.revertDock.restore": "Restaura el missatge",
   "session.new.title": "Construeix qualsevol cosa",
   "session.new.project.new": "Nou projecte",

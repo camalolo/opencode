@@ -770,6 +770,8 @@ export const dict: Record<string, string> = {
   "session.revertDock.summary.other": "{{count}} ཕྱིར་ལོག་འབད་ཡོད་པའི་འཕྲིན་ཡིག།",
   "session.revertDock.collapse": "ལོག་བཤུད་འབད་ཡོད་པའི་འཕྲིན་དོན་ཚུ་ མར་བསྡམས།",
   "session.revertDock.expand": "ཕྱིར་ལོག་འབད་ཡོད་པའི་འཕྲིན་དོན་ཚུ་རྒྱ་བསྐྱེད་འབད།",
+  "session.undo.interrupt.title": 'Interrupt the running turn and undo this message?',
+  "session.undo.interrupt.confirm": 'Interrupt and undo',
   "session.revertDock.restore": "འཕྲིན་དོན་སླར་གསོ་འབད།",
   "session.new.title": "ག་ཅི་ཡང་བཟོ་བསྐྲུན།",
   "session.new.project.new": "ལས་འགུལ་གསརཔ།",

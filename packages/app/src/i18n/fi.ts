@@ -655,6 +655,8 @@ export const dict = {
   "session.revertDock.summary.other": "{{count}} palautettua viestiä",
   "session.revertDock.collapse": "Kutista palautetut viestit",
   "session.revertDock.expand": "Laajenna palautetut viestit",
+  "session.undo.interrupt.title": 'Keskeytetäänkö käynnissä oleva vuoro ja perutaanko tämä viesti?',
+  "session.undo.interrupt.confirm": 'Keskeytä ja peruuta',
   "session.revertDock.restore": "Palauta viesti",
   "session.new.title": "Rakenna mitä tahansa",
   "session.new.project.new": "Uusi projekti",

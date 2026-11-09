@@ -740,6 +740,8 @@ export const dict = {
   "session.revertDock.summary.other": "{{count}} 件のロールバックされたメッセージ",
   "session.revertDock.collapse": "ロールバックされたメッセージを折りたたむ",
   "session.revertDock.expand": "ロールバックされたメッセージを展開",
+  "session.undo.interrupt.title": '実行中のターンを中断して、このメッセージを取り消しますか？',
+  "session.undo.interrupt.confirm": '中断して取り消す',
   "session.revertDock.restore": "メッセージを復元",
   "session.new.title": "何でも作る",
   "session.new.project.new": "新しいプロジェクト",

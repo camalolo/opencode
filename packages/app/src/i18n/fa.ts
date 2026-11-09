@@ -756,6 +756,8 @@ export const dict = {
   "session.revertDock.summary.other": "{{count}} پیام‌های برگشتی",
   "session.revertDock.collapse": "کوچک کردن پیام‌های برگشتی",
   "session.revertDock.expand": "گسترش پیام‌های برگشتی",
+  "session.undo.interrupt.title": 'قطع کردن نوبت در حال اجرا و بازگردانی این پیام؟',
+  "session.undo.interrupt.confirm": 'قطع و بازگردانی',
   "session.revertDock.restore": "بازیابی پیام",
   "session.new.title": "هر چیزی بساز",
   "session.new.project.new": "پروژه جدید",

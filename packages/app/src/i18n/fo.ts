@@ -757,6 +757,8 @@ export const dict = {
   "session.revertDock.summary.other": "{{count}} rullað boð aftur",
   "session.revertDock.collapse": "Kollaps afturrullað boð",
   "session.revertDock.expand": "Víðka afturrullað boð",
+  "session.undo.interrupt.title": 'Interrupt the running turn and undo this message?',
+  "session.undo.interrupt.confirm": 'Interrupt and undo',
   "session.revertDock.restore": "Endurnýggja boð",
   "session.new.title": "Bygg alt",
   "session.new.project.new": "Nýggj verkætlan",

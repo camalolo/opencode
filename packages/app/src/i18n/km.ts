@@ -754,6 +754,8 @@ export const dict = {
   "session.revertDock.summary.other": "{{count}} ត្រឡប់សារវិញ។",
   "session.revertDock.collapse": "បង្រួមសារដែលបានវិលត្រឡប់មកវិញ",
   "session.revertDock.expand": "ពង្រីកសារត្រឡប់",
+  "session.undo.interrupt.title": 'Interrupt the running turn and undo this message?',
+  "session.undo.interrupt.confirm": 'Interrupt and undo',
   "session.revertDock.restore": "ស្តារសារឡើងវិញ",
   "session.new.title": "សាងសង់អ្វីក៏បាន",
   "session.new.project.new": "គម្រោងថ្មី។",
