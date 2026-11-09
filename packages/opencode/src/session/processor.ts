@@ -125,7 +125,17 @@ const layer = Layer.effect(
           aborted,
         })
 
+      // Tools report progress metadata per output chunk; persisting each chunk
+      // costs a durable journal row plus a part rewrite, so chatty commands
+      // were writing hundreds of rows per second for cosmetic live output.
+      // Persist at most once per window; the terminal transitions below always
+      // write the final state unthrottled, so nothing but intermediate frames
+      // is ever dropped.
+      const METADATA_FLUSH_MS = 250
+      const metadataPersistedAt = new Map<string, number>()
+
       const settleToolCall = Effect.fn("SessionProcessor.settleToolCall")(function* (toolCallID: string) {
+        metadataPersistedAt.delete(toolCallID)
         const done = ctx.toolcalls[toolCallID]?.done
         delete ctx.toolcalls[toolCallID]
         if (done) yield* Deferred.succeed(done, undefined).pipe(Effect.ignore)
@@ -152,7 +162,12 @@ const layer = Layer.effect(
       ) {
         const match = yield* readToolCall(toolCallID)
         if (!match) return undefined
-        const part = yield* session.updatePart(update(match.part))
+        const part = update(match.part)
+        const now = Date.now()
+        if (now - (metadataPersistedAt.get(toolCallID) ?? 0) >= METADATA_FLUSH_MS) {
+          metadataPersistedAt.set(toolCallID, now)
+          yield* session.updatePart(part)
+        }
         ctx.toolcalls[toolCallID] = {
           ...match.call,
           partID: part.id,

@@ -64,6 +64,7 @@ import { ProjectV2 } from "@opencode-ai/core/project"
 import { ProjectCopy } from "@opencode-ai/core/project/copy"
 import { PtyTicket } from "@opencode-ai/core/pty/ticket"
 import { Ripgrep } from "@opencode-ai/core/ripgrep"
+import { EventRetention } from "@opencode-ai/core/event-retention"
 import { SessionCrashRecovery } from "@opencode-ai/core/session/crash-recovery"
 import { SessionProjector } from "@opencode-ai/core/session/projector"
 import { SessionV2 } from "@opencode-ai/core/session"
@@ -242,6 +243,7 @@ const app = LayerNode.group([
   SessionSleepScheduler.node,
   SessionProjector.node,
   SessionCrashRecovery.node,
+  EventRetention.node,
   SessionStatus.node,
   BackgroundJob.node,
   RuntimeFlags.node,
