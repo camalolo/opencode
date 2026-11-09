@@ -56,6 +56,10 @@ const layer = Layer.effect(
     yield* db.run("PRAGMA journal_mode = WAL")
     yield* db.run("PRAGMA synchronous = NORMAL")
     yield* db.run("PRAGMA busy_timeout = 5000")
+    // FTS maintenance scans freshly written text ranges through a small page
+    // cache on a multi-GB file; without this the worker connection keeps
+    // SQLite's 2MB default and every batch thrashes it.
+    yield* db.run("PRAGMA cache_size = -64000")
 
     // drizzle cannot express virtual tables, and this file has no migration
     // journal, so the derived schema is ensured idempotently at boot.
