@@ -16,6 +16,9 @@ import { AppNodeBuilder } from "@opencode-ai/core/effect/app-node-builder"
 import { LayerNode } from "@opencode-ai/core/effect/layer-node"
 import { InstanceStore } from "@/project/instance-store"
 import { InstanceBootstrap } from "@/project/bootstrap"
+import { Database } from "@opencode-ai/core/database/database"
+import { sql } from "drizzle-orm"
+import { pollWithTimeout } from "../lib/effect"
 
 const it = testEffect(
   AppNodeBuilder.build(
@@ -25,6 +28,7 @@ const it = testEffect(
       SessionProjector.node,
       CrossSpawnSpawner.node,
       InstanceStore.node,
+      Database.node,
     ]),
     [
       [RuntimeFlags.node, RuntimeFlags.layer({ experimentalWorkspaces: false })],
@@ -280,6 +284,59 @@ describe("Session", () => {
 
       expect(created.metadata).toBeUndefined()
       expect(saved.metadata).toBeUndefined()
+    }),
+  )
+
+  it.instance("remove cascades to the session's messages and parts", () =>
+    Effect.gen(function* () {
+      const session = yield* SessionNs.Service
+      const { db } = yield* Database.Service
+      const info = yield* session.create({})
+      const messageID = MessageID.ascending()
+      yield* session.updateMessage({
+        id: messageID,
+        sessionID: info.id,
+        role: "user",
+        time: { created: Date.now() },
+        agent: "build",
+        model: { providerID: "test", modelID: "test" },
+        tools: {},
+      } as unknown as SessionV1.Info)
+      yield* session.updatePart({
+        type: "text",
+        id: PartID.ascending(),
+        sessionID: info.id,
+        messageID,
+        text: "cascade probe",
+      } as SessionV1.Part)
+      const before = yield* db
+        .get<{ parts: number; messages: number }>(
+          sql`SELECT (SELECT count(*) FROM part WHERE session_id = ${info.id}) AS parts,
+                     (SELECT count(*) FROM message WHERE session_id = ${info.id}) AS messages`,
+        )
+        .pipe(Effect.orDie)
+      expect(before?.parts).toBe(1)
+      expect(before?.messages).toBe(1)
+
+      yield* session.remove(info.id)
+
+      // The projector consumes the Deleted event asynchronously; wait until
+      // the row (and with the schema's ON DELETE CASCADE its messages and
+      // parts) is actually gone, or a regression would leave orphans behind.
+      const after = yield* pollWithTimeout(
+        Effect.gen(function* () {
+          const row = yield* db
+            .get<{ parts: number; messages: number; sessions: number }>(
+              sql`SELECT (SELECT count(*) FROM part WHERE session_id = ${info.id}) AS parts,
+                         (SELECT count(*) FROM message WHERE session_id = ${info.id}) AS messages,
+                         (SELECT count(*) FROM session WHERE id = ${info.id}) AS sessions`,
+            )
+            .pipe(Effect.orDie)
+          return row && row.parts === 0 && row.messages === 0 && row.sessions === 0 ? row : undefined
+        }),
+        "session removal never cascaded to messages and parts",
+      )
+      expect(after?.parts).toBe(0)
     }),
   )
 })
