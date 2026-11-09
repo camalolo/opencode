@@ -38,3 +38,14 @@ All accept a `BASE` env override (`export BASE=http://127.0.0.1:4096`).
 - Start server with `BUN_INSPECT=ws://127.0.0.1:9229/prof bun --cpu-prof ...`, then
   `node cdp-exit.mjs ws://127.0.0.1:9229/prof`.
 - Inspector has no Profiler domain and no `/json` discovery; the WS path comes from the startup banner.
+
+## Database
+
+- **fts-check.mjs** — FTS5 integrity check (index vs content table). Run with
+  **bun**, never the system sqlite3 CLI: opencode's writer (bun's bundled
+  SQLite, currently 3.53) writes segment data that older engines misparse, so
+  an old CLI reports bogus "malformed" verdicts.
+  `bun fts-check.mjs ~/.local/share/opencode/opencode-search.db` (exit 0 = exact)
+- **Session-index throughput / latency**: `packages/opencode/script/bench-session-index.ts`
+  (bench + CPU-profile harness for the transcript search indexer; see its
+  header comment for usage).
