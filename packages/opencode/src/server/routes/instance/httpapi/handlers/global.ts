@@ -12,7 +12,8 @@ import { HttpServerRequest, HttpServerResponse } from "effect/unstable/http"
 import { HttpApiBuilder } from "effect/unstable/httpapi"
 import * as Sse from "effect/unstable/encoding/Sse"
 import { RootHttpApi } from "../api"
-import { GlobalUpgradeInput } from "../groups/global"
+import { GlobalDeployQuery, GlobalUpgradeInput } from "../groups/global"
+import { Deploy } from "@/deploy/deploy"
 
 function eventData(data: unknown): Sse.Event {
   const payload = (data as { payload?: { id?: string } } | undefined)?.payload
@@ -111,6 +112,7 @@ export const globalHandlers = HttpApiBuilder.group(RootHttpApi, "global", (handl
     const config = yield* Config.Service
     const installation = yield* Installation.Service
     const bridge = yield* EffectBridge.make()
+    const deploySvc = yield* Deploy.Service
 
     const health = Effect.fn("GlobalHttpApi.health")(function* () {
       return { healthy: true as const, version: InstallationVersion }
@@ -186,6 +188,16 @@ export const globalHandlers = HttpApiBuilder.group(RootHttpApi, "global", (handl
       return HttpServerResponse.jsonUnsafe(result.body, { status: result.status })
     })
 
+    const deployStatus = Effect.fn("GlobalHttpApi.deployStatus")(function* () {
+      return yield* deploySvc.status()
+    })
+
+    const deployStart = Effect.fn("GlobalHttpApi.deployStart")(function* (ctx: {
+      query: typeof GlobalDeployQuery.Type
+    }) {
+      return yield* deploySvc.start({ timeoutSeconds: ctx.query.timeout ?? 600 })
+    })
+
     return handlers
       .handle("health", health)
       .handleRaw("event", event)
@@ -193,5 +205,7 @@ export const globalHandlers = HttpApiBuilder.group(RootHttpApi, "global", (handl
       .handle("configUpdate", configUpdate)
       .handle("dispose", dispose)
       .handleRaw("upgrade", upgradeRaw)
+      .handle("deployStatus", deployStatus)
+      .handle("deployStart", deployStart)
   }),
 )

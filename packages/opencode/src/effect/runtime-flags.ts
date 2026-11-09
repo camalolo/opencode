@@ -54,6 +54,14 @@ export class Service extends ConfigService.Service<Service>()("@opencode/Runtime
   experimentalNativeLlm: bool("OPENCODE_EXPERIMENTAL_NATIVE_LLM"),
   experimentalWebSockets: bool("OPENCODE_EXPERIMENTAL_WEBSOCKETS"),
   client: Config.string("OPENCODE_CLIENT").pipe(Config.withDefault("cli")),
+  // Self-deploy (POST /global/deploy): pull/install commands and the platform
+  // restart command. The restart command is required — deploys refuse to start
+  // without one, because its last act is killing this very process.
+  restartCommand: Config.string("OPENCODE_RESTART_COMMAND").pipe(Config.withDefault("")),
+  deployPullCommand: Config.string("OPENCODE_DEPLOY_PULL_COMMAND").pipe(Config.withDefault("")),
+  deployInstallCommand: Config.string("OPENCODE_DEPLOY_INSTALL_COMMAND").pipe(Config.withDefault("")),
+  deployBuildCommand: Config.string("OPENCODE_DEPLOY_BUILD_COMMAND").pipe(Config.withDefault("")),
+  deployManifestCommand: Config.string("OPENCODE_DEPLOY_MANIFEST_COMMAND").pipe(Config.withDefault("")),
 }) {}
 
 export type Info = Context.Service.Shape<typeof Service>

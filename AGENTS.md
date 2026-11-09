@@ -190,25 +190,48 @@ These live on the servers, not in git. They survive `git pull`/rebuilds — a fu
 
 UI changes need build + manifest regen + restart on EVERY server (restarting alone keeps serving the old UI). Repos: `~/Sources/opencode` on the Linux boxes, `C:\Program Files\Opencode` on desktop.
 
+Each server can deploy itself: `POST /global/deploy` runs pull → `bun install` → web UI build → manifest regen, waits for in-flight sessions to go idle (drain, `?timeout=<seconds>`, default 600), then runs the configured restart command. The request returns immediately; the triggering turn finishes naturally and the server restarts when the fleet is quiet. `GET /global/deploy` reports the phase (`idle|pull|install|build|manifest|drain|restart`) and any error.
+
 ```sh
-# home (this machine, run locally; respect the idle rule — this restarts production)
-cd ~/Sources/opencode && git pull --ff-only origin laurent-dev && bun install && bun run --cwd packages/app build && bun deploy/gen-web-ui-manifest.ts && systemctl --user restart opencode
+# home (this machine, run locally; respects the idle rule by draining)
+curl -X POST "http://127.0.0.1:4096/global/deploy?timeout=600"
 
 # m2dev-laurent
+ssh m2dev-laurent 'curl -X POST "http://127.0.0.1:4096/global/deploy?timeout=600"'
+
+# desktop (Windows; ssh lands in cmd.exe)
+ssh desktop "curl -X POST \"http://127.0.0.1:4096/global/deploy?timeout=600\""
+```
+
+Fallback (deploy command unavailable / first bootstrapping of this feature):
+
+```sh
+# home
+cd ~/Sources/opencode && git pull --ff-only origin laurent-dev && bun install && bun run --cwd packages/app build && bun deploy/gen-web-ui-manifest.ts && systemctl --user restart opencode
+
+# m2dev-laurent (also needs /home/laurent/.nvm/versions/node/v24.8.0/bin first in PATH)
 ssh m2dev-laurent 'export PATH=$HOME/.bun/bin:$PATH; cd ~/Sources/opencode && git pull --ff-only origin laurent-dev && bun install && bun run --cwd packages/app build && bun deploy/gen-web-ui-manifest.ts && systemctl --user restart opencode'
 
-# desktop (Windows; ssh lands in cmd.exe. For server-only changes, skip build+manifest)
+# desktop (interactive git pull only, or git bundle + scp; then restart)
 ssh desktop "cd /d \"C:\Program Files\Opencode\" && git pull --ff-only origin laurent-dev && bun install && bun run --cwd packages/app build && bun deploy/gen-web-ui-manifest.ts"
 ssh desktop "pwsh -NoProfile -File C:/Users/camal/scripts/restart-services.ps1"
 ```
 
-On desktop the `git pull` in that chain only works in an interactive session (see the desktop row above). Non-interactive alternative: `git bundle create /tmp/x.bundle <prev-tip>..laurent-dev` on home, `scp` it, then `git pull C:/Users/camal/<name>.bundle laurent-dev --ff-only` on desktop before the build chain.
+Self-deploy config (env, per server — do NOT rely on `/global/deploy` without these):
 
-- `m2dev-laurent` additionally needs `/home/laurent/.nvm/versions/node/v24.8.0/bin` first in PATH.
+| env | home / m2dev value | desktop value |
+|-----|--------------------|---------------|
+| `OPENCODE_RESTART_COMMAND` (required; deploys refuse without it) | `systemctl --user restart opencode` | `powershell -NoProfile -ExecutionPolicy Bypass -File C:\Users\camal\scripts\restart-services.ps1` |
+| `OPENCODE_DEPLOY_PULL_COMMAND` (optional) | default `git pull --ff-only origin laurent-dev` | default; desktop's Task Scheduler context pulls over Win32 ssh fine (the hanging-ssh workaround is only needed for sshd-spawned sessions) |
+| `OPENCODE_DEPLOY_INSTALL_COMMAND` / `OPENCODE_DEPLOY_BUILD_COMMAND` / `OPENCODE_DEPLOY_MANIFEST_COMMAND` (optional) | defaults | defaults |
+
+Desktop gotcha: the `opencode-server` Task Scheduler task only tracks its direct process — `schtasks /end` does NOT kill the bun server (the launcher's port-busy guard then makes `/run` a no-op). Always restart via `restart-services.ps1`, which kills by command line and restarts the task.
+
+On m2dev, `m2dev-laurent` additionally needs `/home/laurent/.nvm/versions/node/v24.8.0/bin` first in PATH for manual builds.
 
 ### Idle rule (mandatory)
 
-A restart kills active sessions. Before pulling/restarting any server (home included — it is production), verify it is idle (run the grep locally on home, via ssh on m2dev; on desktop the same log lives at `C:\Users\camal\.local\share\opencode\log\opencode.log` — grep it via `findstr` through cmd or a pwsh one-liner):
+A restart kills active sessions. `POST /global/deploy` drains on its own (waits for in-flight turns to finish before restarting), so the grep below is only needed when using the manual fallback chain or a bare restart. Before pulling/restarting any server (home included — it is production), verify it is idle (run the grep locally on home, via ssh on m2dev; on desktop the same log lives at `C:\Users\camal\.local\share\opencode\log\opencode.log` — grep it via `findstr` through cmd or a pwsh one-liner):
 
 ```sh
 ssh <host> 'grep -a "message=stream\|message=loop" ~/.local/share/opencode/log/opencode.log | tail -1'

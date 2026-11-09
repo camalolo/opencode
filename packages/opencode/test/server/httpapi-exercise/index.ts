@@ -115,6 +115,25 @@ const scenarios: Scenario[] = [
       },
       "status",
     ),
+  http.protected.get("/global/deploy", "global.deploy.status").global().json(200, (body) => {
+    object(body)
+    check(body.phase === "idle", `deploy status should be idle without a deploy: ${JSON.stringify(body)}`)
+  }),
+  http.protected
+    .post("/global/deploy", "global.deploy.start")
+    .global()
+    .json(
+      200,
+      (body) => {
+        object(body)
+        check(body.started === false, "deploy should refuse to start without OPENCODE_RESTART_COMMAND")
+        check(
+          typeof body.reason === "string" && body.reason.includes("OPENCODE_RESTART_COMMAND"),
+          `refusal should explain the missing restart command: ${JSON.stringify(body)}`,
+        )
+      },
+      "status",
+    ),
   http.protected.get("/path", "path.get").json(200, (body, ctx) => {
     object(body)
     check(body.directory === ctx.directory, "directory should resolve from x-opencode-directory")

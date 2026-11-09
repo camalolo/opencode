@@ -62,12 +62,31 @@ const GlobalUpgradeResult = Schema.Union([
   }),
 ])
 
+export const GlobalDeployQuery = Schema.Struct({
+  timeout: Schema.optional(
+    Schema.NumberFromString.check(Schema.isInt(), Schema.isGreaterThan(0)),
+  ),
+})
+
+const GlobalDeployStartResult = Schema.Struct({
+  started: Schema.Boolean,
+  reason: Schema.optional(Schema.String),
+}).annotate({ identifier: "GlobalDeployStartResult" })
+
+const GlobalDeployStatus = Schema.Struct({
+  phase: Schema.Literals(["idle", "pull", "install", "build", "manifest", "drain", "restart"]),
+  startedAt: Schema.optional(Schema.Finite),
+  error: Schema.optional(Schema.String),
+  activeSessions: Schema.optional(Schema.Array(Schema.String)),
+}).annotate({ identifier: "GlobalDeployStatus" })
+
 export const GlobalPaths = {
   health: "/global/health",
   event: "/global/event",
   config: "/global/config",
   dispose: "/global/dispose",
   upgrade: "/global/upgrade",
+  deploy: "/global/deploy",
 } as const
 
 export const GlobalApi = HttpApi.make("global").add(
@@ -129,6 +148,26 @@ export const GlobalApi = HttpApi.make("global").add(
           identifier: "global.upgrade",
           summary: "Upgrade opencode",
           description: "Upgrade opencode to the specified version or latest if not specified.",
+        }),
+      ),
+      HttpApiEndpoint.get("deployStatus", GlobalPaths.deploy, {
+        success: described(GlobalDeployStatus, "Self-deploy status"),
+      }).annotateMerge(
+        OpenApi.annotations({
+          identifier: "global.deploy.status",
+          summary: "Get deploy status",
+          description: "Get the current phase of a self-deploy (pull, build, drain, restart).",
+        }),
+      ),
+      HttpApiEndpoint.post("deployStart", GlobalPaths.deploy, {
+        query: GlobalDeployQuery,
+        success: described(GlobalDeployStartResult, "Self-deploy started"),
+      }).annotateMerge(
+        OpenApi.annotations({
+          identifier: "global.deploy.start",
+          summary: "Start self-deploy",
+          description:
+            "Pull, rebuild the web UI, wait for in-flight sessions to go idle, then restart the server via the configured restart command.",
         }),
       ),
     )

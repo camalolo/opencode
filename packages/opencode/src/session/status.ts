@@ -1,7 +1,7 @@
 import { LayerNode } from "@opencode-ai/core/effect/layer-node"
 import { InstanceState } from "@/effect/instance-state"
 import { SessionID } from "./schema"
-import { Effect, Layer, Context } from "effect"
+import { Effect, Layer, Context, ScopedCache } from "effect"
 import { EventV2Bridge } from "@/event-v2-bridge"
 import { SessionStatusEvent } from "@opencode-ai/schema/session-status-event"
 
@@ -13,6 +13,8 @@ export const Event = SessionStatusEvent
 export interface Interface {
   readonly get: (sessionID: SessionID) => Effect.Effect<Info>
   readonly list: () => Effect.Effect<Map<SessionID, Info>>
+  /** Merged status of every open instance's sessions (cross-directory view). */
+  readonly listAll: () => Effect.Effect<Map<SessionID, Info>>
   readonly set: (sessionID: SessionID, status: Info) => Effect.Effect<void>
 }
 
@@ -36,6 +38,14 @@ const layer = Layer.effect(
       return new Map(yield* InstanceState.get(state))
     })
 
+    const listAll = Effect.fn("SessionStatus.listAll")(function* () {
+      const merged = new Map<SessionID, Info>()
+      for (const [, data] of yield* ScopedCache.entries(state.cache)) {
+        for (const [id, info] of data) merged.set(id, info)
+      }
+      return merged
+    })
+
     const set = Effect.fn("SessionStatus.set")(function* (sessionID: SessionID, status: Info) {
       const data = yield* InstanceState.get(state)
       yield* events.publish(Event.Status, { sessionID, status })
@@ -47,7 +57,7 @@ const layer = Layer.effect(
       data.set(sessionID, status)
     })
 
-    return Service.of({ get, list, set })
+    return Service.of({ get, list, listAll, set })
   }),
 )
 
