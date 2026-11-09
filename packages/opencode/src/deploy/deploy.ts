@@ -124,6 +124,15 @@ const layer = Layer.effect(
       yield* drain(timeoutSeconds)
       state.phase = "restart"
       state.activeSessions = undefined
+      // "self-exit": the supervisor (systemd Restart=, NSSM AppExit Restart)
+      // owns restarts; the deploy just terminates the process. This avoids the
+      // Windows job-object race where an in-tree restart client is killed with
+      // the service's process tree before it can issue the start.
+      if (flags.restartCommand === "self-exit") {
+        yield* Effect.logInfo("deploy restart: exiting for supervisor restart", { command: flags.restartCommand })
+        setTimeout(() => process.exit(1), 500).unref()
+        return
+      }
       yield* Effect.logInfo("deploy restart", { command: flags.restartCommand })
       // The restart command kills this process, so it must outlive us: spawn it
       // detached and let the platform supervisor bring the server back.

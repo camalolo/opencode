@@ -5,11 +5,8 @@
 # script's own path):
 #   powershell -ExecutionPolicy Bypass -File deploy\windows-setup.ps1
 #
-# The script auto-elevates. It creates:
-#   - the NSSM service "opencode" (auto-start at boot, auto-restart on crash)
-#   - a "opencode-restart" scheduled task used by POST /global/deploy to
-#     restart the server (scheduled tasks survive the service's process tree
-#     being stopped, a plain nssm restart client does not)
+# The script auto-elevates. It installs the NSSM service (auto-start at boot,
+# auto-restart on crash and after self-deploys).
 #
 # Service account:
 #   -Account user   (recommended) runs as .\<you> with your password stored in
@@ -77,7 +74,10 @@ $extra = @(
   "OPENCODE_BROWSER_AGENT_SESSION=opencode-default",
   "OPENCODE_BROWSER_AGENT_SKIP_INSTALL=1",
   "OPENCODE_DISABLE_CHANNEL_DB=1",
-  "OPENCODE_RESTART_COMMAND=schtasks /run /tn $ServiceName-restart"
+  # The deploy endpoint exits the process and NSSM restarts it (AppExit Default
+  # Restart below). A scheduled-task indirection is unnecessary: supervising
+  # restarts is exactly what NSSM is for.
+  "OPENCODE_RESTART_COMMAND=self-exit"
 )
 $passwordPlain = $null
 if ($Account -eq "system") {
@@ -95,15 +95,6 @@ if ($Account -eq "system") {
     [Runtime.InteropServices.Marshal]::SecureStringToBSTR($secure))
   if (-not $passwordPlain) { Fail "empty password" }
 }
-
-# --- restart helper task ----------------------------------------------------
-# The deploy endpoint's restart command must survive the service being stopped,
-# but a plain "nssm restart" client runs inside the service's job object and
-# dies with it (service ends up stopped). A scheduled task runs outside that
-# job, so OPENCODE_RESTART_COMMAND just dispatches through it.
-Show "creating scheduled task $ServiceName-restart (runs: $NssmPath restart $ServiceName)"
-schtasks /create /tn "$ServiceName-restart" /tr "`"$NssmPath`" restart $ServiceName" /sc once /sd 2030/01/01 /st 00:00 /rl HIGHEST /f | Out-Null
-if ($LASTEXITCODE -ne 0) { Fail "failed to create the $ServiceName-restart scheduled task" }
 
 # --- install / update the service -------------------------------------------
 $exists = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
@@ -144,11 +135,11 @@ if ($health -ne 200) { Fail "server did not come up - check $LogDir\nssm-service
 
 Show ""
 Show "=== SETUP COMPLETE ==="
-Show "service:      $ServiceName (auto-start at boot, restarts on crash)"
+Show "service:      $ServiceName (auto-start at boot, restarts on crash and after self-deploys)"
 Show "logs:         $LogDir\nssm-service.log (10 MB rotating)"
 Show "deploy:       POST http://127.0.0.1:$Port/global/deploy"
-Show "              the server restarts itself via the $ServiceName-restart scheduled task"
+Show "              the server exits itself and NSSM restarts it (AppExit Default Restart)"
 if ($Account -eq "system") {
   Show "deploy pulls: $bundlePath (ship a bundle there before each deploy)"
 }
-Show "rollback:     sc stop $ServiceName && sc delete $ServiceName, then schtasks /delete /tn $ServiceName-restart /f"
+Show "rollback:     sc stop $ServiceName && sc delete $ServiceName"
