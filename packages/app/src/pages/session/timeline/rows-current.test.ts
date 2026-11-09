@@ -56,7 +56,42 @@ describe("current session timeline rows", () => {
       "turn-gap:msg_3",
       "user-message:msg_3",
       "assistant-part:msg_3:msg_4:reasoning:0",
+      "thinking:msg_3",
     ])
+    const thinking = result.rows.find((row) => row._tag === "Thinking")
+    if (thinking?._tag !== "Thinking") throw new Error("expected a thinking row")
+    expect(thinking.phase).toBeUndefined()
+  })
+
+  test("keeps the thinking shim while the active turn's own output streams", () => {
+    const source = [
+      { id: "msg_user", type: "user", text: "go", time: { created: 1 } },
+      {
+        id: "msg_assistant",
+        type: "assistant",
+        agent: "build",
+        model: { id: "model", providerID: "provider" },
+        content: [{ type: "text", text: "partial answer streaming" }],
+        time: { created: 2 },
+      },
+    ] satisfies SessionMessageInfo[]
+    const normalized = normalizeSessionMessages("ses_1", source)
+    const messages = new Map(normalized.messages.map((message) => [message.id, message]))
+
+    const result = Timeline.constructSessionMessageRows(
+      source,
+      (messageID) => messages.get(messageID),
+      (messageID) => normalized.parts.get(messageID) ?? [],
+      true,
+      "busy",
+      true,
+      normalized.messages.filter((message) => message.role === "user"),
+    )
+
+    expect(result.activeMessageID).toBe("msg_user")
+    const thinking = result.rows.find((row) => row._tag === "Thinking")
+    if (thinking?._tag !== "Thinking") throw new Error("expected a thinking row")
+    expect(thinking.phase).toBeUndefined()
   })
 
   test("renders a current shell message as a standalone turn", () => {
@@ -316,6 +351,6 @@ describe("current session timeline rows", () => {
       normalized.messages.filter((message) => message.role === "user"),
     )
 
-    expect(result.rows.map((row) => row._tag)).toEqual(["UserMessage", "AssistantPart"])
+    expect(result.rows.map((row) => row._tag)).toEqual(["UserMessage", "AssistantPart", "Thinking"])
   })
 })
