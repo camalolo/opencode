@@ -1,22 +1,25 @@
-# Installs the opencode server as an NSSM Windows service, replacing the
-# Task Scheduler + launcher-ps1 arrangement. Idempotent: re-running updates
-# the service config and restarts it.
+# Installs the opencode server as an NSSM Windows service. Idempotent:
+# re-running updates the service config and restarts it.
 #
 # Usage (from the repo root, or anywhere — the repo is located via this
 # script's own path):
 #   powershell -ExecutionPolicy Bypass -File deploy\windows-setup.ps1
 #
-# The script auto-elevates. It stops the running opencode server, disables the
-# old "opencode-server" scheduled task (kept as rollback), installs the NSSM
-# service, starts it, and health-checks it.
+# The script auto-elevates. It creates:
+#   - the NSSM service "opencode" (auto-start at boot, auto-restart on crash)
+#   - a "opencode-restart" scheduled task used by POST /global/deploy to
+#     restart the server (scheduled tasks survive the service's process tree
+#     being stopped, a plain nssm restart client does not)
 #
 # Service account:
 #   -Account user   (recommended) runs as .\<you> with your password stored in
 #                   the service (LSA-protected). Git-pull deploys from origin
 #                   work out of the box.
 #   -Account system                 passwordless LocalSystem. The server cannot
-#                   use your SSH key, so self-deploys need OPENCODE_DEPLOY_PULL_COMMAND
-#                   pointing at a git bundle (the script sets a default path).
+#                   use your SSH key (verified: publickey denied even with
+#                   USERPROFILE overridden), so self-deploys need
+#                   OPENCODE_DEPLOY_PULL_COMMAND pointing at a git bundle
+#                   (the script sets a default path).
 param(
   [string]$NssmPath = "D:\Apps\nssm.exe",
   [string]$RepoDir = (Split-Path -Parent $PSScriptRoot),
@@ -74,7 +77,7 @@ $extra = @(
   "OPENCODE_BROWSER_AGENT_SESSION=opencode-default",
   "OPENCODE_BROWSER_AGENT_SKIP_INSTALL=1",
   "OPENCODE_DISABLE_CHANNEL_DB=1",
-  "OPENCODE_RESTART_COMMAND=$NssmPath restart $ServiceName"
+  "OPENCODE_RESTART_COMMAND=schtasks /run /tn $ServiceName-restart"
 )
 $passwordPlain = $null
 if ($Account -eq "system") {
@@ -93,22 +96,14 @@ if ($Account -eq "system") {
   if (-not $passwordPlain) { Fail "empty password" }
 }
 
-# --- stop the old arrangement ----------------------------------------------
-Show "stopping the old scheduled task and any running opencode server..."
-$oldTask = Get-ScheduledTask -TaskName "opencode-server" -ErrorAction SilentlyContinue
-if ($oldTask) {
-  Stop-ScheduledTask -TaskName "opencode-server" -ErrorAction SilentlyContinue
-  schtasks /change /tn opencode-server /disable | Out-Null
-  Show "old task disabled (kept for rollback: schtasks /change /tn opencode-server /enable)"
-}
-$regex = "Program Files/Opencode|opencode-src|packages/opencode/src"
-Get-CimInstance Win32_Process -Filter "Name='bun.exe' or Name='node.exe'" |
-  Where-Object { $_.CommandLine -match $regex -and $_.SessionId -ne 0 } |
-  ForEach-Object {
-    Write-Host "[STOP] $($_.ProcessId)"
-    Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue
-  }
-Start-Sleep -Seconds 2
+# --- restart helper task ----------------------------------------------------
+# The deploy endpoint's restart command must survive the service being stopped,
+# but a plain "nssm restart" client runs inside the service's job object and
+# dies with it (service ends up stopped). A scheduled task runs outside that
+# job, so OPENCODE_RESTART_COMMAND just dispatches through it.
+Show "creating scheduled task $ServiceName-restart (runs: $NssmPath restart $ServiceName)"
+schtasks /create /tn "$ServiceName-restart" /tr "`"$NssmPath`" restart $ServiceName" /sc once /sd 2030/01/01 /st 00:00 /rl HIGHEST /f | Out-Null
+if ($LASTEXITCODE -ne 0) { Fail "failed to create the $ServiceName-restart scheduled task" }
 
 # --- install / update the service -------------------------------------------
 $exists = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
@@ -149,11 +144,11 @@ if ($health -ne 200) { Fail "server did not come up - check $LogDir\nssm-service
 
 Show ""
 Show "=== SETUP COMPLETE ==="
-Show "service:      $ServiceName (auto-start, restarts on crash)"
+Show "service:      $ServiceName (auto-start at boot, restarts on crash)"
 Show "logs:         $LogDir\nssm-service.log (10 MB rotating)"
 Show "deploy:       POST http://127.0.0.1:$Port/global/deploy"
-Show "              the server restarts itself via: $NssmPath restart $ServiceName"
+Show "              the server restarts itself via the $ServiceName-restart scheduled task"
 if ($Account -eq "system") {
   Show "deploy pulls: $bundlePath (ship a bundle there before each deploy)"
 }
-Show "rollback:     disable+stop the service, then schtasks /change /tn opencode-server /enable and /run"
+Show "rollback:     sc stop $ServiceName && sc delete $ServiceName, then schtasks /delete /tn $ServiceName-restart /f"
