@@ -2,7 +2,7 @@ import { FileSystem } from "@opencode-ai/core/filesystem"
 import { NonNegativeInt } from "@opencode-ai/core/schema"
 import { LSP } from "@/lsp/lsp"
 import { Schema } from "effect"
-import { HttpApi, HttpApiEndpoint, HttpApiGroup, OpenApi } from "effect/unstable/httpapi"
+import { HttpApi, HttpApiEndpoint, HttpApiGroup, HttpApiError, HttpApiSchema, OpenApi } from "effect/unstable/httpapi"
 import { Authorization } from "../middleware/authorization"
 import { InstanceContextMiddleware } from "../middleware/instance-context"
 import {
@@ -13,6 +13,11 @@ import {
 import { described } from "./metadata"
 
 export const FileQuery = Schema.Struct({
+  ...WorkspaceRoutingQueryFields,
+  path: Schema.String,
+})
+
+export const DownloadQuery = Schema.Struct({
   ...WorkspaceRoutingQueryFields,
   path: Schema.String,
 })
@@ -99,6 +104,7 @@ export const FilePaths = {
   list: "/file",
   content: "/file/content",
   status: "/file/status",
+  download: "/file/download",
 } as const
 
 export const FileApi = HttpApi.make("file")
@@ -153,6 +159,19 @@ export const FileApi = HttpApi.make("file")
             identifier: "file.read",
             summary: "Read file",
             description: "Read the content of a specified file.",
+          }),
+        ),
+        HttpApiEndpoint.get("download", FilePaths.download, {
+          query: DownloadQuery,
+          // Body is a raw byte stream; the handler returns HttpServerResponse.stream directly.
+          success: Schema.String.pipe(HttpApiSchema.asText({ contentType: "application/octet-stream" })),
+          error: [HttpApiError.NotFound],
+        }).annotateMerge(
+          OpenApi.annotations({
+            identifier: "file.download",
+            summary: "Download file",
+            description:
+              "Stream a file from the project as a browser download (Content-Disposition: attachment).",
           }),
         ),
         HttpApiEndpoint.get("status", FilePaths.status, {

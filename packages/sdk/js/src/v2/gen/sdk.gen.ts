@@ -60,6 +60,8 @@ import type {
   ExperimentalWorkspaceSyncListResponses,
   ExperimentalWorkspaceWarpErrors,
   ExperimentalWorkspaceWarpResponses,
+  FileDownloadErrors,
+  FileDownloadResponses,
   FileListErrors,
   FileListResponses,
   FilePartInput,
@@ -1912,6 +1914,38 @@ export class File extends HeyApiClient {
     )
     return (options?.client ?? this.client).get<FileReadResponses, FileReadErrors, ThrowOnError>({
       url: "/file/content",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Download file
+   *
+   * Stream a file from the project as a browser download (Content-Disposition: attachment).
+   */
+  public download<ThrowOnError extends boolean = false>(
+    parameters: {
+      directory?: string
+      workspace?: string
+      path: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+            { in: "query", key: "path" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<FileDownloadResponses, FileDownloadErrors, ThrowOnError>({
+      url: "/file/download",
       ...options,
       ...params,
     })

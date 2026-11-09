@@ -14,6 +14,7 @@ import { GrepTool } from "./grep"
 import { SearchSessionsTool } from "./search-sessions"
 import { ReadTool } from "./read"
 import { ShowImageTool } from "./show-image"
+import { SendFileToUserTool } from "./send-file-to-user"
 import { TaskTool } from "./task"
 import { Database } from "@opencode-ai/core/database/database"
 import { SearchIndex } from "@opencode-ai/core/session/search-index"
@@ -129,6 +130,9 @@ const layer = Layer.effect(
     const agent = yield* Agent.Service
     const codeMode = flags.experimentalCodeMode ? yield* Effect.promise(() => import("./code-mode")) : undefined
     const codeModeTool = codeMode ? yield* codeMode.CodeModeTool : undefined
+    // Same interactive-client list as the question tool; "acp" and headless runs stay without it.
+    const sendFileEnabled = ["app", "cli", "desktop"].includes(flags.client)
+    const sendFileToUser = sendFileEnabled ? yield* SendFileToUserTool : undefined
 
     const state = yield* InstanceState.make<State>(
       Effect.fn("ToolRegistry.state")(function* (ctx) {
@@ -242,6 +246,7 @@ const layer = Layer.effect(
           lsp: Tool.init(lsptool),
           plan: Tool.init(plan),
           ...(codeModeTool ? { execute: Tool.init(codeModeTool) } : {}),
+          ...(sendFileToUser ? { sendFile: Tool.init(sendFileToUser) } : {}),
         })
 
         return {
@@ -268,6 +273,7 @@ const layer = Layer.effect(
             tool.patch,
             ...browser,
             ...(tool.execute ? [tool.execute] : []),
+            ...(tool.sendFile ? [tool.sendFile] : []),
             ...(flags.experimentalLspTool ? [tool.lsp] : []),
             ...(flags.experimentalPlanMode && flags.client === "cli" ? [tool.plan] : []),
           ],

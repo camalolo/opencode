@@ -464,6 +464,22 @@ const scenarios: Scenario[] = [
       object(body)
       check(body.type === "text" && body.content === "", "missing file content should return an empty text result")
     }),
+  http.protected
+    .get("/file/download", "file.download")
+    .seeded((ctx) => ctx.file("hello.txt", "hello\n"))
+    .at((ctx) => ({ path: `/file/download?${new URLSearchParams({ path: "hello.txt" })}`, headers: ctx.headers() }))
+    .status(
+      200,
+      (_ctx, result) =>
+        Effect.sync(() => {
+          check(result.contentType.startsWith("text/plain"), `download should stream the file mime: ${result.contentType}`)
+          check(result.text === "hello\n", `download should return the file bytes: ${JSON.stringify(result.text)}`)
+        }),
+    ),
+  http.protected
+    .get("/file/download", "file.download.missing")
+    .at((ctx) => ({ path: `/file/download?${new URLSearchParams({ path: "missing.txt" })}`, headers: ctx.headers() }))
+    .status(404),
   http.protected.get("/file/status", "file.status").json(200, array),
   http.protected
     .get("/find", "find.text")

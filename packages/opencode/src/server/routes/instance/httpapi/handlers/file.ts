@@ -5,11 +5,13 @@ import { Ripgrep } from "@opencode-ai/core/ripgrep"
 import { FSUtil } from "@opencode-ai/core/fs-util"
 import { Location } from "@opencode-ai/core/location"
 import { AbsolutePath, RelativePath } from "@opencode-ai/core/schema"
-import { Effect, Layer, Option } from "effect"
+import { Effect, Layer, Option, Stream } from "effect"
 import ignore from "ignore"
 import path from "path"
-import { HttpApiBuilder } from "effect/unstable/httpapi"
+import { HttpApiBuilder, HttpApiError } from "effect/unstable/httpapi"
+import { HttpServerResponse } from "effect/unstable/http"
 import { InstanceHttpApi } from "../api"
+import { containsPath } from "@/project/instance-context"
 
 export const fileHandlers = HttpApiBuilder.group(InstanceHttpApi, "file", (handlers) =>
   Effect.gen(function* () {
@@ -124,16 +126,42 @@ export const fileHandlers = HttpApiBuilder.group(InstanceHttpApi, "file", (handl
       )
     })
 
-    const status = Effect.fn("FileHttpApi.status")(function* () {
-      return []
-    })
+  const status = Effect.fn("FileHttpApi.status")(function* () {
+    return []
+  })
 
-    return handlers
-      .handle("findText", findText)
-      .handle("findFile", findFile)
-      .handle("findSymbol", findSymbol)
-      .handle("list", list)
-      .handle("content", content)
-      .handle("status", status)
+  const download = Effect.fn("FileHttpApi.download")(function* (ctx: { query: { path: string } }) {
+    const instance = yield* InstanceState.context
+    const resolved = path.resolve(instance.directory, ctx.query.path)
+    const file = process.platform === "win32" ? FSUtil.normalizePath(resolved) : resolved
+    if (!containsPath(file, instance)) return yield* new HttpApiError.NotFound({})
+    const stat = yield* FSUtil.Service.use((fs) => fs.stat(file)).pipe(Effect.catch(() => Effect.succeed(undefined)))
+    if (stat?.type !== "File") return yield* new HttpApiError.NotFound({})
+    return HttpServerResponse.stream(
+      Stream.fromReadableStream({
+        evaluate: () => Bun.file(file).stream(),
+        onError: (cause) => cause,
+      }).pipe(Stream.catchCause(() => Stream.empty)),
+      {
+        contentType: FSUtil.mimeType(file),
+        headers: { "content-disposition": contentDisposition(path.basename(file)) },
+      },
+    )
+  })
+
+  return handlers
+    .handle("findText", findText)
+    .handle("findFile", findFile)
+    .handle("findSymbol", findSymbol)
+    .handle("list", list)
+    .handle("content", content)
+    .handle("status", status)
+    .handle("download", download)
   }),
 ).pipe(Layer.provide(locationServiceMapLayer))
+
+// RFC 6266/5987: ASCII fallback for legacy clients plus an UTF-8 encoded name for unicode filenames.
+function contentDisposition(filename: string) {
+  const fallback = filename.replace(/[^\x20-\x7E]/g, "_").replace(/["\\]/g, "_")
+  return `attachment; filename="${fallback}"; filename*=UTF-8''${encodeURIComponent(filename)}`
+}

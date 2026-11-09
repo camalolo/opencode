@@ -1,4 +1,4 @@
-import type { FilePart, Project, UserMessage, VcsFileDiff } from "@opencode-ai/sdk/v2"
+import type { FilePart, Project, ToolPart, UserMessage, VcsFileDiff } from "@opencode-ai/sdk/v2"
 import { getFilename } from "@opencode-ai/core/util/path"
 import { useDialog } from "@opencode-ai/ui/context/dialog"
 import { createQuery, skipToken, useMutation, useQueryClient } from "@tanstack/solid-query"
@@ -104,6 +104,7 @@ import { legacySessionHref, requireServerKey, sessionHref } from "@/utils/sessio
 import { useUsageExceededDialogs } from "./session/usage-exceeded-dialogs"
 import { createSessionOwnership } from "./session/session-ownership"
 import { createSessionLineage } from "./session/session-lineage"
+import { downloadSendFile } from "@/components/session/send-file-tool"
 
 type FollowupItem = FollowupDraft & { id: string }
 type FollowupEdit = Pick<FollowupItem, "id" | "prompt" | "context">
@@ -411,6 +412,37 @@ export default function Page() {
 
   const workspaceTabs = createMemo(() => layout.tabs(workspaceKey))
   const sessionPanelKey = createMemo(() => (params.id ? `${serverSDK().scope}\0${params.id}` : undefined))
+
+  // Auto-download send_file_to_user results. Only fires when the completion is
+  // observed live (pending/running -> completed over SSE); parts that already
+  // arrive completed (hydration, fetched history, reload) never re-trigger.
+  const sendFileStatus = new Map<string, string>()
+  createEffect(() => {
+    const parts = Object.values(sync().data.part)
+      .flat()
+      .filter((part): part is ToolPart => part?.type === "tool" && part.tool === "send_file_to_user")
+    for (const part of parts) {
+      const previous = sendFileStatus.get(part.id)
+      sendFileStatus.set(part.id, part.state.status)
+      if (part.state.status !== "completed") continue
+      if (previous === undefined || previous === "completed") continue
+      const metadata = part.state.metadata as { path?: string; filename?: string } | undefined
+      if (!metadata?.path || !metadata.filename) continue
+      const filename = metadata.filename
+      downloadSendFile({
+        server: serverSDK().server.http,
+        directory: sdk().directory,
+        path: metadata.path,
+        filename,
+      }).catch(() => {
+        showToast({
+          variant: "error",
+          title: language.t("session.sendfile.downloadFailed"),
+          description: language.t("session.sendfile.downloadFailed.description", { filename }),
+        })
+      })
+    }
+  })
 
   createEffect(
     on(

@@ -263,6 +263,8 @@ export const dict = {
   "prompt.mode.shell.exit": "esc to exit",
   "session.child.promptDisabled": "Subagent sessions cannot be prompted.",
   "session.child.backToParent": "Back to main session.",
+  "session.sendfile.downloadFailed": "Download failed",
+  "session.sendfile.downloadFailed.description": '"{{filename}}" could not be downloaded. The file may have been deleted on the server.',
 
   "prompt.example.1": "Fix a TODO in the codebase",
   "prompt.example.2": "What is the tech stack of this project?",

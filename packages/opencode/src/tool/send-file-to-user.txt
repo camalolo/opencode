@@ -1,0 +1,7 @@
+Send a file from the server's disk to the user's browser as a download. The file is streamed to the user at download time and is not embedded in the conversation, so any file type and size works.
+
+Usage:
+- The filePath parameter should be an absolute path (a path relative to the project directory also works).
+- The file must live inside the project; write generated files into the project worktree before sending.
+- Use this when the user asks for a generated artifact: reports, exports, archives, rendered documents, binaries, logs, and other deliverables.
+- Tell the user the file is on its way; the web UI shows a download card for it.

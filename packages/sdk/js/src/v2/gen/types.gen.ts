@@ -8192,6 +8192,39 @@ export type FileReadResponses = {
 
 export type FileReadResponse = FileReadResponses[keyof FileReadResponses]
 
+export type FileDownloadData = {
+  body?: never
+  path?: never
+  query: {
+    directory?: string
+    workspace?: string
+    path: string
+  }
+  url: "/file/download"
+}
+
+export type FileDownloadErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type FileDownloadError = FileDownloadErrors[keyof FileDownloadErrors]
+
+export type FileDownloadResponses = {
+  /**
+   * Success
+   */
+  200: Blob | File
+}
+
+export type FileDownloadResponse = FileDownloadResponses[keyof FileDownloadResponses]
+
 export type FileStatusData = {
   body?: never
   path?: never
