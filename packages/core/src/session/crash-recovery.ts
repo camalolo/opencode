@@ -1,11 +1,16 @@
 export * as SessionCrashRecovery from "./crash-recovery"
 
-import { eq, sql } from "drizzle-orm"
+import { and, eq, sql } from "drizzle-orm"
 import { Effect, Layer } from "effect"
 import { Database } from "../database/database"
 import { makeGlobalNode } from "../effect/app-node"
-import { MessageTable, PartTable } from "./sql"
+import { MessageTable, PartTable, SessionTable } from "./sql"
 import { SessionV1 } from "../v1/session"
+
+// Boot-time cost scales with total history (hundreds of thousands of rows),
+// so only sessions touched in the last day are scanned; older artifacts are
+// left alone.
+const RECENT_WINDOW_MS = 24 * 60 * 60 * 1000
 
 // The stored data columns collapse the message/part unions (Omit over a union
 // keeps only shared keys), so narrow back to the variants this sweep rewrites.
@@ -31,13 +36,19 @@ const asTool = (part: StoredPartData): ToolPartData | undefined =>
 // retries provider work.
 export const sweep = Effect.fn("SessionCrashRecovery.sweep")(function* (db: Database.Interface["db"]) {
     const now = Date.now()
+    const cutoff = now - RECENT_WINDOW_MS
 
     const messages = yield* db
       .select({ id: MessageTable.id, data: MessageTable.data })
-      .from(MessageTable)
+      .from(SessionTable)
+      .crossJoin(MessageTable)
       .where(
-        sql`json_extract(${MessageTable.data}, '$.role') = 'assistant'
-          and json_extract(${MessageTable.data}, '$.time.completed') is null`,
+        and(
+          eq(MessageTable.session_id, SessionTable.id),
+          sql`max(${SessionTable.time_updated}, ${SessionTable.time_created}) >= ${cutoff}`,
+          sql`json_extract(${MessageTable.data}, '$.role') = 'assistant'`,
+          sql`json_extract(${MessageTable.data}, '$.time.completed') is null`,
+        ),
       )
       .all()
       .pipe(Effect.orDie)
@@ -56,10 +67,15 @@ export const sweep = Effect.fn("SessionCrashRecovery.sweep")(function* (db: Data
 
     const parts = yield* db
       .select({ id: PartTable.id, time_updated: PartTable.time_updated, data: PartTable.data })
-      .from(PartTable)
+      .from(SessionTable)
+      .crossJoin(PartTable)
       .where(
-        sql`json_extract(${PartTable.data}, '$.type') = 'tool'
-          and json_extract(${PartTable.data}, '$.state.status') in ('pending', 'running')`,
+        and(
+          eq(PartTable.session_id, SessionTable.id),
+          sql`max(${SessionTable.time_updated}, ${SessionTable.time_created}) >= ${cutoff}`,
+          sql`json_extract(${PartTable.data}, '$.type') = 'tool'`,
+          sql`json_extract(${PartTable.data}, '$.state.status') in ('pending', 'running')`,
+        ),
       )
       .all()
       .pipe(Effect.orDie)
