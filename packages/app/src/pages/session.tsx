@@ -428,18 +428,11 @@ export default function Page() {
       if (previous === undefined || previous === "completed") continue
       const metadata = part.state.metadata as { path?: string; filename?: string } | undefined
       if (!metadata?.path || !metadata.filename) continue
-      const filename = metadata.filename
       downloadSendFile({
         server: serverSDK().server.http,
         directory: sdk().directory,
         path: metadata.path,
-        filename,
-      }).catch(() => {
-        showToast({
-          variant: "error",
-          title: language.t("session.sendfile.downloadFailed"),
-          description: language.t("session.sendfile.downloadFailed.description", { filename }),
-        })
+        filename: metadata.filename,
       })
     }
   })

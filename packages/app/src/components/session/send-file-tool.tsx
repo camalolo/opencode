@@ -3,10 +3,8 @@ import { ToolRegistry, type ToolProps } from "@opencode-ai/session-ui/message-pa
 import { GenericTool } from "@opencode-ai/session-ui/basic-tool"
 import { AttachmentCardV2 } from "@opencode-ai/session-ui/v2/attachment-card-v2"
 import { typeLabel } from "@opencode-ai/session-ui/message-file"
-import { useLanguage } from "@/context/language"
 import { useSDK } from "@/context/sdk"
 import { useServerSDK } from "@/context/server-sdk"
-import { showToast } from "@/utils/toast"
 
 type SendFileMetadata = {
   path?: string
@@ -16,7 +14,13 @@ type SendFileMetadata = {
   download?: boolean
 }
 
-export async function downloadSendFile(input: {
+// Navigates straight to the download endpoint so the browser's download
+// manager starts immediately and streams to disk. Buffering through fetch+blob
+// would hold large files in memory with no visible progress until fully
+// downloaded. The endpoint answers with Content-Disposition: attachment, so the
+// download attribute is only a hint; auth rides the ?auth_token= query
+// credential the endpoint accepts (same base64 user:pass format as Basic auth).
+export function downloadSendFile(input: {
   server: { url: string; username?: string; password?: string }
   directory: string
   path: string
@@ -25,21 +29,15 @@ export async function downloadSendFile(input: {
   const url = new URL("/file/download", input.server.url)
   url.searchParams.set("directory", input.directory)
   url.searchParams.set("path", input.path)
-  const headers: Record<string, string> = {}
   if (input.server.password) {
-    headers.authorization = `Basic ${btoa(`${input.server.username ?? "opencode"}:${input.server.password}`)}`
+    url.searchParams.set("auth_token", btoa(`${input.server.username ?? "opencode"}:${input.server.password}`))
   }
-  const response = await fetch(url, { headers })
-  if (!response.ok) throw new Error(`Download failed: ${response.status}`)
-  const blob = await response.blob()
-  const href = URL.createObjectURL(blob)
   const anchor = document.createElement("a")
-  anchor.href = href
+  anchor.href = url.toString()
   anchor.download = input.filename
   document.body.appendChild(anchor)
   anchor.click()
   anchor.remove()
-  URL.revokeObjectURL(href)
 }
 
 function formatSize(bytes: number) {
@@ -55,7 +53,6 @@ function formatSize(bytes: number) {
 }
 
 export function SendFileTool(props: ToolProps) {
-  const language = useLanguage()
   const sdk = useSDK()
   const serverSDK = useServerSDK()
   const metadata = createMemo(() => (props.metadata ?? {}) as SendFileMetadata)
@@ -66,18 +63,11 @@ export function SendFileTool(props: ToolProps) {
   const download = () => {
     const meta = metadata()
     if (!meta.path || !meta.filename) return
-    const filename = meta.filename
     downloadSendFile({
       server: serverSDK().server.http,
       directory: sdk().directory,
       path: meta.path,
-      filename,
-    }).catch(() => {
-      showToast({
-        variant: "error",
-        title: language.t("session.sendfile.downloadFailed"),
-        description: language.t("session.sendfile.downloadFailed.description", { filename }),
-      })
+      filename: meta.filename,
     })
   }
 
