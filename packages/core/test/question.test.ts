@@ -60,6 +60,27 @@ describe("QuestionV2", () => {
     }),
   )
 
+  it.effect("blanks secret answers from the replied event but resolves the ask", () =>
+    Effect.gen(function* () {
+      const service = yield* QuestionV2.Service
+      const events = yield* EventV2.Service
+      const published: EventV2.Payload[] = []
+      const unsubscribe = yield* events.listen((event) =>
+        Effect.sync(() => {
+          if (event.type === QuestionV2.Event.Replied.type) published.push(event)
+        }),
+      )
+      yield* Effect.addFinalizer(() => unsubscribe)
+      const secretQuestion: QuestionV2.Info = { ...question, secret: true }
+      const { fiber, request } = yield* waitForAsk(service, { sessionID, questions: [secretQuestion] })
+
+      yield* service.reply({ requestID: request.id, answers: [["hunter2"]] })
+
+      expect(yield* Fiber.join(fiber)).toEqual([["hunter2"]])
+      expect(published.map((event) => event.data)).toEqual([{ sessionID, requestID: request.id, answers: [[]] }])
+    }),
+  )
+
   it.effect("publishes rejection, fails the ask, and rejects unknown IDs", () =>
     Effect.gen(function* () {
       const service = yield* QuestionV2.Service

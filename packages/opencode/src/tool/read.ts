@@ -7,6 +7,7 @@ import { LSP } from "@/lsp/lsp"
 import DESCRIPTION from "./read.txt"
 import { InstanceState } from "@/effect/instance-state"
 import { assertExternalDirectoryEffect } from "./external-directory"
+import { assertNotSecretPath } from "./secret-file"
 import { markRead } from "./read-state"
 import { Instruction } from "../session/instruction"
 import { isPdfAttachment, sniffAttachmentMime } from "@/util/media"
@@ -239,6 +240,7 @@ export const ReadTool = Tool.define<
       if (process.platform === "win32") {
         filepath = FSUtil.normalizePath(filepath)
       }
+      yield* assertNotSecretPath(filepath)
       const title = path.relative(instance.worktree, filepath)
 
       const stat = yield* fs.stat(filepath).pipe(

@@ -739,6 +739,7 @@ export type QuestionInfo = {
   options: Array<QuestionOption>
   multiple?: boolean
   custom?: boolean
+  secret?: boolean
 }
 
 export type QuestionTool = {
@@ -2824,6 +2825,12 @@ export type ProviderNotFoundError = {
   message: string
 }
 
+export type TaskNotFoundError = {
+  _tag: "TaskNotFoundError"
+  taskID: string
+  message: string
+}
+
 export type OutputFormat1 =
   | {
       type: "text"
@@ -3191,6 +3198,7 @@ export type QuestionV2Info = {
   options: Array<QuestionV2Option>
   multiple?: boolean
   custom?: boolean
+  secret?: boolean
 }
 
 export type QuestionV2Tool = {
@@ -5045,6 +5053,69 @@ export type PermissionSavedInfo = {
 export type FileSystemEntry = {
   path: string
   type: "file" | "directory"
+}
+
+export type TaskInfo = {
+  id: string
+  /**
+   * Absolute working directory the scheduled session runs in
+   */
+  directory: string
+  /**
+   * Unique task name within its directory
+   */
+  name: string
+  description?: string
+  /**
+   * Five-field cron expression in the task timezone
+   */
+  cron: string
+  /**
+   * IANA timezone for the cron expression; defaults to the server timezone
+   */
+  timezone?: string
+  /**
+   * Agent used for scheduled sessions; defaults to the configured default agent
+   */
+  agent?: string
+  model?: ModelRef
+  /**
+   * Prompt text admitted into each scheduled session
+   */
+  prompt: string
+  enabled: boolean
+  /**
+   * Interrupt and fail runs that exceed this duration
+   */
+  runTimeoutMs?: number
+  /**
+   * Maximum run history rows kept per task; older runs are pruned
+   */
+  retainRuns?: number
+  /**
+   * Epoch ms of the next scheduled fire; absent while disabled
+   */
+  nextRunAt?: number
+  timeCreated: number
+  timeUpdated: number
+}
+
+export type TaskRun = {
+  id: string
+  taskID: string
+  /**
+   * Session created for this run; absent until delivery starts
+   */
+  sessionID?: string
+  status: "pending" | "running" | "completed" | "failed" | "skipped" | "cancelled"
+  trigger: "schedule" | "manual"
+  /**
+   * Epoch ms of the schedule slot this run fulfills
+   */
+  scheduledAt: number
+  timeStarted?: number
+  timeCompleted?: number
+  error?: string
 }
 
 export type CommandV2Info = {
@@ -13123,6 +13194,326 @@ export type V2FsFindResponses = {
 }
 
 export type V2FsFindResponse = V2FsFindResponses[keyof V2FsFindResponses]
+
+export type V2TaskListData = {
+  body?: never
+  path?: never
+  query?: {
+    location?: {
+      directory?: string
+      workspace?: string
+    }
+  }
+  url: "/api/task"
+}
+
+export type V2TaskListErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * UnauthorizedError
+   */
+  401: UnauthorizedError
+}
+
+export type V2TaskListError = V2TaskListErrors[keyof V2TaskListErrors]
+
+export type V2TaskListResponses = {
+  /**
+   * Success
+   */
+  200: {
+    location: LocationInfo
+    data: Array<TaskInfo>
+  }
+}
+
+export type V2TaskListResponse = V2TaskListResponses[keyof V2TaskListResponses]
+
+export type V2TaskCreateData = {
+  body: {
+    name: string
+    description?: string
+    cron: string
+    timezone?: string
+    agent?: string
+    model?: ModelRef
+    prompt: string
+    enabled?: boolean
+    runTimeoutMs?: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+    retainRuns?: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+  }
+  path?: never
+  query?: {
+    location?: {
+      directory?: string
+      workspace?: string
+    }
+  }
+  url: "/api/task"
+}
+
+export type V2TaskCreateErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * UnauthorizedError
+   */
+  401: UnauthorizedError
+  /**
+   * ConflictError
+   */
+  409: ConflictError
+}
+
+export type V2TaskCreateError = V2TaskCreateErrors[keyof V2TaskCreateErrors]
+
+export type V2TaskCreateResponses = {
+  /**
+   * Success
+   */
+  200: {
+    location: LocationInfo
+    data: TaskInfo
+  }
+}
+
+export type V2TaskCreateResponse = V2TaskCreateResponses[keyof V2TaskCreateResponses]
+
+export type V2TaskRemoveData = {
+  body?: never
+  path: {
+    taskID: string
+  }
+  query?: {
+    location?: {
+      directory?: string
+      workspace?: string
+    }
+  }
+  url: "/api/task/{taskID}"
+}
+
+export type V2TaskRemoveErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * UnauthorizedError
+   */
+  401: UnauthorizedError
+  /**
+   * TaskNotFoundError
+   */
+  404: TaskNotFoundError
+}
+
+export type V2TaskRemoveError = V2TaskRemoveErrors[keyof V2TaskRemoveErrors]
+
+export type V2TaskRemoveResponses = {
+  /**
+   * <No Content>
+   */
+  204: void
+}
+
+export type V2TaskRemoveResponse = V2TaskRemoveResponses[keyof V2TaskRemoveResponses]
+
+export type V2TaskGetData = {
+  body?: never
+  path: {
+    taskID: string
+  }
+  query?: {
+    location?: {
+      directory?: string
+      workspace?: string
+    }
+  }
+  url: "/api/task/{taskID}"
+}
+
+export type V2TaskGetErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * UnauthorizedError
+   */
+  401: UnauthorizedError
+  /**
+   * TaskNotFoundError
+   */
+  404: TaskNotFoundError
+}
+
+export type V2TaskGetError = V2TaskGetErrors[keyof V2TaskGetErrors]
+
+export type V2TaskGetResponses = {
+  /**
+   * Success
+   */
+  200: {
+    location: LocationInfo
+    data: TaskInfo
+  }
+}
+
+export type V2TaskGetResponse = V2TaskGetResponses[keyof V2TaskGetResponses]
+
+export type V2TaskUpdateData = {
+  body: {
+    name?: string
+    description?: string
+    cron?: string
+    timezone?: string
+    agent?: string
+    model?: ModelRef
+    prompt?: string
+    enabled?: boolean
+    runTimeoutMs?: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+    retainRuns?: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+  }
+  path: {
+    taskID: string
+  }
+  query?: {
+    location?: {
+      directory?: string
+      workspace?: string
+    }
+  }
+  url: "/api/task/{taskID}"
+}
+
+export type V2TaskUpdateErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * UnauthorizedError
+   */
+  401: UnauthorizedError
+  /**
+   * TaskNotFoundError
+   */
+  404: TaskNotFoundError
+  /**
+   * ConflictError
+   */
+  409: ConflictError
+}
+
+export type V2TaskUpdateError = V2TaskUpdateErrors[keyof V2TaskUpdateErrors]
+
+export type V2TaskUpdateResponses = {
+  /**
+   * Success
+   */
+  200: {
+    location: LocationInfo
+    data: TaskInfo
+  }
+}
+
+export type V2TaskUpdateResponse = V2TaskUpdateResponses[keyof V2TaskUpdateResponses]
+
+export type V2TaskTriggerData = {
+  body?: never
+  path: {
+    taskID: string
+  }
+  query?: {
+    location?: {
+      directory?: string
+      workspace?: string
+    }
+  }
+  url: "/api/task/{taskID}/trigger"
+}
+
+export type V2TaskTriggerErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * UnauthorizedError
+   */
+  401: UnauthorizedError
+  /**
+   * TaskNotFoundError
+   */
+  404: TaskNotFoundError
+  /**
+   * ConflictError
+   */
+  409: ConflictError
+}
+
+export type V2TaskTriggerError = V2TaskTriggerErrors[keyof V2TaskTriggerErrors]
+
+export type V2TaskTriggerResponses = {
+  /**
+   * Success
+   */
+  200: {
+    location: LocationInfo
+    data: TaskRun
+  }
+}
+
+export type V2TaskTriggerResponse = V2TaskTriggerResponses[keyof V2TaskTriggerResponses]
+
+export type V2TaskListRunsData = {
+  body?: never
+  path: {
+    taskID: string
+  }
+  query?: {
+    location?: {
+      directory?: string
+      workspace?: string
+    }
+  }
+  url: "/api/task/{taskID}/run"
+}
+
+export type V2TaskListRunsErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * UnauthorizedError
+   */
+  401: UnauthorizedError
+  /**
+   * TaskNotFoundError
+   */
+  404: TaskNotFoundError
+}
+
+export type V2TaskListRunsError = V2TaskListRunsErrors[keyof V2TaskListRunsErrors]
+
+export type V2TaskListRunsResponses = {
+  /**
+   * Success
+   */
+  200: {
+    location: LocationInfo
+    data: Array<TaskRun>
+  }
+}
+
+export type V2TaskListRunsResponse = V2TaskListRunsResponses[keyof V2TaskListRunsResponses]
 
 export type V2CommandListData = {
   body?: never

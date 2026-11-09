@@ -4,6 +4,7 @@ import { InstanceState } from "@/effect/instance-state"
 import { FSUtil } from "@opencode-ai/core/fs-util"
 import { Ripgrep } from "@opencode-ai/core/ripgrep"
 import { assertExternalDirectoryEffect } from "./external-directory"
+import { assertNotSecretPath } from "./secret-file"
 import DESCRIPTION from "./grep.txt"
 import * as Tool from "./tool"
 
@@ -58,6 +59,7 @@ export const GrepTool = Tool.define(
           })
 
           const search = FSUtil.resolve(requested)
+          yield* assertNotSecretPath(search)
           const info = yield* fs.stat(search).pipe(Effect.catch(() => Effect.succeed(undefined)))
           const cwd = info?.type === "Directory" ? search : path.dirname(search)
           const result = yield* ripgrep.grep({
@@ -65,6 +67,7 @@ export const GrepTool = Tool.define(
             pattern: params.pattern,
             include: params.include,
             limit: 100,
+            excludeGlobs: [`${path.relative(cwd, path.join(ins.directory, ".opencode", "secrets")).split(path.sep).join("/")}/**`],
           })
           if (result.length === 0) return empty
 

@@ -2,6 +2,7 @@ export * as ReadTool from "./read"
 
 import { ToolFailure } from "@opencode-ai/llm"
 import { Effect, Layer, Schema } from "effect"
+import path from "path"
 import { makeLocationNode } from "../effect/app-node"
 import { FileSystem } from "../filesystem"
 import { Image } from "../image"
@@ -66,6 +67,17 @@ const layer = Layer.effectDiscard(
                   agent: context.agent,
                   source,
                 })
+              const secretsDir = yield* mutation.resolve({ path: ".opencode/secrets" })
+              if (
+                target.canonical === secretsDir.canonical ||
+                target.canonical.startsWith(secretsDir.canonical + path.sep)
+              )
+                return yield* Effect.fail(
+                  new ToolFailure({
+                    message:
+                      "This path holds a secret provided by the user. Never read it directly; consume it inside a shell command instead, e.g. `some-command < <path>`.",
+                  }),
+                )
               const resource = target.resource
               const absolute = AbsolutePath.make(target.canonical)
               const type = yield* reader.inspect(absolute)

@@ -37,6 +37,10 @@ export const Info = Schema.Struct({
   custom: Schema.Boolean.pipe(optional).annotate({
     description: "Allow typing a custom answer (default: true)",
   }),
+  secret: Schema.Boolean.pipe(optional).annotate({
+    description:
+      "The answer is a secret (e.g. a password). Clients must mask the input and the server never returns the answer to the requester.",
+  }),
 }).annotate({ identifier: "QuestionV2.Info" })
 export interface Info extends Schema.Schema.Type<typeof Info> {}
 

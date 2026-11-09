@@ -6,6 +6,7 @@ import { Session } from "@/session/session"
 import { SessionSleepScheduler } from "@/session/sleep-scheduler"
 import { SessionStatus } from "@/session/status"
 import { QuestionTool } from "./question"
+import { AskPasswordTool } from "./askpassword"
 import { ShellTool } from "./shell"
 import { EditTool } from "./edit"
 import { GlobTool } from "./glob"
@@ -106,6 +107,7 @@ const layer = Layer.effect(
     const read = yield* ReadTool
     const showImage = yield* ShowImageTool
     const question = yield* QuestionTool
+    const askPassword = yield* AskPasswordTool
     const todo = yield* TodoWriteTool
     const lsptool = yield* LspTool
     const plan = yield* PlanExitTool
@@ -236,6 +238,7 @@ const layer = Layer.effect(
           sleepStatus: Tool.init(sleepStatusTool),
           patch: Tool.init(patchtool),
           question: Tool.init(question),
+          askPassword: Tool.init(askPassword),
           lsp: Tool.init(lsptool),
           plan: Tool.init(plan),
           ...(codeModeTool ? { execute: Tool.init(codeModeTool) } : {}),
@@ -245,7 +248,7 @@ const layer = Layer.effect(
           custom,
           builtin: [
             tool.invalid,
-            ...(questionEnabled ? [tool.question] : []),
+            ...(questionEnabled ? [tool.question, tool.askPassword] : []),
             tool.shell,
             tool.read,
             tool.showImage,

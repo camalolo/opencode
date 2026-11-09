@@ -58,6 +58,8 @@ export function RunQuestionBody(props: {
   const input = createMemo(() => questionInput(state()))
   const other = createMemo(() => questionOther(props.request, state()))
   const picked = createMemo(() => questionPicked(state()))
+  const secret = createMemo(() => info()?.secret === true)
+  const secretValue = createMemo(() => state().custom[state().tab] ?? "")
   const disabled = createMemo(() => state().submitting)
   const narrow = createMemo(() => footerWidthPolicy(dims().width).dialog.narrow)
   const verb = createMemo(() => {
@@ -178,6 +180,35 @@ export function RunQuestionBody(props: {
         return
       }
 
+      return
+    }
+
+    // Secret questions capture raw keys and render masked bullets; the value
+    // stays in the custom buffer and is only sent through the reply payload.
+    // Arrow/tab navigation still falls through for multi-question requests.
+    if (secret() && !confirm()) {
+      if (event.ctrl || event.meta) return
+      if (event.name === "return") {
+        event.preventDefault()
+        saveCustom()
+        return
+      }
+      if (event.name === "backspace") {
+        event.preventDefault()
+        setState((prev) => questionStoreCustom(prev, prev.tab, (prev.custom[prev.tab] ?? "").slice(0, -1)))
+        return
+      }
+      if (event.name === "escape") {
+        reject()
+        event.preventDefault()
+        return
+      }
+      if (event.name === "left" || event.name === "right" || event.name === "tab") return
+      const sequence = event.sequence
+      if (sequence.length === 1 && sequence.charCodeAt(0) >= 32 && sequence.charCodeAt(0) !== 127) {
+        event.preventDefault()
+        setState((prev) => questionStoreCustom(prev, prev.tab, (prev.custom[prev.tab] ?? "") + sequence))
+      }
       return
     }
 
@@ -336,12 +367,13 @@ export function RunQuestionBody(props: {
                     {(item, index) => {
                       const value = () => state().answers[index()]?.join(", ") ?? ""
                       const answered = () => Boolean(value())
+                      const display = () => (item.secret ? "•".repeat(value().length) : value())
                       return (
                         <box paddingLeft={1}>
                           <text wrapMode="word">
                             <span style={{ fg: props.theme.muted }}>{item.header}:</span>{" "}
                             <span style={{ fg: answered() ? props.theme.text : props.theme.error }}>
-                              {answered() ? value() : "(not answered)"}
+                              {answered() ? display() : "(not answered)"}
                             </span>
                           </text>
                         </box>
@@ -507,6 +539,15 @@ export function RunQuestionBody(props: {
                 </box>
               </scrollbox>
             </box>
+            <Show when={secret()}>
+              <box paddingLeft={1} flexDirection="column" gap={1}>
+                <text fg={props.theme.text}>{secretValue() ? "•".repeat(secretValue().length) : "(type below)"}</text>
+                <text fg={props.theme.muted} wrapMode="word">
+                  Type the password — enter submits, backspace deletes. It is stored on the server and never shown to
+                  the assistant.
+                </text>
+              </box>
+            </Show>
           </box>
         </Show>
       </box>

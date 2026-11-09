@@ -1,6 +1,6 @@
 import { createStore } from "solid-js/store"
 import { createMemo, createSignal, For, onCleanup, onMount, Show } from "solid-js"
-import { useRenderer } from "@opentui/solid"
+import { useKeyboard, useRenderer } from "@opentui/solid"
 import type { TextareaRenderable } from "@opentui/core"
 import { selectedForeground, tint, useTheme } from "../../context/theme"
 import type { QuestionAnswer, QuestionRequest } from "@opencode-ai/sdk/v2"
@@ -28,6 +28,7 @@ export function QuestionPrompt(props: { request: QuestionRequest; directory?: st
     custom: [] as string[],
     selected: 0,
     editing: false,
+    secret: [] as string[],
   })
 
   let textarea: TextareaRenderable | undefined
@@ -39,6 +40,8 @@ export function QuestionPrompt(props: { request: QuestionRequest; directory?: st
   const other = createMemo(() => custom() && store.selected === options().length)
   const input = createMemo(() => store.custom[store.tab] ?? "")
   const multi = createMemo(() => question()?.multiple === true)
+  const secret = createMemo(() => question()?.secret === true)
+  const secretValue = createMemo(() => store.secret[store.tab] ?? "")
   const customPicked = createMemo(() => {
     const value = input()
     if (!value) return false
@@ -101,6 +104,34 @@ export function QuestionPrompt(props: { request: QuestionRequest; directory?: st
     setStore("tab", index)
     setStore("selected", 0)
   }
+
+  // Secret questions capture raw keys and render masked bullets; the value
+  // never leaves this buffer except through the reply payload.
+  useKeyboard((evt) => {
+    if (!secret() || confirm()) return
+    if (evt.ctrl || evt.meta || evt.super || evt.hyper) return
+    if (evt.name === "return") {
+      evt.preventDefault()
+      const value = secretValue()
+      if (value) pick(value)
+      return
+    }
+    if (evt.name === "backspace") {
+      evt.preventDefault()
+      setStore("secret", store.tab, secretValue().slice(0, -1))
+      return
+    }
+    const sequence = evt.sequence
+    if (
+      evt.name !== "escape" &&
+      sequence.length === 1 &&
+      sequence.charCodeAt(0) >= 32 &&
+      sequence.charCodeAt(0) !== 127
+    ) {
+      evt.preventDefault()
+      setStore("secret", store.tab, secretValue() + sequence)
+    }
+  })
 
   function selectOption() {
     if (other()) {
@@ -231,14 +262,25 @@ export function QuestionPrompt(props: { request: QuestionRequest; directory?: st
           group: "Question",
           cmd: () => selectTab((store.tab - 1 + tabs()) % tabs()),
         },
-        {
-          key: "h",
-          desc: "Previous question",
-          group: "Question",
-          cmd: () => selectTab((store.tab - 1 + tabs()) % tabs()),
-        },
-        { key: "right", desc: "Next question", group: "Question", cmd: () => selectTab((store.tab + 1) % tabs()) },
-        { key: "l", desc: "Next question", group: "Question", cmd: () => selectTab((store.tab + 1) % tabs()) },
+        // vim-style tab navigation is disabled for secret questions: the
+        // letters must reach the masked input instead.
+        ...(secret()
+          ? []
+          : [
+              {
+                key: "h",
+                desc: "Previous question",
+                group: "Question",
+                cmd: () => selectTab((store.tab - 1 + tabs()) % tabs()),
+              },
+              {
+                key: "right",
+                desc: "Next question",
+                group: "Question",
+                cmd: () => selectTab((store.tab + 1) % tabs()),
+              },
+              { key: "l", desc: "Next question", group: "Question", cmd: () => selectTab((store.tab + 1) % tabs()) },
+            ]),
         {
           key: "tab",
           desc: "Next question",
@@ -254,30 +296,46 @@ export function QuestionPrompt(props: { request: QuestionRequest; directory?: st
               ...tuiConfig.keybinds.get("app.exit"),
             ]
           : [
-              ...Array.from({ length: max }, (_, index) => ({
-                key: String(index + 1),
-                desc: `Select answer ${index + 1}`,
-                group: "Question",
-                cmd: () => {
-                  moveTo(index)
-                  selectOption()
-                },
-              })),
-              {
-                key: "up",
-                desc: "Previous answer",
-                group: "Question",
-                cmd: () => moveTo((store.selected - 1 + total) % total),
-              },
-              {
-                key: "k",
-                desc: "Previous answer",
-                group: "Question",
-                cmd: () => moveTo((store.selected - 1 + total) % total),
-              },
-              { key: "down", desc: "Next answer", group: "Question", cmd: () => moveTo((store.selected + 1) % total) },
-              { key: "j", desc: "Next answer", group: "Question", cmd: () => moveTo((store.selected + 1) % total) },
-              { key: "return", desc: "Select answer", group: "Question", cmd: () => selectOption() },
+              // Secret questions take raw keyboard input: option and
+              // answer-selection keys must not fire while typing.
+              ...(secret()
+                ? []
+                : [
+                    ...Array.from({ length: max }, (_, index) => ({
+                      key: String(index + 1),
+                      desc: `Select answer ${index + 1}`,
+                      group: "Question",
+                      cmd: () => {
+                        moveTo(index)
+                        selectOption()
+                      },
+                    })),
+                    {
+                      key: "up",
+                      desc: "Previous answer",
+                      group: "Question",
+                      cmd: () => moveTo((store.selected - 1 + total) % total),
+                    },
+                    {
+                      key: "k",
+                      desc: "Previous answer",
+                      group: "Question",
+                      cmd: () => moveTo((store.selected - 1 + total) % total),
+                    },
+                    {
+                      key: "down",
+                      desc: "Next answer",
+                      group: "Question",
+                      cmd: () => moveTo((store.selected + 1) % total),
+                    },
+                    {
+                      key: "j",
+                      desc: "Next answer",
+                      group: "Question",
+                      cmd: () => moveTo((store.selected + 1) % total),
+                    },
+                    { key: "return", desc: "Select answer", group: "Question", cmd: () => selectOption() },
+                  ]),
               { key: "escape", desc: "Reject question", group: "Question", cmd: () => reject() },
               ...tuiConfig.keybinds.get("app.exit"),
             ]),
@@ -360,99 +418,112 @@ export function QuestionPrompt(props: { request: QuestionRequest; directory?: st
                 {multi() ? " (select all that apply)" : ""}
               </text>
             </box>
-            <box>
-              <For each={options()}>
-                {(opt, i) => {
-                  const active = () => i() === store.selected
-                  const picked = () => store.answers[store.tab]?.includes(opt.label) ?? false
-                  return (
-                    <box
-                      onMouseOver={() => moveTo(i())}
-                      onMouseDown={() => moveTo(i())}
-                      onMouseUp={() => {
-                        if (renderer.getSelection()?.getSelectedText()) return
-                        selectOption()
-                      }}
-                    >
-                      <box flexDirection="row">
-                        <box backgroundColor={active() ? theme.backgroundElement : undefined} paddingRight={1}>
-                          <text fg={active() ? tint(theme.textMuted, theme.secondary, 0.6) : theme.textMuted}>
-                            {`${i() + 1}.`}
-                          </text>
+            <Show when={secret()}>
+              <box paddingLeft={1}>
+                <text fg={theme.text}>{secretValue() ? "•".repeat(secretValue().length) : "(type below)"}</text>
+              </box>
+              <box paddingLeft={1}>
+                <text fg={theme.textMuted}>
+                  Type the password — enter submits, backspace deletes. It is stored on the server and never shown to
+                  the assistant.
+                </text>
+              </box>
+            </Show>
+            <Show when={!secret()}>
+              <box>
+                <For each={options()}>
+                  {(opt, i) => {
+                    const active = () => i() === store.selected
+                    const picked = () => store.answers[store.tab]?.includes(opt.label) ?? false
+                    return (
+                      <box
+                        onMouseOver={() => moveTo(i())}
+                        onMouseDown={() => moveTo(i())}
+                        onMouseUp={() => {
+                          if (renderer.getSelection()?.getSelectedText()) return
+                          selectOption()
+                        }}
+                      >
+                        <box flexDirection="row">
+                          <box backgroundColor={active() ? theme.backgroundElement : undefined} paddingRight={1}>
+                            <text fg={active() ? tint(theme.textMuted, theme.secondary, 0.6) : theme.textMuted}>
+                              {`${i() + 1}.`}
+                            </text>
+                          </box>
+                          <box backgroundColor={active() ? theme.backgroundElement : undefined}>
+                            <text fg={active() ? theme.secondary : picked() ? theme.success : theme.text}>
+                              {multi() ? `[${picked() ? "✓" : " "}] ${opt.label}` : opt.label}
+                            </text>
+                          </box>
+                          <Show when={!multi()}>
+                            <text fg={theme.success}>{picked() ? " ✓" : ""}</text>
+                          </Show>
                         </box>
-                        <box backgroundColor={active() ? theme.backgroundElement : undefined}>
-                          <text fg={active() ? theme.secondary : picked() ? theme.success : theme.text}>
-                            {multi() ? `[${picked() ? "✓" : " "}] ${opt.label}` : opt.label}
-                          </text>
-                        </box>
-                        <Show when={!multi()}>
-                          <text fg={theme.success}>{picked() ? " ✓" : ""}</text>
-                        </Show>
-                      </box>
 
-                      <box paddingLeft={3}>
-                        <text fg={theme.textMuted}>{opt.description}</text>
+                        <box paddingLeft={3}>
+                          <text fg={theme.textMuted}>{opt.description}</text>
+                        </box>
                       </box>
-                    </box>
-                  )
-                }}
-              </For>
-              <Show when={custom()}>
-                <box
-                  onMouseOver={() => moveTo(options().length)}
-                  onMouseDown={() => moveTo(options().length)}
-                  onMouseUp={() => {
-                    if (renderer.getSelection()?.getSelectedText()) return
-                    selectOption()
+                    )
                   }}
-                >
-                  <box flexDirection="row">
-                    <box backgroundColor={other() ? theme.backgroundElement : undefined} paddingRight={1}>
-                      <text fg={other() ? tint(theme.textMuted, theme.secondary, 0.6) : theme.textMuted}>
-                        {`${options().length + 1}.`}
-                      </text>
-                    </box>
-                    <box backgroundColor={other() ? theme.backgroundElement : undefined}>
-                      <text fg={other() ? theme.secondary : customPicked() ? theme.success : theme.text}>
-                        {multi() ? `[${customPicked() ? "✓" : " "}] Type your own answer` : "Type your own answer"}
-                      </text>
-                    </box>
+                </For>
+                <Show when={custom()}>
+                  <box
+                    onMouseOver={() => moveTo(options().length)}
+                    onMouseDown={() => moveTo(options().length)}
+                    onMouseUp={() => {
+                      if (renderer.getSelection()?.getSelectedText()) return
+                      selectOption()
+                    }}
+                  >
+                    <box flexDirection="row">
+                      <box backgroundColor={other() ? theme.backgroundElement : undefined} paddingRight={1}>
+                        <text fg={other() ? tint(theme.textMuted, theme.secondary, 0.6) : theme.textMuted}>
+                          {`${options().length + 1}.`}
+                        </text>
+                      </box>
+                      <box backgroundColor={other() ? theme.backgroundElement : undefined}>
+                        <text fg={other() ? theme.secondary : customPicked() ? theme.success : theme.text}>
+                          {multi() ? `[${customPicked() ? "✓" : " "}] Type your own answer` : "Type your own answer"}
+                        </text>
+                      </box>
 
-                    <Show when={!multi()}>
-                      <text fg={theme.success}>{customPicked() ? " ✓" : ""}</text>
+                      <Show when={!multi()}>
+                        <text fg={theme.success}>{customPicked() ? " ✓" : ""}</text>
+                      </Show>
+                    </box>
+                    <Show when={store.editing}>
+                      <box paddingLeft={3}>
+                        <textarea
+                          ref={(val: TextareaRenderable) => {
+                            textarea = val
+                            val.traits = { status: "ANSWER" }
+                            queueMicrotask(() => {
+                              val.focus()
+                              val.gotoLineEnd()
+                            })
+                          }}
+                          initialValue={input()}
+                          placeholder="Type your own answer"
+                          placeholderColor={theme.textMuted}
+                          minHeight={1}
+                          maxHeight={6}
+                          textColor={theme.text}
+                          focusedTextColor={theme.text}
+                          cursorColor={theme.primary}
+                          cursorStyle={tuiConfig.cursor}
+                        />
+                      </box>
+                    </Show>
+                    <Show when={!store.editing && input()}>
+                      <box paddingLeft={3}>
+                        <text fg={theme.textMuted}>{input()}</text>
+                      </box>
                     </Show>
                   </box>
-                  <Show when={store.editing}>
-                    <box paddingLeft={3}>
-                      <textarea
-                        ref={(val: TextareaRenderable) => {
-                          textarea = val
-                          val.traits = { status: "ANSWER" }
-                          queueMicrotask(() => {
-                            val.focus()
-                            val.gotoLineEnd()
-                          })
-                        }}
-                        initialValue={input()}
-                        placeholder="Type your own answer"
-                        placeholderColor={theme.textMuted}
-                        minHeight={1}
-                        maxHeight={6}
-                        textColor={theme.text}
-                        focusedTextColor={theme.text}
-                        cursorColor={theme.primary}
-                        cursorStyle={tuiConfig.cursor}
-                      />
-                    </box>
-                  </Show>
-                  <Show when={!store.editing && input()}>
-                    <box paddingLeft={3}>
-                      <text fg={theme.textMuted}>{input()}</text>
-                    </box>
-                  </Show>
-                </box>
-              </Show>
-            </box>
+                </Show>
+              </box>
+            </Show>
           </box>
         </Show>
 
@@ -464,12 +535,13 @@ export function QuestionPrompt(props: { request: QuestionRequest; directory?: st
             {(q, index) => {
               const value = () => store.answers[index()]?.join(", ") ?? ""
               const answered = () => Boolean(value())
+              const display = () => (q.secret ? "•".repeat(value().length) : value())
               return (
                 <box paddingLeft={1}>
                   <text>
                     <span style={{ fg: theme.textMuted }}>{q.header}:</span>{" "}
                     <span style={{ fg: answered() ? theme.text : theme.error }}>
-                      {answered() ? value() : "(not answered)"}
+                      {answered() ? display() : "(not answered)"}
                     </span>
                   </text>
                 </box>

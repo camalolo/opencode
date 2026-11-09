@@ -1106,6 +1106,39 @@
     color: var(--v2-text-text-base);
   }
 
+  [data-slot="question-secret-input"] {
+    width: 100%;
+    padding: 8px 10px;
+    background-color: var(--v2-background-bg-layer-01);
+    border: 0.5px solid var(--v2-border-border-base);
+    border-radius: 6px;
+    box-shadow: none;
+    outline: none;
+    font-family: var(--font-family-sans);
+    font-size: 14px;
+    font-weight: var(--font-weight-regular);
+    line-height: var(--line-height-large);
+    color: var(--v2-text-text-base);
+
+    &:focus {
+      border-color: var(--icon-interactive-base);
+      background-color: var(--v2-state-bg-info);
+    }
+
+    &:disabled {
+      opacity: 0.6;
+    }
+  }
+
+  [data-slot="question-secret-hint"] {
+    font-family: var(--font-family-sans);
+    font-size: 13px;
+    font-weight: var(--font-weight-regular);
+    line-height: var(--line-height-large);
+    color: var(--v2-text-text-muted);
+    padding: 0 10px;
+  }
+
   [data-slot="option-description"] {
     font-family: var(--font-family-sans);
     font-size: 14px;

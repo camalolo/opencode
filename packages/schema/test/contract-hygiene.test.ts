@@ -33,6 +33,22 @@ describe("contract hygiene", () => {
     expect(Pty.ID.create()).toStartWith("pty_")
   })
 
+  test("question secret flag is optional and omitted while encoding", () => {
+    const decode = Schema.decodeUnknownSync(Question.Info)
+    expect(decode({ question: "q", header: "h", options: [] })).toEqual({ question: "q", header: "h", options: [] })
+    expect(decode({ question: "q", header: "h", options: [], secret: true })).toEqual({
+      question: "q",
+      header: "h",
+      options: [],
+      secret: true,
+    })
+    expect(Schema.encodeSync(Question.Info)({ question: "q", header: "h", options: [], secret: undefined })).toEqual({
+      question: "q",
+      header: "h",
+      options: [],
+    })
+  })
+
   test("reusable public identifiers are stable and unique", () => {
     const identifiers = [
       Agent.Color,

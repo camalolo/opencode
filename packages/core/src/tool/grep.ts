@@ -93,13 +93,25 @@ const layer = Layer.effectDiscard(
                 source: { type: "tool", messageID: context.assistantMessageID, callID: context.toolCallID },
               })
               const target = path.resolve(location.directory, input.path ?? ".")
+              const secretsDir = path.join(location.directory, ".opencode", "secrets")
+              if (target === secretsDir || target.startsWith(secretsDir + path.sep))
+                return yield* Effect.fail(
+                  new ToolFailure({
+                    message:
+                      "This path holds a secret provided by the user. Never read it directly; consume it inside a shell command instead, e.g. `some-command < <path>`.",
+                  }),
+                )
               const info = yield* fs.stat(target).pipe(Effect.catch(() => Effect.succeed(undefined)))
+              const root = info?.type === "Directory" ? target : path.dirname(target)
+              const relSecrets = path.relative(root, secretsDir).split(path.sep).join("/")
+              const excludeGlobs = relSecrets && !relSecrets.startsWith("..") ? [`${relSecrets}/**`] : undefined
               return yield* ripgrep
                 .grep({
-                  cwd: info?.type === "Directory" ? target : path.dirname(target),
+                  cwd: root,
                   pattern: input.pattern,
                   file: info?.type === "File" ? path.basename(target) : undefined,
                   include: input.include,
+                  excludeGlobs,
                   limit: input.limit ?? Number.MAX_SAFE_INTEGER,
                 })
                 .pipe(

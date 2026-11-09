@@ -397,6 +397,20 @@ import type {
   V2SessionWaitResponses,
   V2SkillListErrors,
   V2SkillListResponses,
+  V2TaskCreateErrors,
+  V2TaskCreateResponses,
+  V2TaskGetErrors,
+  V2TaskGetResponses,
+  V2TaskListErrors,
+  V2TaskListResponses,
+  V2TaskListRunsErrors,
+  V2TaskListRunsResponses,
+  V2TaskRemoveErrors,
+  V2TaskRemoveResponses,
+  V2TaskTriggerErrors,
+  V2TaskTriggerResponses,
+  V2TaskUpdateErrors,
+  V2TaskUpdateResponses,
   VcsApplyErrors,
   VcsApplyResponses,
   VcsDiffErrors,
@@ -6667,6 +6681,276 @@ export class Fs extends HeyApiClient {
   }
 }
 
+export class Task extends HeyApiClient {
+  /**
+   * List scheduled tasks
+   *
+   * Retrieve scheduled tasks bound to the requested location.
+   */
+  public list<ThrowOnError extends boolean = false>(
+    parameters?: {
+      location?: {
+        directory?: string
+        workspace?: string
+      }
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "location" }] }])
+    return (options?.client ?? this.client).get<V2TaskListResponses, V2TaskListErrors, ThrowOnError>({
+      url: "/api/task",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Create scheduled task
+   *
+   * Create a scheduled task bound to the requested location.
+   */
+  public create<ThrowOnError extends boolean = false>(
+    parameters?: {
+      location?: {
+        directory?: string
+        workspace?: string
+      }
+      name?: string
+      description?: string
+      cron?: string
+      timezone?: string
+      agent?: string
+      model?: ModelRef
+      prompt?: string
+      enabled?: boolean
+      runTimeoutMs?: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+      retainRuns?: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "location" },
+            { in: "body", key: "name" },
+            { in: "body", key: "description" },
+            { in: "body", key: "cron" },
+            { in: "body", key: "timezone" },
+            { in: "body", key: "agent" },
+            { in: "body", key: "model" },
+            { in: "body", key: "prompt" },
+            { in: "body", key: "enabled" },
+            { in: "body", key: "runTimeoutMs" },
+            { in: "body", key: "retainRuns" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<V2TaskCreateResponses, V2TaskCreateErrors, ThrowOnError>({
+      url: "/api/task",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Remove scheduled task
+   *
+   * Delete a scheduled task and its run history.
+   */
+  public remove<ThrowOnError extends boolean = false>(
+    parameters: {
+      taskID: string
+      location?: {
+        directory?: string
+        workspace?: string
+      }
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "taskID" },
+            { in: "query", key: "location" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).delete<V2TaskRemoveResponses, V2TaskRemoveErrors, ThrowOnError>({
+      url: "/api/task/{taskID}",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Get scheduled task
+   *
+   * Retrieve a scheduled task by ID.
+   */
+  public get<ThrowOnError extends boolean = false>(
+    parameters: {
+      taskID: string
+      location?: {
+        directory?: string
+        workspace?: string
+      }
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "taskID" },
+            { in: "query", key: "location" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<V2TaskGetResponses, V2TaskGetErrors, ThrowOnError>({
+      url: "/api/task/{taskID}",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Update scheduled task
+   *
+   * Update a scheduled task; omitted fields keep their current value, null clears them.
+   */
+  public update<ThrowOnError extends boolean = false>(
+    parameters: {
+      taskID: string
+      location?: {
+        directory?: string
+        workspace?: string
+      }
+      name?: string
+      description?: string
+      cron?: string
+      timezone?: string
+      agent?: string
+      model?: ModelRef
+      prompt?: string
+      enabled?: boolean
+      runTimeoutMs?: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+      retainRuns?: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "taskID" },
+            { in: "query", key: "location" },
+            { in: "body", key: "name" },
+            { in: "body", key: "description" },
+            { in: "body", key: "cron" },
+            { in: "body", key: "timezone" },
+            { in: "body", key: "agent" },
+            { in: "body", key: "model" },
+            { in: "body", key: "prompt" },
+            { in: "body", key: "enabled" },
+            { in: "body", key: "runTimeoutMs" },
+            { in: "body", key: "retainRuns" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).patch<V2TaskUpdateResponses, V2TaskUpdateErrors, ThrowOnError>({
+      url: "/api/task/{taskID}",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Trigger scheduled task
+   *
+   * Queue an immediate run of a scheduled task.
+   */
+  public trigger<ThrowOnError extends boolean = false>(
+    parameters: {
+      taskID: string
+      location?: {
+        directory?: string
+        workspace?: string
+      }
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "taskID" },
+            { in: "query", key: "location" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<V2TaskTriggerResponses, V2TaskTriggerErrors, ThrowOnError>({
+      url: "/api/task/{taskID}/trigger",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * List scheduled task runs
+   *
+   * Retrieve the run history of a scheduled task, newest first.
+   */
+  public listRuns<ThrowOnError extends boolean = false>(
+    parameters: {
+      taskID: string
+      location?: {
+        directory?: string
+        workspace?: string
+      }
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "taskID" },
+            { in: "query", key: "location" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<V2TaskListRunsResponses, V2TaskListRunsErrors, ThrowOnError>({
+      url: "/api/task/{taskID}/run",
+      ...options,
+      ...params,
+    })
+  }
+}
+
 export class Command2 extends HeyApiClient {
   /**
    * List commands
@@ -7205,6 +7489,11 @@ export class V2 extends HeyApiClient {
   private _fs?: Fs
   get fs(): Fs {
     return (this._fs ??= new Fs({ client: this.client }))
+  }
+
+  private _task?: Task
+  get task(): Task {
+    return (this._task ??= new Task({ client: this.client }))
   }
 
   private _command?: Command2

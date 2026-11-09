@@ -27,6 +27,10 @@ const base = {
 export const Info = Schema.Struct({
   ...base,
   custom: Schema.optional(Schema.Boolean).annotate({ description: "Allow typing a custom answer (default: true)" }),
+  secret: Schema.optional(Schema.Boolean).annotate({
+    description:
+      "The answer is a secret (e.g. a password). Clients must mask the input and the server never returns the answer to the requester.",
+  }),
 }).annotate({ identifier: "QuestionInfo" })
 export const Prompt = Schema.Struct(base).annotate({ identifier: "QuestionPrompt" })
 export const Tool = Schema.Struct({ messageID: SessionV1.MessageID, callID: Schema.String }).annotate({

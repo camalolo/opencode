@@ -114,10 +114,13 @@ const layer = Layer.effect(
         Effect.gen(function* () {
           const existing = pending.get(input.requestID)
           if (!existing) return yield* new NotFoundError({ requestID: input.requestID })
+          // Secret answers are never broadcast; clients only key off the
+          // request id to dismiss the prompt.
+          const secret = existing.request.questions.some((question) => question.secret === true)
           yield* events.publish(Event.Replied, {
             sessionID: existing.request.sessionID,
             requestID: existing.request.id,
-            answers: input.answers.map((answer) => [...answer]),
+            answers: secret ? input.answers.map(() => [] as string[]) : input.answers.map((answer) => [...answer]),
           })
           yield* Deferred.succeed(existing.deferred, input.answers)
           pending.delete(input.requestID)

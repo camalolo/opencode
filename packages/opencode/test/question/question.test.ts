@@ -155,6 +155,39 @@ it.instance(
 )
 
 it.instance(
+  "reply - blanks secret answers from the replied event but resolves the ask",
+  () =>
+    Effect.gen(function* () {
+      const events = yield* EventV2Bridge.Service
+      const replied: unknown[] = []
+      const off = yield* events.listen((event) => {
+        if (event.type === Question.Event.Replied.type) replied.push(event.data)
+        return Effect.void
+      })
+      yield* Effect.addFinalizer(() => off)
+
+      const fiber = yield* askEffect({
+        sessionID: SessionID.make("ses_test"),
+        questions: [
+          {
+            question: "What is the password?",
+            header: "Password",
+            options: [],
+            secret: true,
+          },
+        ],
+      }).pipe(Effect.forkScoped)
+
+      const pending = yield* waitForPending(1)
+      yield* replyEffect({ requestID: pending[0].id, answers: [["hunter2"]] })
+
+      expect(yield* Fiber.join(fiber)).toEqual([["hunter2"]])
+      expect(replied).toEqual([{ sessionID: SessionID.make("ses_test"), requestID: pending[0].id, answers: [[]] }])
+    }),
+  { git: true },
+)
+
+it.instance(
   "reply - removes from pending list",
   () =>
     Effect.gen(function* () {

@@ -122,11 +122,17 @@ const layer = Layer.effect(
         return yield* new NotFoundError({ requestID: input.requestID })
       }
       pending.delete(input.requestID)
-      yield* Effect.logInfo("replied", { requestID: input.requestID, answers: input.answers })
+      // Secret answers are never logged or broadcast; clients only key off the
+      // request id to dismiss the prompt.
+      const secret = existing.info.questions.some((q) => q.secret === true)
+      yield* Effect.logInfo(
+        "replied",
+        secret ? { requestID: input.requestID, secret } : { requestID: input.requestID, answers: input.answers },
+      )
       yield* events.publish(Event.Replied, {
         sessionID: existing.info.sessionID,
         requestID: existing.info.id,
-        answers: input.answers.map((a) => [...a]),
+        answers: secret ? input.answers.map(() => [] as string[]) : input.answers.map((a) => [...a]),
       })
       yield* Deferred.succeed(existing.deferred, input.answers)
     })

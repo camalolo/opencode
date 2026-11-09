@@ -3143,6 +3143,7 @@ export type QuestionsListRequestsOutput = {
       readonly options: ReadonlyArray<{ readonly label: string; readonly description: string }>
       readonly multiple?: boolean
       readonly custom?: boolean
+      readonly secret?: boolean
     }>
     readonly tool?: { readonly messageID: string; readonly callID: string }
   }>
@@ -3160,6 +3161,7 @@ export type QuestionsListOutput = {
       readonly options: ReadonlyArray<{ readonly label: string; readonly description: string }>
       readonly multiple?: boolean
       readonly custom?: boolean
+      readonly secret?: boolean
     }>
     readonly tool?: { readonly messageID: string; readonly callID: string }
   }>
