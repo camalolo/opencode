@@ -29,6 +29,10 @@ const layer = Layer.effect(
     yield* db.run("PRAGMA busy_timeout = 5000")
     yield* db.run("PRAGMA cache_size = -64000")
     yield* db.run("PRAGMA foreign_keys = ON")
+    // Without a size cap the WAL file keeps every page it ever held until a
+    // checkpoint(TRUNCATE) shrinks it, so a burst of large commits leaves a
+    // multi-hundred-MB file behind even after every frame is checkpointed.
+    yield* db.run("PRAGMA journal_size_limit = 268435456")
     yield* db.run("PRAGMA wal_checkpoint(PASSIVE)")
     yield* DatabaseMigration.apply(db)
 

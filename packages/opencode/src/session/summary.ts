@@ -7,6 +7,19 @@ import { Session } from "./session"
 import { SessionID, MessageID } from "./schema"
 import { Config } from "@/config/config"
 
+// Diff summaries ride on the user message row and get re-read on every turn
+// of the session; a dependency install inside the worktree (.venv,
+// node_modules) once produced a single 460 MB row that made every step of the
+// session re-read it from disk. Keep the persisted summary small: drop
+// dependency-tree noise and cap the rest.
+const DIFF_EXCLUDED_DIRS = new Set(["node_modules", ".venv", "venv", "__pycache__"])
+const DIFF_MAX_ENTRIES = 500
+
+export const capFileDiffs = <T extends { file?: string }>(diffs: T[]): T[] =>
+  diffs
+    .filter((item) => !(item.file ?? "").split(/[\\/]+/).some((segment) => DIFF_EXCLUDED_DIRS.has(segment)))
+    .slice(0, DIFF_MAX_ENTRIES)
+
 function unquoteGitPath(input: string) {
   if (!input.startsWith('"')) return input
   if (!input.endsWith('"')) return input
@@ -122,7 +135,7 @@ const layer = Layer.effect(
       const target = messages.find((m) => m.info.id === input.messageID)
       if (!target || target.info.role !== "user") return
       const msgDiffs = yield* computeDiff({ messages })
-      target.info.summary = { ...target.info.summary, diffs: msgDiffs }
+      target.info.summary = { ...target.info.summary, diffs: capFileDiffs(msgDiffs) }
       yield* sessions.updateMessage(target.info)
     })
 
