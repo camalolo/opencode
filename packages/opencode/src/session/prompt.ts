@@ -1096,6 +1096,20 @@ const layer = Layer.effect(
       throw new Error("Impossible")
     })
 
+    // The diff summary needs the turn's FINAL step snapshots, so it runs when
+    // the loop settles (completed or interrupted) instead of racing the stream
+    // from step 1 - an early read stored an empty or partial diff that only
+    // ever got corrected by accident.
+    const summarizeLastTurn = Effect.fn("SessionPrompt.summarizeLastTurn")(function* (sessionID: SessionID) {
+      const last = yield* lastAssistant(sessionID).pipe(Effect.option)
+      if (Option.isNone(last)) return
+      const info = last.value.info
+      if (info.role !== "assistant") return
+      const parentID = info.parentID
+      if (!parentID) return
+      yield* summary.summarize({ sessionID, messageID: parentID })
+    })
+
     const runLoop: (sessionID: SessionID) => Effect.Effect<SessionV1.WithParts> = Effect.fn("SessionPrompt.run")(
       function* (sessionID: SessionID) {
         const ctx = yield* InstanceState.context
@@ -1296,9 +1310,6 @@ const layer = Layer.effect(
               })
             }
 
-            if (step === 1)
-              yield* summary.summarize({ sessionID, messageID: lastUser.id }).pipe(Effect.ignore, Effect.forkIn(scope))
-
             yield* plugin.trigger("experimental.chat.messages.transform", {}, { messages: msgs })
 
             const [skills, env, instructions, mcpInstructions, modelMsgs] = yield* Effect.all([
@@ -1409,7 +1420,13 @@ const layer = Layer.effect(
     const loop: (input: LoopInput) => Effect.Effect<SessionV1.WithParts> = Effect.fn("SessionPrompt.loop")(function* (
       input: LoopInput,
     ) {
-      return yield* state.ensureRunning(input.sessionID, lastAssistant(input.sessionID), runLoop(input.sessionID))
+      return yield* state
+        .ensureRunning(input.sessionID, lastAssistant(input.sessionID), runLoop(input.sessionID))
+        .pipe(
+          Effect.ensuring(
+            summarizeLastTurn(input.sessionID).pipe(Effect.ignore, Effect.forkIn(scope)),
+          ),
+        )
     })
 
     const shell: (input: ShellInput) => Effect.Effect<SessionV1.WithParts, Session.BusyError> = Effect.fn(
