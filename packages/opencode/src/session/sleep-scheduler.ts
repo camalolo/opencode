@@ -271,6 +271,9 @@ const layer = Layer.effect(
         yield* SessionSleep.finish(db, row.id, "timed_out", SessionSleep.wakeMessageID(row))
         return
       }
+      // A staged revert means the user discarded the branch this trigger
+      // works on; pause it (stays due, resumes when the revert clears).
+      if (yield* SessionSleep.reverted(db, row.sessionID)) return
       if (!(yield* SessionSleep.claimCheck(db, row.id, now))) return
       const outcome = SessionSleep.isStateTrigger(row)
         ? yield* runStateCheck(appProcess, {

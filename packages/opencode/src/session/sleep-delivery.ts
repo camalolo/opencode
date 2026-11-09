@@ -79,6 +79,9 @@ const layer = Layer.effect(
     const status = yield* SessionStatus.Service
 
     const deliver = Effect.fn("SessionSleepDelivery.deliver")(function* (row: SessionSleep.Trigger) {
+      // A staged revert pauses deliveries; skip without claiming an attempt so
+      // the wake stays pending until the next user prompt clears the revert.
+      if (yield* SessionSleep.reverted(db, row.sessionID)) return
       const attempts = yield* SessionSleep.claimDelivery(db, row.id)
       if (attempts === undefined) return
       const session = yield* store.get(row.sessionID)

@@ -7,7 +7,7 @@ import { Identifier } from "../id/id"
 import { statics } from "../schema"
 import { MessageID } from "../v1/session"
 import { SessionSchema } from "./schema"
-import { SessionSleepTable } from "./sql"
+import { SessionSleepTable, SessionTable } from "./sql"
 
 type DatabaseService = Database.Interface["db"]
 
@@ -153,6 +153,24 @@ export const arm = Effect.fn("SessionSleep.arm")(function* (
     Effect.orDie,
   )
   return fromRow(row!)
+})
+
+/** Whether a revert is staged for the session. Undoing a message pauses the
+ * session's autonomous triggers: a staged revert means the user discarded the
+ * current branch, so firing a trigger (or delivering a pending wake) would
+ * make the session work on that discarded branch invisibly. Paused triggers
+ * resume once the next user prompt clears the revert. */
+export const reverted = Effect.fn("SessionSleep.reverted")(function* (
+  db: DatabaseService,
+  sessionID: SessionSchema.ID,
+) {
+  const row = yield* db
+    .select({ revert: SessionTable.revert })
+    .from(SessionTable)
+    .where(eq(SessionTable.id, sessionID))
+    .get()
+    .pipe(Effect.orDie)
+  return row?.revert != null
 })
 
 /** Most recent trigger for a session, regardless of status. */
