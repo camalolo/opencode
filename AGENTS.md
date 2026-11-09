@@ -221,7 +221,7 @@ Self-deploy config (env, per server — do NOT rely on `/global/deploy` without 
 
 | env | home / m2dev value | desktop value |
 |-----|--------------------|---------------|
-| `OPENCODE_RESTART_COMMAND` (required; deploys refuse without it) | `systemctl --user restart opencode` | `powershell -NoProfile -ExecutionPolicy Bypass -File C:\Users\camal\scripts\restart-services.ps1` |
+| `OPENCODE_RESTART_COMMAND` (required; deploys refuse without it) — the systemd drop-in line must QUOTE the value (`Environment="OPENCODE_RESTART_COMMAND=..."`), otherwise systemd splits on spaces and the command runs argument-less | `systemctl --user restart opencode` | `powershell -NoProfile -ExecutionPolicy Bypass -File C:\Users\camal\scripts\restart-services.ps1` |
 | `OPENCODE_DEPLOY_PULL_COMMAND` (optional) | default `git pull --ff-only origin laurent-dev` | default; desktop's Task Scheduler context pulls over Win32 ssh fine (the hanging-ssh workaround is only needed for sshd-spawned sessions) |
 | `OPENCODE_DEPLOY_INSTALL_COMMAND` / `OPENCODE_DEPLOY_BUILD_COMMAND` / `OPENCODE_DEPLOY_MANIFEST_COMMAND` (optional) | defaults | defaults |
 
