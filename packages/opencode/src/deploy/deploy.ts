@@ -129,16 +129,37 @@ const layer = Layer.effect(
       // detached and let the platform supervisor bring the server back.
       const shell = process.platform === "win32" ? "cmd" : "sh"
       const args = process.platform === "win32" ? ["/c", flags.restartCommand] : ["-c", flags.restartCommand]
-      const child = Bun.spawn([shell, ...args], {
-        cwd: root ?? process.cwd(),
-        stdout: "ignore",
-        stderr: "ignore",
-        stdin: "ignore",
-      })
-      child.unref()
+      let child: Bun.Subprocess<"ignore", "pipe", "pipe">
+      try {
+        child = Bun.spawn([shell, ...args], {
+          cwd: root ?? process.cwd(),
+          stdout: "pipe",
+          stderr: "pipe",
+          stdin: "ignore",
+        })
+        child.unref()
+      } catch (error) {
+        yield* Effect.logError("deploy restart spawn failed", { error: String(error) })
+        state.error = `restart command failed to spawn: ${String(error)}`
+        state.phase = "idle"
+        return
+      }
       // Brief grace so status readers can observe the restart phase; the
-      // process then dies when the restart command kills it.
-      yield* Effect.sleep("3 seconds")
+      // process then dies when the restart command kills it. If the command
+      // fails fast (bus errors, missing binary), surface its output instead of
+      // pretending the restart happened.
+      const outcome = yield* Effect.promise(async () => {
+        const timer = new Promise<"killed-before-exit">((resolve) => setTimeout(() => resolve("killed-before-exit"), 15_000))
+        const report = Promise.all([
+          child.exited,
+          new Response(child.stderr).text(),
+          new Response(child.stdout).text(),
+        ]).then(([code, stderr, stdout]) => ({ code, stderr: stderr.slice(-2000), stdout: stdout.slice(-2000) }))
+        return Promise.race([timer, report])
+      })
+      if (outcome === "killed-before-exit") return
+      yield* Effect.logError("deploy restart command exited without killing the server", outcome)
+      state.error = `restart command exited with code ${outcome.code}: ${outcome.stderr || outcome.stdout}`
       state.phase = "idle"
     })
 
