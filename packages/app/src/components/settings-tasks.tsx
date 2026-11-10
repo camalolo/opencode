@@ -739,7 +739,9 @@ function TaskForm(props: {
               size="small"
               aria-label={language.t("common.cancel")}
               onClick={props.onDone}
-              icon={<IconV2 name="arrow-left" />}
+              icon={
+                <IconV2 name="chevron-down" class="rotate-90 text-v2-icon-icon-muted" />
+              }
             />
             <h2 class="settings-v2-tab-title">
               {props.task ? language.t("dialog.tasks.form.edit.title") : language.t("dialog.tasks.new")}
