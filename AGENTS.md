@@ -221,7 +221,7 @@ Self-deploy config (env, per server — do NOT rely on `/global/deploy` without 
 
 | env | home / m2dev value | desktop value |
 |-----|--------------------|---------------|
-| `OPENCODE_RESTART_COMMAND` (required; deploys refuse without it) — the systemd drop-in line must QUOTE the value (`Environment="OPENCODE_RESTART_COMMAND=..."`), otherwise systemd splits on spaces and the command runs argument-less | `systemctl --user restart opencode` | `schtasks /run /tn opencode-restart` — dispatches to the `opencode-restart` scheduled task (`D:\Apps\nssm.exe restart opencode`, `/rl HIGHEST`). The indirection is load-bearing: a plain `nssm restart` client runs inside the service's job object and dies with the tree (service left STOPPED — verified live); the scheduled task runs outside it |
+| `OPENCODE_RESTART_COMMAND` (required; deploys refuse without it) — the systemd drop-in line must QUOTE the value (`Environment="OPENCODE_RESTART_COMMAND=..."`), otherwise systemd splits on spaces and the command runs argument-less | `systemctl --user restart opencode` | `self-exit` — the deploy exits the process and NSSM restarts it (`AppExit Default Restart`, set by windows-setup.ps1). A plain `nssm restart` client does NOT work here: it runs inside the service's job object and dies with the tree after the stop, leaving the service STOPPED (verified live) |
 | `OPENCODE_DEPLOY_PULL_COMMAND` (optional) | default `git pull --ff-only origin laurent-dev` | default; the server's service context (Task Scheduler / NSSM) pulls over Win32 ssh fine (the hanging-ssh workaround is only needed for sshd-spawned sessions) |
 | `OPENCODE_DEPLOY_INSTALL_COMMAND` / `OPENCODE_DEPLOY_BUILD_COMMAND` / `OPENCODE_DEPLOY_MANIFEST_COMMAND` (optional) | defaults | defaults |
 
