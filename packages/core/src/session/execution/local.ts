@@ -2,6 +2,7 @@ import { Cause, Effect, Layer } from "effect"
 import { LocationServiceMap } from "../../location-service-map"
 import { makeGlobalNode } from "../../effect/app-node"
 import { Idle } from "../../idle"
+import { PluginInternal } from "../../plugin/internal"
 import { SessionRunCoordinator } from "../run-coordinator"
 import { SessionRunner } from "../runner"
 import { SessionSchema } from "../schema"
@@ -22,7 +23,14 @@ const layer = Layer.effect(
           return yield* Effect.die(`Session not found: ${sessionID}`).pipe(
             Effect.ensuring(Effect.sync(Idle.drainDec)),
           )
-        return yield* SessionRunner.Service.use((runner) => runner.run({ sessionID, force })).pipe(
+        // A cold location builds its plugin batch in the background; the drain
+        // must not race it (agent, model catalog, and tool populations).
+        const run = Effect.gen(function* () {
+          const boot = yield* PluginInternal.Boot
+          yield* boot.ready.pipe(Effect.orDie)
+          return yield* SessionRunner.Service.use((runner) => runner.run({ sessionID, force }))
+        })
+        return yield* run.pipe(
           Effect.provide(locations.get(session.location)),
           Effect.tapCause((cause) =>
             Cause.hasInterruptsOnly(cause)

@@ -3,7 +3,7 @@ export * as PluginInternal from "./internal"
 import { makeLocationNode } from "../effect/app-node"
 import { httpClient } from "../effect/app-node-platform"
 import type { PluginContext } from "@opencode-ai/plugin/v2/effect"
-import { Effect, Layer, Scope } from "effect"
+import { Context, Deferred, Effect, Layer, Scope } from "effect"
 import { AgentV2 } from "../agent"
 import { Catalog } from "../catalog"
 import { CommandV2 } from "../command"
@@ -60,7 +60,16 @@ export function define<R>(plugin: Plugin<R>) {
   return plugin
 }
 
-const layer = Layer.effectDiscard(
+export interface Interface {
+  /** Resolves when the location's built-in plugin batch finished (failures propagate). */
+  readonly ready: Effect.Effect<void, unknown>
+}
+
+/** Boot-completion handle: built-in plugins populate agents, catalog, and tools in the background. */
+export class Boot extends Context.Service<Boot, Interface>()("@opencode/v2/PluginBoot") {}
+
+const layer = Layer.effect(
+  Boot,
   Effect.gen(function* () {
     const catalog = yield* Catalog.Service
     const commands = yield* CommandV2.Service
@@ -105,6 +114,7 @@ const layer = Layer.effectDiscard(
       return plugin.add(PluginV2.ID.make(loaded.id), loaded.effect)
     }
 
+    const ready = Deferred.makeUnsafe<void, unknown>()
     yield* State.batch(
       Effect.gen(function* () {
         yield* add(ConfigReferencePlugin.Plugin)
@@ -120,7 +130,12 @@ const layer = Layer.effectDiscard(
         yield* add(ConfigProviderPlugin.Plugin)
         yield* add(VariantPlugin.Plugin)
       }),
-    ).pipe(Effect.withSpan("PluginInternal.boot"), Effect.forkScoped({ startImmediately: true }))
+    ).pipe(
+      Effect.withSpan("PluginInternal.boot"),
+      Effect.onExit((exit) => Effect.sync(() => Deferred.doneUnsafe(ready, exit))),
+      Effect.forkScoped({ startImmediately: true }),
+    )
+    return Boot.of({ ready: Deferred.await(ready) })
   }),
 )
 
