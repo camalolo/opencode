@@ -62,7 +62,6 @@ import { TerminalProvider, useTerminal } from "@/context/terminal"
 import { PromptInput } from "@/components/prompt-input"
 import { PromptInputV2Composer, usePromptInputV2Controller } from "@/components/prompt-input-v2"
 import { useSettingsCommand } from "@/components/settings-dialog"
-import { useTasksCommand } from "@/components/dialog-tasks"
 import { setCursorPosition } from "@/components/prompt-input/editor-dom"
 import { promptLength } from "@/components/prompt-input/history"
 import { type FollowupDraft, sendFollowupDraft } from "@/components/prompt-input/submit"
@@ -288,9 +287,6 @@ function ResolvedTargetSessionRoute() {
 function TargetSessionPage() {
   const sdk = useSDK()
   const serverSDK = useServerSDK()
-  // Registered under the directory SDK provider so the tasks dialog resolves
-  // the same directory context when shown.
-  useTasksCommand()
   return (
     <Show when={`${serverSDK().scope}\0${sdk().directory}`} keyed>
       <SessionPage />

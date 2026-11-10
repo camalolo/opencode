@@ -941,8 +941,7 @@ export default function LegacyLayout(props: ParentProps) {
         id: "tasks.open",
         title: language.t("command.tasks.open"),
         category: language.t("command.category.project"),
-        disabled: !params.dir,
-        onSelect: () => openTasks(),
+        onSelect: () => openSettings("tasks"),
       },
       {
         id: "settings.open",
@@ -1117,22 +1116,14 @@ export default function LegacyLayout(props: ParentProps) {
     })
   }
 
-  function openTasks() {
-    const run = ++dialogRun
-    void import("@/components/dialog-tasks").then((x) => {
-      if (dialogDead || dialogRun !== run) return
-      void dialog.show(() => <x.DialogTasks />)
-    })
-  }
-
-  function openSettings() {
+  function openSettings(tab?: string) {
     const run = ++dialogRun
     const module = settings.general.newLayoutDesigns()
       ? import("@/components/settings-v2")
       : import("@/components/dialog-settings")
     void module.then((x) => {
       if (dialogDead || dialogRun !== run) return
-      dialog.show(() => <x.DialogSettings />)
+      dialog.show(() => <x.DialogSettings defaultValue={tab} />)
     })
   }
 
