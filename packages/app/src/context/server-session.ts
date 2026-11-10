@@ -1059,13 +1059,28 @@ export function createServerSession(
           return
         }
         const result = Binary.search(messages, messageKey(info), messageKey)
-        if (result.found) setData("message", info.sessionID, result.index, reconcile(info))
-        if (!result.found)
-          setData("message", info.sessionID, (value = []) => {
-            const next = value.slice()
-            next.splice(result.index, 0, info)
-            return next
-          })
+        if (result.found) {
+          setData("message", info.sessionID, result.index, reconcile(info))
+          return
+        }
+        // The composite key includes time.created, so an optimistic copy stamped with the
+        // client clock misses the search even though the id already exists. Replace it by id
+        // (re-sorting, since the server timestamp can move the entry) instead of splicing a
+        // same-id duplicate into the store.
+        const existing = messages.findIndex((message) => message.id === info.id)
+        if (existing >= 0) {
+          setData("message", info.sessionID, (value = []) =>
+            value
+              .map((message) => (message.id === info.id ? info : message))
+              .sort(compareMessages),
+          )
+          return
+        }
+        setData("message", info.sessionID, (value = []) => {
+          const next = value.slice()
+          next.splice(result.index, 0, info)
+          return next
+        })
         return
       }
       case "message.removed": {

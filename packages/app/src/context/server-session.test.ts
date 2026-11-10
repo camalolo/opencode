@@ -531,6 +531,22 @@ describe("server session", () => {
     expect(store.data.message.child).toEqual([user, assistant])
   })
 
+  test("replaces an optimistic message when the server event timestamps differ", () => {
+    const earlier = userMessage("message-0", { time: { created: 1 } })
+    // The optimistic copy is stamped with the client clock; the server event for the
+    // same id carries its own time.created, so the composite sort key no longer matches.
+    const optimistic = { ...userMessage("message-1"), time: { created: 2 } }
+    const confirmed = userMessage("message-1", { time: { created: 3 } })
+    const client = messageClient(response())
+    const store = createServerSession(client)
+
+    store.optimistic.add({ sessionID: "child", message: optimistic, parts: [] })
+    store.apply({ type: "message.updated", properties: { info: earlier } })
+    store.apply({ type: "message.updated", properties: { info: confirmed } })
+
+    expect(store.data.message.child).toEqual([earlier, confirmed])
+  })
+
   test("uses a successful retry over events received by a failed backfill attempt", async () => {
     const failed = deferredResponse()
     const user = userMessage("message-1")
