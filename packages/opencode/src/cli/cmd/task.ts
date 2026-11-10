@@ -132,6 +132,7 @@ export const TaskAddCommand = effectCmd({
       directory,
       name: args.name,
       cron: args.cron,
+      ...(args.tz === undefined ? {} : { timezone: args.tz }),
       prompt: args.prompt,
       ...fields,
     }).pipe(
