@@ -64,8 +64,9 @@ const layer = Layer.effect(
       run: ScheduledTask.Run,
       status: Exclude<Task.RunStatus, "pending" | "running">,
       error?: string,
+      reason?: Task.RunReason,
     ) {
-      const finished = yield* ScheduledTask.finishRun(db, run.id, status, error)
+      const finished = yield* ScheduledTask.finishRun(db, run.id, status, error, reason)
       if (!finished) return
       yield* publish(task, finished)
     })
@@ -76,6 +77,7 @@ const layer = Layer.effect(
         ...(task.agent === undefined ? {} : { agent: task.agent }),
         ...(task.model === undefined ? {} : { model: task.model }),
         title: sessionTitle(task, run),
+        unattended: true,
         location: { directory: task.directory },
       })
       yield* ScheduledTask.attachSession(db, run.id, info.id)
@@ -97,18 +99,18 @@ const layer = Layer.effect(
       const outcome = yield* runTask(task, run).pipe(
         Effect.matchCauseEffect({
           onSuccess: () =>
-            Effect.succeed<{ status: "completed" | "cancelled" | "failed"; error?: string }>({
+            Effect.succeed<{ status: "completed" | "cancelled" | "failed"; error?: string; reason?: Task.RunReason }>({
               status: "completed",
             }),
           onFailure: (cause) =>
             Effect.succeed(
               Cause.hasInterruptsOnly(cause)
-                ? { status: "cancelled" as const }
-                : { status: "failed" as const, error: errorText(cause) },
+                ? { status: "cancelled" as const, reason: "cancelled" as const }
+                : { status: "failed" as const, error: errorText(cause), reason: "error" as const },
             ),
         }),
       )
-      yield* finalize(task, run, outcome.status, outcome.error)
+      yield* finalize(task, run, outcome.status, outcome.error, outcome.reason)
     })
 
     let lastPruneAt = 0
@@ -156,6 +158,7 @@ const layer = Layer.effect(
           entry.run,
           "failed",
           timeout === undefined ? "run timed out" : `run exceeded its ${timeout}ms timeout`,
+          "timeout",
         )
         if (entry.run.sessionID !== undefined) yield* execution.interrupt(entry.run.sessionID)
       }
