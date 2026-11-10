@@ -93,6 +93,8 @@ export const dict = {
   "ui.sessionTurn.status.thinkingWithTopic": "Pensando: {{topic}}",
   "ui.sessionTurn.status.gatheringThoughts": "Organizando ideas",
   "ui.sessionTurn.status.consideringNextSteps": "Considerando siguientes pasos",
+  "ui.sessionTurn.status.waitingForTool": "Esperando a que termine {{tool}}",
+  "ui.sessionTurn.status.queued": "En cola - esperando el turno actual",
 
   "ui.messagePart.questions.dismissed": "Preguntas descartadas",
   "ui.messagePart.compaction": "Sesión compactada",
@@ -146,6 +148,7 @@ export const dict = {
   "ui.scrollView.ariaLabel": "contenido desplazable",
 
   "ui.tool.read": "Leer",
+  "ui.tool.showImage": "Mostrar imagen",
   "ui.tool.loaded": "Cargado",
   "ui.tool.list": "Listar",
   "ui.tool.glob": "Glob",
@@ -190,6 +193,7 @@ export const dict = {
   "ui.message.forkMessage": "Bifurcar a nueva sesión",
   "ui.message.revertMessage": "Restablecer a este punto",
   "ui.message.copyResponse": "Copiar respuesta",
+  "ui.message.copyResponseHtml": "Copiar respuesta como HTML",
   "ui.message.copied": "¡Copiado!",
   "ui.message.interrupted": "Interrumpido",
   "ui.message.queued": "En cola",
@@ -206,6 +210,8 @@ export const dict = {
   "ui.question.multiHint": "Selecciona todas las que correspondan",
   "ui.question.singleHint": "Selecciona una respuesta",
   "ui.question.custom.placeholder": "Escribe tu respuesta...",
+  "ui.question.secret.placeholder": "Escribe la contraseña...",
+  "ui.question.secret.hint": "Responde de forma segura — se guarda en el servidor y nunca se muestra al asistente",
 
   "ui.fileSearch.placeholder": "Buscar",
   "ui.fileSearch.previousMatch": "Anterior",

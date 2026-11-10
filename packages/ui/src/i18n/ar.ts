@@ -96,6 +96,8 @@ export const dict = {
   "ui.sessionTurn.status.thinkingWithTopic": "تفكير - {{topic}}",
   "ui.sessionTurn.status.gatheringThoughts": "جمع الأفكار",
   "ui.sessionTurn.status.consideringNextSteps": "النظر في الخطوات التالية",
+  "ui.sessionTurn.status.waitingForTool": "في انتظار انتهاء {{tool}}",
+  "ui.sessionTurn.status.queued": "في قائمة الانتظار - ينتظر الدور الحالي",
 
   "ui.messagePart.questions.dismissed": "تم إهمال الأسئلة",
   "ui.messagePart.compaction": "تم اختصار الجلسة",
@@ -158,6 +160,7 @@ export const dict = {
   "ui.scrollView.ariaLabel": "محتوى قابل للتمرير",
 
   "ui.tool.read": "قراءة",
+  "ui.tool.showImage": "عرض الصورة",
   "ui.tool.loaded": "تم التحميل",
   "ui.tool.list": "سرد",
   "ui.tool.glob": "Glob",
@@ -202,6 +205,7 @@ export const dict = {
   "ui.message.forkMessage": "تشعب إلى جلسة جديدة",
   "ui.message.revertMessage": "التراجع عن الرسالة",
   "ui.message.copyResponse": "نسخ الرد",
+  "ui.message.copyResponseHtml": "نسخ الرد بتنسيق HTML",
   "ui.message.copied": "تم النسخ!",
   "ui.message.interrupted": "تمت المقاطعة",
   "ui.message.queued": "في قائمة الانتظار",
@@ -218,6 +222,8 @@ export const dict = {
   "ui.question.multiHint": "حدد كل ما ينطبق",
   "ui.question.singleHint": "حدد إجابة واحدة",
   "ui.question.custom.placeholder": "اكتب إجابتك...",
+  "ui.question.secret.placeholder": "اكتب كلمة المرور...",
+  "ui.question.secret.hint": "أجب بشكل آمن — يتم تخزينه على الخادم ولا يظهر أبدًا للمساعد",
 
   "ui.fileSearch.placeholder": "بحث",
   "ui.fileSearch.previousMatch": "المطابقة السابقة",

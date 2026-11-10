@@ -98,6 +98,8 @@ export const dict = {
   "ui.sessionTurn.status.thinkingWithTopic": "Düşünüyor - {{topic}}",
   "ui.sessionTurn.status.gatheringThoughts": "Düşünceler toplanıyor",
   "ui.sessionTurn.status.consideringNextSteps": "Sonraki adımlar değerlendiriliyor",
+  "ui.sessionTurn.status.waitingForTool": "{{tool}} işleminin bitmesi bekleniyor",
+  "ui.sessionTurn.status.queued": "Sırada - geçerli tur bekleniyor",
 
   "ui.messagePart.questions.dismissed": "Sorular kapatıldı",
   "ui.messagePart.compaction": "Oturum sıkıştırıldı",
@@ -148,6 +150,7 @@ export const dict = {
   "ui.scrollView.ariaLabel": "kaydırılabilir içerik",
 
   "ui.tool.read": "Oku",
+  "ui.tool.showImage": "Görseli göster",
   "ui.tool.loaded": "Yüklendi",
   "ui.tool.list": "Listele",
   "ui.tool.glob": "Glob",
@@ -192,6 +195,7 @@ export const dict = {
   "ui.message.forkMessage": "Yeni oturuma dallandır",
   "ui.message.revertMessage": "Bu noktaya sıfırla",
   "ui.message.copyResponse": "Yanıtı kopyala",
+  "ui.message.copyResponseHtml": "Yanıtı HTML olarak kopyala",
   "ui.message.copied": "Kopyalandı",
   "ui.message.interrupted": "Kesildi",
   "ui.message.queued": "Sırada",
@@ -208,6 +212,8 @@ export const dict = {
   "ui.question.multiHint": "Uygun olan tüm yanıtları seçin",
   "ui.question.singleHint": "Bir yanıt seçin",
   "ui.question.custom.placeholder": "Yanıtınızı yazın...",
+  "ui.question.secret.placeholder": "Parolayı yazın...",
+  "ui.question.secret.hint": "Güvenli yanıt — sunucuda saklanır ve asistana asla gösterilmez",
 
   "ui.fileSearch.placeholder": "Bul",
   "ui.fileSearch.previousMatch": "Önceki eşleşme",

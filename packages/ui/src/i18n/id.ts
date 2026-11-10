@@ -93,6 +93,8 @@ export const dict: Record<string, string> = {
   "ui.sessionTurn.status.thinkingWithTopic": "Berpikir - {{topic}}",
   "ui.sessionTurn.status.gatheringThoughts": "Mengumpulkan pemikiran",
   "ui.sessionTurn.status.consideringNextSteps": "Mempertimbangkan langkah selanjutnya",
+  "ui.sessionTurn.status.waitingForTool": "Menunggu {{tool}} selesai",
+  "ui.sessionTurn.status.queued": "Dalam antrean - menunggu giliran saat ini",
 
   "ui.messagePart.diagnostic.error": "Kesalahan",
   "ui.messagePart.title.edit": "Sunting",
@@ -148,6 +150,7 @@ export const dict: Record<string, string> = {
   "ui.scrollView.ariaLabel": "konten yang dapat digulir",
 
   "ui.tool.read": "Baca",
+  "ui.tool.showImage": "Tampilkan gambar",
   "ui.tool.loaded": "Dimuat",
   "ui.tool.list": "Daftar",
   "ui.tool.glob": "Glob",
@@ -198,6 +201,7 @@ export const dict: Record<string, string> = {
   "ui.message.forkMessage": "Cabangkan ke sesi baru",
   "ui.message.revertMessage": "Urungkan pesan",
   "ui.message.copyResponse": "Salin respons",
+  "ui.message.copyResponseHtml": "Salin respons sebagai HTML",
   "ui.message.copied": "Tersalin",
   "ui.message.duration.seconds": "{{count}}dtk",
   "ui.message.duration.minutesSeconds": "{{minutes}}mnt {{seconds}}dtk",
@@ -216,4 +220,6 @@ export const dict: Record<string, string> = {
   "ui.question.multiHint": "Pilih semua jawaban yang sesuai",
   "ui.question.singleHint": "Pilih satu jawaban",
   "ui.question.custom.placeholder": "Ketik jawaban Anda...",
+  "ui.question.secret.placeholder": "Ketik kata sandi...",
+  "ui.question.secret.hint": "Jawab dengan aman — disimpan di server dan tidak pernah ditampilkan ke asisten",
 }

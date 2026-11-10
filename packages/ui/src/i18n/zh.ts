@@ -94,6 +94,8 @@ export const dict = {
   "ui.sessionTurn.status.thinkingWithTopic": "思考：{{topic}}",
   "ui.sessionTurn.status.gatheringThoughts": "正在整理思路",
   "ui.sessionTurn.status.consideringNextSteps": "正在考虑下一步",
+  "ui.sessionTurn.status.waitingForTool": "等待 {{tool}} 完成",
+  "ui.sessionTurn.status.queued": "排队中 - 等待当前回合",
 
   "ui.messagePart.questions.dismissed": "问题已忽略",
   "ui.messagePart.compaction": "会话已压缩",
@@ -144,6 +146,7 @@ export const dict = {
   "ui.scrollView.ariaLabel": "可滚动内容",
 
   "ui.tool.read": "读取",
+  "ui.tool.showImage": "显示图片",
   "ui.tool.loaded": "已加载",
   "ui.tool.list": "列出文件",
   "ui.tool.glob": "Glob",
@@ -188,6 +191,7 @@ export const dict = {
   "ui.message.forkMessage": "从此消息创建新会话",
   "ui.message.revertMessage": "撤销此消息",
   "ui.message.copyResponse": "复制回复",
+  "ui.message.copyResponseHtml": "以 HTML 格式复制回复",
   "ui.message.copied": "已复制！",
   "ui.message.interrupted": "已中断",
   "ui.message.queued": "排队中",
@@ -204,6 +208,8 @@ export const dict = {
   "ui.question.multiHint": "选择所有适用的答案",
   "ui.question.singleHint": "选择一个答案",
   "ui.question.custom.placeholder": "输入你的答案...",
+  "ui.question.secret.placeholder": "输入密码...",
+  "ui.question.secret.hint": "安全作答 — 内容存储在服务器上，绝不会显示给助手",
 
   "ui.fileSearch.placeholder": "查找",
   "ui.fileSearch.previousMatch": "上一个",

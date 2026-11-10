@@ -97,6 +97,8 @@ export const dict = {
   "ui.sessionTurn.status.thinkingWithTopic": "Razmišljanje - {{topic}}",
   "ui.sessionTurn.status.gatheringThoughts": "Sređivanje misli",
   "ui.sessionTurn.status.consideringNextSteps": "Razmatranje sljedećih koraka",
+  "ui.sessionTurn.status.waitingForTool": "Čeka da {{tool}} završi",
+  "ui.sessionTurn.status.queued": "Na čekanju - čeka trenutni krug",
 
   "ui.messagePart.questions.dismissed": "Pitanja odbačena",
   "ui.messagePart.compaction": "Sesija sažeta",
@@ -150,6 +152,7 @@ export const dict = {
   "ui.scrollView.ariaLabel": "sadržaj koji se može pomicati",
 
   "ui.tool.read": "Čitanje",
+  "ui.tool.showImage": "Prikaži sliku",
   "ui.tool.loaded": "Učitano",
   "ui.tool.list": "Listanje",
   "ui.tool.glob": "Glob",
@@ -194,6 +197,7 @@ export const dict = {
   "ui.message.forkMessage": "Forkaj u novu sesiju",
   "ui.message.revertMessage": "Vrati na ovu poruku",
   "ui.message.copyResponse": "Kopiraj odgovor",
+  "ui.message.copyResponseHtml": "Kopiraj odgovor kao HTML",
   "ui.message.copied": "Kopirano!",
   "ui.message.interrupted": "Prekinuto",
   "ui.message.queued": "Na čekanju",
@@ -210,6 +214,8 @@ export const dict = {
   "ui.question.multiHint": "Odaberi sve primjenjive odgovore",
   "ui.question.singleHint": "Odaberi jedan odgovor",
   "ui.question.custom.placeholder": "Unesi svoj odgovor...",
+  "ui.question.secret.placeholder": "Unesite lozinku...",
+  "ui.question.secret.hint": "Odgovorite sigurno — čuva se na serveru i nikada se ne prikazuje asistentu",
 
   "ui.fileSearch.placeholder": "Pronađi",
   "ui.fileSearch.previousMatch": "Prethodno",

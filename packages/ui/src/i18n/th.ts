@@ -92,6 +92,8 @@ export const dict = {
   "ui.sessionTurn.status.thinkingWithTopic": "กำลังคิด - {{topic}}",
   "ui.sessionTurn.status.gatheringThoughts": "กำลังรวบรวมความคิด",
   "ui.sessionTurn.status.consideringNextSteps": "กำลังพิจารณาขั้นตอนถัดไป",
+  "ui.sessionTurn.status.waitingForTool": "กำลังรอ {{tool}} เสร็จ",
+  "ui.sessionTurn.status.queued": "อยู่ในคิว - กำลังรอรอบปัจจุบัน",
 
   "ui.messagePart.questions.dismissed": "ละทิ้งคำถามแล้ว",
   "ui.messagePart.compaction": "บีบอัดเซสชันแล้ว",
@@ -142,6 +144,7 @@ export const dict = {
   "ui.scrollView.ariaLabel": "เนื้อหาที่เลื่อนได้",
 
   "ui.tool.read": "อ่าน",
+  "ui.tool.showImage": "แสดงรูปภาพ",
   "ui.tool.loaded": "โหลดแล้ว",
   "ui.tool.list": "แสดงรายการ",
   "ui.tool.glob": "Glob",
@@ -186,6 +189,7 @@ export const dict = {
   "ui.message.forkMessage": "แตกแขนงไปยังเซสชันใหม่",
   "ui.message.revertMessage": "รีเซ็ตไปยังจุดนี้",
   "ui.message.copyResponse": "คัดลอกคำตอบ",
+  "ui.message.copyResponseHtml": "คัดลอกคำตอบเป็น HTML",
   "ui.message.copied": "คัดลอกแล้ว!",
   "ui.message.interrupted": "ถูกขัดจังหวะ",
   "ui.message.queued": "อยู่ในคิว",
@@ -202,6 +206,8 @@ export const dict = {
   "ui.question.multiHint": "เลือกคำตอบที่เกี่ยวข้องทั้งหมด",
   "ui.question.singleHint": "เลือกคำตอบหนึ่งข้อ",
   "ui.question.custom.placeholder": "พิมพ์คำตอบของคุณ...",
+  "ui.question.secret.placeholder": "พิมพ์รหัสผ่าน...",
+  "ui.question.secret.hint": "ตอบอย่างปลอดภัย — ข้อมูลจะถูกจัดเก็บบนเซิร์ฟเวอร์และไม่แสดงให้ผู้ช่วยเห็น",
 
   "ui.fileSearch.placeholder": "ค้นหา",
   "ui.fileSearch.previousMatch": "ก่อนหน้า",

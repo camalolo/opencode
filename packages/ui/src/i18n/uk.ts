@@ -96,6 +96,8 @@ export const dict: Record<string, string> = {
   "ui.sessionTurn.status.thinkingWithTopic": "Міркування — {{topic}}",
   "ui.sessionTurn.status.gatheringThoughts": "Збирання думок",
   "ui.sessionTurn.status.consideringNextSteps": "Розгляд наступних кроків",
+  "ui.sessionTurn.status.waitingForTool": "Очікування завершення: {{tool}}",
+  "ui.sessionTurn.status.queued": "У черзі - очікування поточного ходу",
 
   "ui.messagePart.diagnostic.error": "Помилка",
   "ui.messagePart.title.edit": "Редагувати",
@@ -157,6 +159,7 @@ export const dict: Record<string, string> = {
   "ui.scrollView.ariaLabel": "вміст із прокручуванням",
 
   "ui.tool.read": "Читання",
+  "ui.tool.showImage": "Показати зображення",
   "ui.tool.loaded": "Завантажено",
   "ui.tool.list": "Список",
   "ui.tool.glob": "Glob",
@@ -207,6 +210,7 @@ export const dict: Record<string, string> = {
   "ui.message.forkMessage": "Відгалузити в нову сесію",
   "ui.message.revertMessage": "Скинути до цього моменту",
   "ui.message.copyResponse": "Копіювати відповідь",
+  "ui.message.copyResponseHtml": "Копіювати відповідь як HTML",
   "ui.message.copied": "Скопійовано",
   "ui.message.duration.seconds": "{{count}}с",
   "ui.message.duration.minutesSeconds": "{{minutes}}хв {{seconds}}с",
@@ -225,4 +229,6 @@ export const dict: Record<string, string> = {
   "ui.question.multiHint": "Виберіть усі відповідні варіанти",
   "ui.question.singleHint": "Виберіть одну відповідь",
   "ui.question.custom.placeholder": "Введіть свою відповідь...",
+  "ui.question.secret.placeholder": "Введіть пароль...",
+  "ui.question.secret.hint": "Безпечна відповідь — вона зберігається на сервері і ніколи не показується асистенту",
 }

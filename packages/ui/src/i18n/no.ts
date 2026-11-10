@@ -71,6 +71,8 @@ export const dict: Record<Keys, string> = {
   "ui.sessionTurn.status.thinkingWithTopic": "Tenker - {{topic}}",
   "ui.sessionTurn.status.gatheringThoughts": "Samler tanker",
   "ui.sessionTurn.status.consideringNextSteps": "Vurderer neste trinn",
+  "ui.sessionTurn.status.waitingForTool": "Venter på at {{tool}} blir ferdig",
+  "ui.sessionTurn.status.queued": "I kø - venter på gjeldende runde",
 
   "ui.messagePart.questions.dismissed": "Spørsmål avvist",
   "ui.messagePart.compaction": "Sesjon komprimert",
@@ -121,6 +123,7 @@ export const dict: Record<Keys, string> = {
   "ui.scrollView.ariaLabel": "rullbart innhold",
 
   "ui.tool.read": "Les",
+  "ui.tool.showImage": "Vis bilde",
   "ui.tool.loaded": "Lastet inn",
   "ui.tool.list": "Liste",
   "ui.tool.glob": "Glob",
@@ -165,6 +168,7 @@ export const dict: Record<Keys, string> = {
   "ui.message.forkMessage": "Forgren til ny sesjon",
   "ui.message.revertMessage": "Tilbakestill til dette punktet",
   "ui.message.copyResponse": "Kopier svar",
+  "ui.message.copyResponseHtml": "Kopier svar som HTML",
   "ui.message.copied": "Kopiert!",
   "ui.message.interrupted": "Avbrutt",
   "ui.message.queued": "I kø",
@@ -181,6 +185,8 @@ export const dict: Record<Keys, string> = {
   "ui.question.multiHint": "Velg alle som gjelder",
   "ui.question.singleHint": "Velg ett svar",
   "ui.question.custom.placeholder": "Skriv svaret ditt...",
+  "ui.question.secret.placeholder": "Skriv inn passordet...",
+  "ui.question.secret.hint": "Svar sikkert — det lagres på serveren og vises aldri til assistenten",
 
   "ui.fileSearch.placeholder": "Finn",
   "ui.fileSearch.previousMatch": "Forrige treff",

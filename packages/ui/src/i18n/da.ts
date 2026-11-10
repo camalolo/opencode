@@ -90,6 +90,8 @@ export const dict = {
   "ui.sessionTurn.status.thinkingWithTopic": "Tænker - {{topic}}",
   "ui.sessionTurn.status.gatheringThoughts": "Samler tanker",
   "ui.sessionTurn.status.consideringNextSteps": "Overvejer næste skridt",
+  "ui.sessionTurn.status.waitingForTool": "Venter på at {{tool}} bliver færdig",
+  "ui.sessionTurn.status.queued": "I kø - venter på den igangværende tur",
 
   "ui.messagePart.questions.dismissed": "Spørgsmål afvist",
   "ui.messagePart.compaction": "Session komprimeret",
@@ -121,6 +123,7 @@ export const dict = {
   "ui.scrollView.ariaLabel": "rulbart indhold",
 
   "ui.tool.read": "Læs",
+  "ui.tool.showImage": "Vis billede",
   "ui.tool.loaded": "Indlæst",
   "ui.tool.list": "Liste",
   "ui.tool.glob": "Glob",
@@ -165,6 +168,7 @@ export const dict = {
   "ui.message.forkMessage": "Forgren til ny session",
   "ui.message.revertMessage": "Nulstil til dette punkt",
   "ui.message.copyResponse": "Kopier svar",
+  "ui.message.copyResponseHtml": "Kopier svar som HTML",
   "ui.message.copied": "Kopieret!",
   "ui.message.interrupted": "Afbrudt",
   "ui.message.queued": "I kø",
@@ -181,6 +185,8 @@ export const dict = {
   "ui.question.multiHint": "Vælg alle der gælder",
   "ui.question.singleHint": "Vælg ét svar",
   "ui.question.custom.placeholder": "Skriv dit svar...",
+  "ui.question.secret.placeholder": "Indtast adgangskoden...",
+  "ui.question.secret.hint": "Svar sikkert — det gemmes på serveren og vises aldrig for assistenten",
 
   "ui.fileSearch.placeholder": "Find",
   "ui.fileSearch.previousMatch": "Forrige match",

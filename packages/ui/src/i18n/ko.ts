@@ -68,6 +68,8 @@ export const dict = {
   "ui.sessionTurn.status.thinkingWithTopic": "생각 중 - {{topic}}",
   "ui.sessionTurn.status.gatheringThoughts": "생각 정리 중",
   "ui.sessionTurn.status.consideringNextSteps": "다음 단계 고려 중",
+  "ui.sessionTurn.status.waitingForTool": "{{tool}} 완료 대기 중",
+  "ui.sessionTurn.status.queued": "대기열에 추가됨 - 현재 턴을 기다리는 중",
 
   "ui.messagePart.questions.dismissed": "질문 무시됨",
   "ui.messagePart.compaction": "세션 압축됨",
@@ -118,6 +120,7 @@ export const dict = {
   "ui.scrollView.ariaLabel": "스크롤 가능한 콘텐츠",
 
   "ui.tool.read": "읽기",
+  "ui.tool.showImage": "이미지 표시",
   "ui.tool.loaded": "로드됨",
   "ui.tool.list": "목록",
   "ui.tool.glob": "Glob",
@@ -162,6 +165,7 @@ export const dict = {
   "ui.message.forkMessage": "새 세션으로 분기",
   "ui.message.revertMessage": "메시지 되돌리기",
   "ui.message.copyResponse": "응답 복사",
+  "ui.message.copyResponseHtml": "응답을 HTML로 복사",
   "ui.message.copied": "복사됨!",
   "ui.message.interrupted": "중단됨",
   "ui.message.queued": "대기열에 추가됨",
@@ -178,6 +182,8 @@ export const dict = {
   "ui.question.multiHint": "해당하는 항목 모두 선택",
   "ui.question.singleHint": "하나의 답변을 선택",
   "ui.question.custom.placeholder": "답변 입력...",
+  "ui.question.secret.placeholder": "비밀번호를 입력하세요...",
+  "ui.question.secret.hint": "안전하게 답변하세요 — 서버에 저장되며 어시스턴트에게는 절대 표시되지 않습니다",
 
   "ui.fileSearch.placeholder": "찾기",
   "ui.fileSearch.previousMatch": "이전 일치 항목",

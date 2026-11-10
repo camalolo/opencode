@@ -91,6 +91,8 @@ export const dict = {
   "ui.sessionTurn.status.thinkingWithTopic": "思考中 - {{topic}}",
   "ui.sessionTurn.status.gatheringThoughts": "考えをまとめています",
   "ui.sessionTurn.status.consideringNextSteps": "次のステップを検討中",
+  "ui.sessionTurn.status.waitingForTool": "{{tool}}の完了を待機中",
+  "ui.sessionTurn.status.queued": "待機中 - 現在のターンを待っています",
 
   "ui.messagePart.questions.dismissed": "質問をスキップしました",
   "ui.messagePart.compaction": "セッションが圧縮されました",
@@ -141,6 +143,7 @@ export const dict = {
   "ui.scrollView.ariaLabel": "スクロール可能なコンテンツ",
 
   "ui.tool.read": "読み込み",
+  "ui.tool.showImage": "画像を表示",
   "ui.tool.loaded": "読み込み済み",
   "ui.tool.list": "一覧表示",
   "ui.tool.glob": "Glob",
@@ -185,6 +188,7 @@ export const dict = {
   "ui.message.forkMessage": "新しいセッションにフォーク",
   "ui.message.revertMessage": "この時点までリセット",
   "ui.message.copyResponse": "応答をコピー",
+  "ui.message.copyResponseHtml": "応答をHTMLとしてコピー",
   "ui.message.copied": "コピーしました！",
   "ui.message.interrupted": "中断",
   "ui.message.queued": "待機中",
@@ -201,6 +205,8 @@ export const dict = {
   "ui.question.multiHint": "該当するものをすべて選択",
   "ui.question.singleHint": "1 つ選択",
   "ui.question.custom.placeholder": "回答を入力...",
+  "ui.question.secret.placeholder": "パスワードを入力...",
+  "ui.question.secret.hint": "安全に回答してください — サーバーに保存され、アシスタントには表示されません",
 
   "ui.fileSearch.placeholder": "検索",
   "ui.fileSearch.previousMatch": "前の一致",

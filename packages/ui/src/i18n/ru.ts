@@ -93,6 +93,8 @@ export const dict = {
   "ui.sessionTurn.status.thinkingWithTopic": "Размышление - {{topic}}",
   "ui.sessionTurn.status.gatheringThoughts": "Сбор мыслей",
   "ui.sessionTurn.status.consideringNextSteps": "Рассмотрение следующих шагов",
+  "ui.sessionTurn.status.waitingForTool": "Ожидание завершения: {{tool}}",
+  "ui.sessionTurn.status.queued": "В очереди - ожидание текущего хода",
 
   "ui.messagePart.questions.dismissed": "Вопросы отклонены",
   "ui.messagePart.compaction": "Сессия сжата",
@@ -149,6 +151,7 @@ export const dict = {
   "ui.scrollView.ariaLabel": "Прокручиваемое содержимое",
 
   "ui.tool.read": "Чтение",
+  "ui.tool.showImage": "Показать изображение",
   "ui.tool.loaded": "Загружено",
   "ui.tool.list": "Список",
   "ui.tool.glob": "Glob",
@@ -193,6 +196,7 @@ export const dict = {
   "ui.message.forkMessage": "Ответвить в новую сессию",
   "ui.message.revertMessage": "Сбросить до этого момента",
   "ui.message.copyResponse": "Копировать ответ",
+  "ui.message.copyResponseHtml": "Копировать ответ как HTML",
   "ui.message.copied": "Скопировано!",
   "ui.message.interrupted": "Прервано",
   "ui.message.queued": "В очереди",
@@ -209,6 +213,8 @@ export const dict = {
   "ui.question.multiHint": "Выберите все подходящие",
   "ui.question.singleHint": "Выберите один ответ",
   "ui.question.custom.placeholder": "Введите свой ответ...",
+  "ui.question.secret.placeholder": "Введите пароль...",
+  "ui.question.secret.hint": "Безопасный ответ — он сохраняется на сервере и никогда не показывается ассистенту",
 
   "ui.fileSearch.placeholder": "Найти",
   "ui.fileSearch.previousMatch": "Предыдущее совпадение",
