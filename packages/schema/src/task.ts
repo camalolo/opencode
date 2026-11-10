@@ -26,6 +26,11 @@ export type RunStatus = typeof RunStatus.Type
 export const RunTrigger = Schema.Literals(["schedule", "manual"])
 export type RunTrigger = typeof RunTrigger.Type
 
+export const RunReason = Schema.Literals(["error", "timeout", "cancelled", "interrupted"]).annotate({
+  description: "Why a run did not succeed; absent for successful runs",
+})
+export type RunReason = typeof RunReason.Type
+
 export const Info = Schema.Struct({
   id: ID,
   directory: AbsolutePath.annotate({ description: "Absolute working directory the scheduled session runs in" }),
@@ -51,6 +56,7 @@ export const Run = Schema.Struct({
   sessionID: optional(SessionID.annotate({ description: "Session created for this run; absent until delivery starts" })),
   status: RunStatus,
   trigger: RunTrigger,
+  reason: optional(RunReason),
   scheduledAt: NonNegativeInt.annotate({ description: "Epoch ms of the schedule slot this run fulfills" }),
   timeStarted: optional(NonNegativeInt),
   timeCompleted: optional(NonNegativeInt),

@@ -153,11 +153,15 @@ const layer = Layer.effect(
     }
 
     const evaluateInput = EffectRuntime.fnUntraced(function* (input: AssertInput) {
+      const session = yield* sessions.get(input.sessionID)
       const rules = yield* configured(input.sessionID, input.agent)
       if (denied(input, rules)) return { effect: "deny" as const, rules }
       const all = [...rules, ...(yield* savedRules())]
       const effects = input.resources.map((resource) => evaluate(input.action, resource, all).effect)
-      const effect: Permission.Effect = effects.includes("deny") ? "deny" : effects.includes("ask") ? "ask" : "allow"
+      let effect: Permission.Effect = effects.includes("deny") ? "deny" : effects.includes("ask") ? "ask" : "allow"
+      // Unattended sessions have nobody to answer an ask; the ask resolves as
+      // deny so the tool call fails fast instead of wedging the run.
+      if (effect === "ask" && session?.unattended) effect = "deny"
       return { effect, rules: all }
     })
 

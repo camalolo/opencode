@@ -81,6 +81,7 @@ type CreateInput = {
   agent?: AgentV2.ID
   model?: ModelV2.Ref
   title?: string
+  unattended?: boolean
   location: Location.Ref
 }
 
@@ -228,6 +229,7 @@ const layer = Layer.effect(
           workspaceID: input.location.workspaceID ? WorkspaceV2.ID.make(input.location.workspaceID) : undefined,
           title: input.title ?? `New session - ${new Date(now).toISOString()}`,
           agent: input.agent,
+          unattended: input.unattended === undefined ? undefined : input.unattended,
           model: input.model
             ? {
                 id: ModelV2.ID.make(input.model.id),

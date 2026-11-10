@@ -568,6 +568,9 @@ export const SessionInfo = Schema.Struct({
   }),
   permission: optional(PermissionV1.Ruleset),
   revert: optional(SessionRevert),
+  unattended: optional(Schema.Boolean.annotate({
+    description: "Runs without a human: permission asks resolve as deny instead of waiting",
+  })),
 }).annotate({ identifier: "Session" })
 export type SessionInfo = typeof SessionInfo.Type
 

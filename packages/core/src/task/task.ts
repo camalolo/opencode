@@ -115,6 +115,7 @@ const fromRunRow = (row: RunRow): Run => ({
   ...(row.session_id === null ? {} : { sessionID: SessionSchema.ID.make(row.session_id) }),
   status: row.status,
   trigger: row.trigger,
+  ...(row.reason === null ? {} : { reason: row.reason }),
   scheduledAt: row.scheduled_at,
   ...(row.time_started === null ? {} : { timeStarted: row.time_started }),
   ...(row.time_completed === null ? {} : { timeCompleted: row.time_completed }),
@@ -439,6 +440,7 @@ export const finishRun = Effect.fn("ScheduledTask.finishRun")(function* (
   id: RunID,
   status: Exclude<Task.RunStatus, "pending" | "running">,
   error?: string,
+  reason?: Task.RunReason,
 ) {
   const now = Date.now()
   const row = yield* db
@@ -447,6 +449,7 @@ export const finishRun = Effect.fn("ScheduledTask.finishRun")(function* (
       status,
       time_completed: now,
       ...(error === undefined ? {} : { error }),
+      ...(reason === undefined ? {} : { reason }),
     })
     .where(
       and(
@@ -481,6 +484,22 @@ export const runsForTask = Effect.fn("ScheduledTask.runsForTask")(function* (
     .all()
     .pipe(Effect.orDie)
   return rows.map(fromRunRow)
+})
+
+/** Most recent runs across every task, newest first — settings fleet view. */
+export const recentRunsAll = Effect.fn("ScheduledTask.recentRunsAll")(function* (
+  db: Database.Interface["db"],
+  limit = 50,
+) {
+  const rows = yield* db
+    .select({ run: ScheduledTaskRunTable, task: ScheduledTaskTable })
+    .from(ScheduledTaskRunTable)
+    .innerJoin(ScheduledTaskTable, eq(ScheduledTaskRunTable.task_id, ScheduledTaskTable.id))
+    .orderBy(desc(ScheduledTaskRunTable.time_created))
+    .limit(limit)
+    .all()
+    .pipe(Effect.orDie)
+  return rows.map((row) => ({ run: fromRunRow(row.run), task: fromTaskRow(row.task) }))
 })
 
 export const activeRun = Effect.fn("ScheduledTask.activeRun")(function* (db: Database.Interface["db"], taskID: Task.ID) {
@@ -523,7 +542,7 @@ export const failRunning = Effect.fn("ScheduledTask.failRunning")(function* (db:
   const now = Date.now()
   const failed = yield* db
     .update(ScheduledTaskRunTable)
-    .set({ status: "failed", error, time_completed: now })
+    .set({ status: "failed", reason: "interrupted", error, time_completed: now })
     .where(eq(ScheduledTaskRunTable.status, "running"))
     .returning({ id: ScheduledTaskRunTable.id })
     .all()
@@ -546,6 +565,8 @@ export const pruneRuns = Effect.fn("ScheduledTask.pruneRuns")(function* (
 
 export interface Interface {
   readonly list: () => Effect.Effect<Info[]>
+  /** Every task across directories — settings fleet view; not scoped to the location. */
+  readonly listAll: () => Effect.Effect<Info[]>
   readonly get: (taskID: Task.ID) => Effect.Effect<Info, NotFoundError>
   readonly create: (input: CreateInput) => Effect.Effect<Info, InvalidScheduleError | DuplicateError>
   readonly update: (
@@ -555,6 +576,7 @@ export interface Interface {
   readonly remove: (taskID: Task.ID) => Effect.Effect<boolean, NotFoundError>
   readonly trigger: (taskID: Task.ID) => Effect.Effect<Run, NotFoundError | ActiveRunError>
   readonly runs: (taskID: Task.ID) => Effect.Effect<Run[], NotFoundError>
+  readonly recentRuns: (limit?: number) => Effect.Effect<Array<{ task: Info; run: Run }>>
 }
 
 export class Service extends Context.Service<Service, Interface>()("@opencode/v2/ScheduledTask") {}
@@ -580,6 +602,10 @@ const layer = Layer.effect(
 
     const list: Interface["list"] = Effect.fn("ScheduledTask.list")(function* () {
       return yield* byDirectory(db, location.directory)
+    })
+
+    const listAll: Interface["listAll"] = Effect.fn("ScheduledTask.listAll")(function* () {
+      return yield* all(db)
     })
 
     const get: Interface["get"] = (taskID) => scoped(taskID)
@@ -614,7 +640,11 @@ const layer = Layer.effect(
       return yield* runsForTask(db, taskID)
     })
 
-    return Service.of({ list, get, create, update, remove, trigger, runs })
+    const recentRuns: Interface["recentRuns"] = Effect.fn("ScheduledTask.recentRuns")(function* (limit = 50) {
+      return yield* recentRunsAll(db, limit)
+    })
+
+    return Service.of({ list, listAll, get, create, update, remove, trigger, runs, recentRuns })
   }),
 )
 

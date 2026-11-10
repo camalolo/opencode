@@ -52,6 +52,7 @@ function sessionRow(info: SessionV1.SessionInfo): typeof SessionTable.$inferInse
     path: info.path,
     title: info.title,
     agent: info.agent,
+    unattended: info.unattended ?? null,
     model: info.model,
     version: info.version,
     share_url: info.share?.url,

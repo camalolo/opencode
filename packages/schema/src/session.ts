@@ -41,6 +41,9 @@ export const Info = Schema.Struct({
   location: Location.Ref,
   subpath: RelativePath.pipe(optional),
   revert: Revert.State.pipe(optional),
+  unattended: Schema.Boolean.pipe(optional).annotate({
+    description: "Runs without a human: permission asks resolve as deny instead of waiting",
+  }),
 }).annotate({ identifier: "SessionV2.Info" })
 
 export const ListAnchor = Schema.Struct({

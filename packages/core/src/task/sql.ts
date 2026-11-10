@@ -39,6 +39,7 @@ export const ScheduledTaskRunTable = sqliteTable(
     session_id: text().$type<SessionSchema.ID>(),
     status: text().$type<Task.RunStatus>().notNull(),
     trigger: text().$type<Task.RunTrigger>().notNull(),
+    reason: text().$type<Task.RunReason>(),
     scheduled_at: integer().notNull(),
     time_started: integer(),
     time_completed: integer(),

@@ -181,9 +181,10 @@ describe("ScheduledTask", () => {
         expect(yield* ScheduledTask.startRun(db, run.id)).toBe(true)
         expect(yield* ScheduledTask.startRun(db, run.id)).toBe(false)
 
-        const finished = yield* ScheduledTask.finishRun(db, run.id, "failed", "boom")
+        const finished = yield* ScheduledTask.finishRun(db, run.id, "failed", "boom", "error")
         expect(finished?.status).toBe("failed")
         expect(finished?.error).toBe("boom")
+        expect(finished?.reason).toBe("error")
         expect(finished?.timeCompleted).toBeDefined()
 
         const late = yield* ScheduledTask.finishRun(db, run.id, "completed")
@@ -214,7 +215,33 @@ describe("ScheduledTask", () => {
         expect(after).toBeDefined()
         const history = yield* ScheduledTask.runsForTask(db, info.id)
         expect(history[0].status).toBe("failed")
+        expect(history[0].reason).toBe("interrupted")
         expect(history[0].error).toBe("interrupted: scheduler process exited")
+      }),
+  )
+
+  itDb(
+    "recentRunsAll spans directories with their task info, newest first",
+    (db) =>
+      Effect.gen(function* () {
+        const first = yield* createTask(db, { name: "recent-a" })
+        const second = yield* createTask(db, { directory: `${DIRECTORY}/other`, name: "recent-b" })
+
+        const firstRun = yield* ScheduledTask.insertRun(db, { task: first, scheduledAt: Date.now() })
+        yield* ScheduledTask.startRun(db, firstRun.id)
+        yield* ScheduledTask.finishRun(db, firstRun.id, "completed")
+
+        const secondRun = yield* ScheduledTask.insertRun(db, { task: second, scheduledAt: Date.now() + 1 })
+        yield* ScheduledTask.startRun(db, secondRun.id)
+        yield* ScheduledTask.finishRun(db, secondRun.id, "failed", "watchdog", "timeout")
+
+        const recent = yield* ScheduledTask.recentRunsAll(db, 10)
+        expect(recent).toHaveLength(2)
+        expect(recent[0].task.name).toBe("recent-b")
+        expect(recent[0].run.status).toBe("failed")
+        expect(recent[0].run.reason).toBe("timeout")
+        expect(recent[1].task.name).toBe("recent-a")
+        expect(recent[1].run.reason).toBeUndefined()
       }),
   )
 

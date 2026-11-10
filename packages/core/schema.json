@@ -1,9 +1,9 @@
 {
   "version": "7",
   "dialect": "sqlite",
-  "id": "99fe9c89-a758-4c08-927b-a71af64ab6c0",
+  "id": "7409305e-263a-4731-8ab6-ac9a24efd221",
   "prevIds": [
-    "fecccb99-68da-41c8-876d-fc5804f7972f"
+    "99fe9c89-a758-4c08-927b-a71af64ab6c0"
   ],
   "ddl": [
     {
@@ -1589,6 +1589,16 @@
       "table": "session"
     },
     {
+      "type": "integer",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "unattended",
+      "entityType": "columns",
+      "table": "session"
+    },
+    {
       "type": "text",
       "notNull": false,
       "autoincrement": false,
@@ -1815,6 +1825,16 @@
       "default": null,
       "generated": null,
       "name": "trigger",
+      "entityType": "columns",
+      "table": "scheduled_task_run"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "reason",
       "entityType": "columns",
       "table": "scheduled_task_run"
     },
