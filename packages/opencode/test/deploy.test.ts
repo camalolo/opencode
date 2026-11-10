@@ -7,6 +7,7 @@ import os from "os"
 import path from "path"
 import { Deploy } from "../src/deploy/deploy"
 import { DeployResume } from "../src/deploy/resume"
+import { DeployShutdown } from "../src/deploy/shutdown"
 import { RuntimeFlags } from "../src/effect/runtime-flags"
 import { SessionStatus } from "../src/session/status"
 import { SessionID } from "../src/session/schema"
@@ -14,6 +15,7 @@ import { disposeAllInstances, provideInstance, testInstanceStoreLayer } from "./
 import { pollWithTimeout, testEffect } from "./lib/effect"
 
 afterEach(async () => {
+  DeployShutdown.clear()
   await disposeAllInstances()
   await Fsp.rm(DeployResume.file(), { force: true })
 })
@@ -165,6 +167,11 @@ describe("deploy", () => {
         // the session is still busy
         const started = yield* svc.start({ timeoutSeconds: 1 })
         expect(started.started).toBe(true)
+        // the drain asks busy turns to wrap up at their next step boundary
+        yield* pollWithTimeout(
+          Effect.sync(() => (DeployShutdown.requested() ? (true as const) : undefined)),
+          "drain never requested the shutdown latch",
+        )
         yield* pollWithTimeout(markerWaiting, "restart marker never appeared", "30 seconds")
         expect(yield* resumeSessions).toEqual(["ses_deploy_resume"])
         const status = yield* svc.status()

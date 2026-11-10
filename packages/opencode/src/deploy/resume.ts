@@ -1,9 +1,12 @@
+import { and, desc, eq, sql } from "drizzle-orm"
 import { Cause, Context, Duration, Effect, Layer, Schema, Semaphore } from "effect"
 import * as Fsp from "fs/promises"
 import * as path from "path"
+import { Database, Database as DatabaseNode } from "@opencode-ai/core/database/database"
 import { Global } from "@opencode-ai/core/global"
 import { makeGlobalNode } from "@opencode-ai/core/effect/app-node"
 import { SessionCrashRecovery } from "@opencode-ai/core/session/crash-recovery"
+import { MessageTable, SessionTable } from "@opencode-ai/core/session/sql"
 import { SessionStore } from "@opencode-ai/core/session/store"
 import { SessionV1 } from "@opencode-ai/core/v1/session"
 import { InstanceStore } from "@/project/instance-store"
@@ -23,11 +26,18 @@ import { renderOutput } from "@/tool/task"
 // step: the subagent session is resumed to completion first and its real
 // output is written back into the parent's tool part, otherwise the parent's
 // resumed turn would see "aborted" and re-run the subagent from scratch.
+//
+// The busy capture cannot see everything: a turn that wrapped up cleanly at a
+// shutdown boundary went idle before the capture ran. Consume therefore also
+// scans recent sessions for unfinished (non-aborted) turns and re-drives them.
 
 const FILE = "deploy-resume.json"
 
 /** Captured sessions older than this are stale; the file is dropped instead of resumed. */
 const MAX_AGE_MS = 30 * 60 * 1000
+
+/** Boot-time cost scales with history, so only recently touched sessions are scanned for unfinished turns. */
+const RECENT_WINDOW_MS = 24 * 60 * 60 * 1000
 
 /** Provider turns are expensive; bound how many sessions resume concurrently. */
 const CONCURRENCY = 3
@@ -86,18 +96,31 @@ const interruptedSubtask = (part: SessionV1.Part): SessionID | undefined => {
   return typeof child === "string" ? SessionID.make(child) : undefined
 }
 
+// The stored message data column is JSON, so read just the assistant fields
+// the unfinished-turn scan needs.
+const asAssistant = (info: unknown): { finish?: string; error?: unknown } | undefined => {
+  if (typeof info !== "object" || info === null) return undefined
+  const record = info as { role?: unknown; finish?: unknown; error?: unknown }
+  if (record.role !== "assistant") return undefined
+  return {
+    finish: typeof record.finish === "string" ? record.finish : undefined,
+    error: record.error,
+  }
+}
+
 const layer = Layer.effect(
   Service,
   Effect.gen(function* () {
+    const db = (yield* Database.Service).db
     const store = yield* SessionStore.Service
     const instances = yield* InstanceStore.Service
     const prompt = yield* SessionPrompt.Service
     const sessions = yield* Session.Service
     const slots = Semaphore.makeUnsafe(CONCURRENCY)
     const fileLock = Semaphore.makeUnsafe(1)
-    // Entries still awaiting a resume verdict. Guarded by fileLock; rewritten
-    // on every settle so an interrupted resume boot leaves the remaining
-    // sessions armed for the next boot.
+    // File entries still awaiting a resume verdict. Guarded by fileLock;
+    // rewritten on every settle so an interrupted resume boot leaves the
+    // remaining sessions armed for the next boot.
     let remaining: string[] = []
 
     const removeFile = Effect.tryPromise(() => Fsp.rm(file(), { force: true })).pipe(Effect.ignore)
@@ -111,6 +134,48 @@ const layer = Layer.effect(
           yield* Effect.tryPromise(() => Bun.write(file(), payload)).pipe(Effect.ignore)
         }),
       )
+
+    /**
+     * Sessions whose last turn stopped without finishing: no finish reason (or
+     * a "tool-calls"/"unknown" one) and no error recorded — an error means the
+     * user aborted it or a crash sweep settled it, and both should stay put.
+     * Subagent sessions are skipped: their parent continues them through the
+     * task tool's task_id, which avoids parent and child working in parallel.
+     * Over-inclusion is harmless — the loop re-checks precisely and exits
+     * without a provider call when the turn is actually complete.
+     */
+    const scanUnfinished = Effect.fn("DeployResume.scanUnfinished")(function* () {
+      const cutoff = Date.now() - RECENT_WINDOW_MS
+      const recent = yield* db
+        .select({ id: SessionTable.id, parent_id: SessionTable.parent_id })
+        .from(SessionTable)
+        .where(sql`max(${SessionTable.time_updated}, ${SessionTable.time_created}) >= ${cutoff}`)
+        .all()
+        .pipe(Effect.orDie)
+      const found: string[] = []
+      for (const session of recent) {
+        if (session.parent_id) continue
+        const row = yield* db
+          .select({ data: MessageTable.data })
+          .from(MessageTable)
+          .where(
+            and(
+              eq(MessageTable.session_id, session.id),
+              sql`json_extract(${MessageTable.data}, '$.role') = 'assistant'`,
+            ),
+          )
+          .orderBy(desc(MessageTable.time_created), desc(MessageTable.id))
+          .limit(1)
+          .get()
+          .pipe(Effect.orDie)
+        const assistant = row ? asAssistant(row.data) : undefined
+        if (!assistant) continue
+        if (assistant.error !== undefined) continue
+        if (assistant.finish === undefined || assistant.finish === "tool-calls" || assistant.finish === "unknown")
+          found.push(session.id)
+      }
+      return found
+    })
 
     /** Writes a resumed subagent's final answer into the parent's task call, so
      * the parent's provider turn continues with the real result. */
@@ -167,48 +232,60 @@ const layer = Layer.effect(
       return yield* prompt.loop({ sessionID })
     })
 
-    const resumeOne = Effect.fn("DeployResume.resumeOne")(function* (id: string, at: number) {
+    const resumeOne = Effect.fn("DeployResume.resumeOne")(function* (id: string, at: number | undefined) {
       const sessionID = SessionID.make(id)
       const session = yield* store.get(sessionID)
       if (!session) {
         yield* Effect.logWarning("deploy resume skipped: session not found", { sessionID: id })
-        return yield* drop(id, at)
+        if (at !== undefined) yield* drop(id, at)
+        return
       }
       const exit = yield* instances
         .provide({ directory: session.location.directory }, resumeInInstance(sessionID))
         .pipe(Effect.exit)
-      // An interrupted resume (another restart raced it) keeps its entry so the
-      // next boot retries; any other verdict is final.
+      // An interrupted resume keeps its entry (a scan re-finds it next boot;
+      // the file keeps captured ones), so the next boot retries; any other
+      // verdict is final.
       if (exit._tag === "Failure" && Cause.hasInterruptsOnly(exit.cause)) return
       if (exit._tag === "Failure") {
         yield* Effect.logError("deploy resume failed", { sessionID: id, cause: Cause.pretty(exit.cause) })
       } else {
         yield* Effect.logInfo("deploy resume finished", { sessionID: id })
       }
-      yield* drop(id, at)
+      if (at !== undefined) yield* drop(id, at)
     })
 
     const consume: Interface["consume"] = Effect.fn("DeployResume.consume")(function* () {
+      // File part: sessions the deploy saw still busy at the restart.
+      let capturedAt: number | undefined
       const raw = yield* Effect.tryPromise(() => Bun.file(file()).text()).pipe(
         Effect.catch(() => Effect.succeed(undefined)),
       )
-      if (raw === undefined) return
-      const parsed = yield* Effect.try({
-        try: () => decode(JSON.parse(raw)),
-        catch: (error) => error,
-      }).pipe(Effect.catch(() => Effect.succeed(undefined)))
-      if (parsed === undefined) {
-        yield* Effect.logWarning("deploy resume file was invalid; ignoring it")
-        return yield* removeFile
+      if (raw !== undefined) {
+        const parsed = yield* Effect.try({
+          try: () => decode(JSON.parse(raw)),
+          catch: (error) => error,
+        }).pipe(Effect.catch(() => Effect.succeed(undefined)))
+        if (parsed === undefined) {
+          yield* Effect.logWarning("deploy resume file was invalid; ignoring it")
+          yield* removeFile
+        } else if (Date.now() - parsed.at > MAX_AGE_MS) {
+          yield* Effect.logWarning("deploy resume file was stale; ignoring it", { at: parsed.at })
+          yield* removeFile
+        } else if (parsed.sessions.length === 0) {
+          yield* removeFile
+        } else {
+          capturedAt = parsed.at
+          remaining = [...parsed.sessions]
+        }
       }
-      if (Date.now() - parsed.at > MAX_AGE_MS) {
-        yield* Effect.logWarning("deploy resume file was stale; ignoring it", { at: parsed.at })
-        return yield* removeFile
-      }
-      if (parsed.sessions.length === 0) return yield* removeFile
-      remaining = [...parsed.sessions]
-      yield* Effect.logInfo("resuming sessions interrupted by the deploy restart", { sessions: remaining })
-      yield* Effect.forEach(parsed.sessions, (id) => slots.withPermit(resumeOne(id, parsed.at)), {
+      // Scan part: turns that wrapped up at a shutdown boundary (or were cut
+      // mid-stream) and are idle-unfinished — invisible to the busy capture.
+      const scanned = yield* scanUnfinished()
+      const ids = [...new Set([...remaining, ...scanned])]
+      if (ids.length === 0) return
+      yield* Effect.logInfo("resuming sessions with unfinished work", { sessions: ids })
+      yield* Effect.forEach(ids, (id) => slots.withPermit(resumeOne(id, capturedAt)), {
         concurrency: CONCURRENCY,
         discard: true,
       })
@@ -223,7 +300,7 @@ const layer = Layer.effect(
 export const node = makeGlobalNode({
   service: Service,
   layer,
-  deps: [SessionCrashRecovery.node, SessionStore.node, InstanceStore.node, SessionPrompt.node, Session.node],
+  deps: [SessionCrashRecovery.node, DatabaseNode.node, SessionStore.node, InstanceStore.node, SessionPrompt.node, Session.node],
 })
 
 export * as DeployResume from "./resume"

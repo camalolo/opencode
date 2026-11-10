@@ -2,7 +2,7 @@ import { Database } from "@opencode-ai/core/database/database"
 import { LayerNode } from "@opencode-ai/core/effect/layer-node"
 import { SessionProjector } from "@opencode-ai/core/session/projector"
 import { SessionSchema } from "@opencode-ai/core/session/schema"
-import { SessionTable } from "@opencode-ai/core/session/sql"
+import { MessageTable, SessionTable } from "@opencode-ai/core/session/sql"
 import { SessionV1 } from "@opencode-ai/core/v1/session"
 import { AbsolutePath } from "@opencode-ai/core/schema"
 import { ProjectTable } from "@opencode-ai/core/project/sql"
@@ -18,7 +18,7 @@ import { InstanceStore } from "@/project/instance-store"
 import { Session as SessionNs } from "@/session/session"
 import { SessionPrompt } from "@/session/prompt"
 import { MessageID, PartID, SessionID } from "@/session/schema"
-import { testEffect } from "../lib/effect"
+import { pollWithTimeout, testEffect } from "../lib/effect"
 
 const insertSession = (db: Database.Interface["db"], sessionID: string, parentID?: string) =>
   Effect.gen(function* () {
@@ -45,12 +45,44 @@ const insertSession = (db: Database.Interface["db"], sessionID: string, parentID
         directory: AbsolutePath.make("/tmp/test"),
         title: "test",
         version: "test",
-        time_created: 1,
-        time_updated: 1,
+        time_created: Date.now(),
+        time_updated: Date.now(),
       })
       .run()
       .pipe(Effect.orDie)
   })
+
+const userMessage = (sessionID: SessionID) =>
+  ({
+    id: MessageID.ascending(),
+    sessionID,
+    role: "user",
+    time: { created: Date.now() },
+    agent: "build",
+    model: { providerID: ProviderV2.ID.make("test"), modelID: ModelV2.ID.make("test-model") },
+  }) as unknown as SessionV1.Info
+
+const assistantMessage = (
+  sessionID: SessionID,
+  parentID: MessageID,
+  opts?: { finish?: string; error?: unknown },
+) =>
+  ({
+    id: MessageID.ascending(),
+    sessionID,
+    role: "assistant",
+    parentID,
+    time: { created: Date.now() },
+    modelID: ModelV2.ID.make("test-model"),
+    providerID: ProviderV2.ID.make("test"),
+    agent: "build",
+    mode: "",
+    path: { cwd: "/", root: "/" },
+    cost: 0,
+    tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+    finish: opts?.finish,
+    error: opts?.error,
+  }) as unknown as SessionV1.Info
 
 const fakeWithParts = (sessionID: SessionID): SessionV1.WithParts => ({
   info: {
@@ -191,31 +223,6 @@ describe("deploy resume", () => {
         const parentID = SessionID.make("ses_parent")
         const childID = SessionID.make("ses_child")
 
-        const userMessage = (sessionID: SessionID) =>
-          ({
-            id: MessageID.ascending(),
-            sessionID,
-            role: "user",
-            time: { created: Date.now() },
-            agent: "build",
-            model: { providerID: ProviderV2.ID.make("test"), modelID: ModelV2.ID.make("test-model") },
-          }) as unknown as SessionV1.Info
-        const assistantMessage = (sessionID: SessionID, parentID: MessageID) =>
-          ({
-            id: MessageID.ascending(),
-            sessionID,
-            role: "assistant",
-            parentID,
-            time: { created: Date.now() },
-            modelID: ModelV2.ID.make("test-model"),
-            providerID: ProviderV2.ID.make("test"),
-            agent: "build",
-            mode: "",
-            path: { cwd: "/", root: "/" },
-            cost: 0,
-            tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
-          }) as unknown as SessionV1.Info
-
         const parentUser = userMessage(parentID)
         yield* sessions.updateMessage(parentUser)
         const parentAssistant = assistantMessage(parentID, parentUser.id)
@@ -265,6 +272,66 @@ describe("deploy resume", () => {
           expect(tool.state.metadata?.interrupted).toBeUndefined()
           expect(tool.state.metadata?.sessionId).toBe(childID)
         }
+        expect(yield* fileExists).toBe(false)
+      }),
+    30_000,
+  )
+
+  const scan = makeResume()
+
+  scan.it.effect(
+    "scan resumes idle sessions with unfinished turns and skips the rest",
+    () =>
+      Effect.gen(function* () {
+        const db = (yield* Database.Service).db
+        const sessions = yield* SessionNs.Service
+
+        // unfinished, no error: the shutdown-boundary wrap-up case
+        yield* insertSession(db, "ses_scan_unfinished")
+        const unfinishedID = SessionID.make("ses_scan_unfinished")
+        const unfinishedUser = userMessage(unfinishedID)
+        yield* sessions.updateMessage(unfinishedUser)
+        yield* sessions.updateMessage(assistantMessage(unfinishedID, unfinishedUser.id))
+
+        // user-aborted turn: stays put
+        yield* insertSession(db, "ses_scan_aborted")
+        const abortedID = SessionID.make("ses_scan_aborted")
+        const abortedUser = userMessage(abortedID)
+        yield* sessions.updateMessage(abortedUser)
+        yield* sessions.updateMessage(
+          assistantMessage(abortedID, abortedUser.id, { error: new SessionV1.AbortedError({ message: "Aborted" }) }),
+        )
+
+        // finished normally: stays put
+        yield* insertSession(db, "ses_scan_done")
+        const doneID = SessionID.make("ses_scan_done")
+        const doneUser = userMessage(doneID)
+        yield* sessions.updateMessage(doneUser)
+        yield* sessions.updateMessage(assistantMessage(doneID, doneUser.id, { finish: "stop" }))
+
+        // unfinished but a subagent session: its parent continues it
+        yield* insertSession(db, "ses_scan_child", "ses_scan_parent")
+        const childID = SessionID.make("ses_scan_child")
+        const childUser = userMessage(childID)
+        yield* sessions.updateMessage(childUser)
+        yield* sessions.updateMessage(assistantMessage(childID, childUser.id))
+
+        const svc = yield* DeployResume.Service
+
+        // message events persist asynchronously
+        yield* pollWithTimeout(
+          Effect.gen(function* () {
+            const rows = yield* Effect.tryPromise(() =>
+              db.select().from(MessageTable).all().pipe(Effect.runPromise),
+            ).pipe(Effect.orDie)
+            return rows.length >= 8 ? (true as const) : undefined
+          }),
+          "messages never persisted",
+        )
+
+        yield* svc.consume()
+
+        expect(scan.calls).toEqual([unfinishedID])
         expect(yield* fileExists).toBe(false)
       }),
     30_000,

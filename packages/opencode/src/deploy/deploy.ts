@@ -8,6 +8,7 @@ import { RuntimeFlags } from "@/effect/runtime-flags"
 import { SessionStatus } from "@/session/status"
 import { EffectBridge } from "@/effect/bridge"
 import { DeployResume } from "./resume"
+import { DeployShutdown } from "./shutdown"
 
 // Self-deploy: pull, build, drain in-flight sessions, then hand the process to
 // the platform restart command. Intended for fleet servers that run from a
@@ -100,6 +101,10 @@ const layer = Layer.effect(
     })
 
     const drain = Effect.fn("Deploy.drain")(function* (timeoutSeconds: number) {
+      // Ask mid-turn sessions to wrap up at the next provider-call boundary
+      // instead of waiting out whole (possibly hours-long) turns. The timeout
+      // then only bounds steps that are genuinely stuck.
+      DeployShutdown.request()
       state.phase = "drain"
       yield* Effect.logInfo("deploy drain", { timeoutSeconds })
       const deadline = Date.now() + timeoutSeconds * 1000
@@ -169,6 +174,7 @@ const layer = Layer.effect(
         yield* Effect.logError("deploy restart spawn failed", { error: String(error) })
         state.error = `restart command failed to spawn: ${String(error)}`
         state.phase = "idle"
+        DeployShutdown.clear()
         yield* DeployResume.discard()
         return
       }
@@ -189,6 +195,7 @@ const layer = Layer.effect(
       yield* Effect.logError("deploy restart command exited without killing the server", outcome)
       state.error = `restart command exited with code ${outcome.code}: ${outcome.stderr || outcome.stdout}`
       state.phase = "idle"
+      DeployShutdown.clear()
       yield* DeployResume.discard()
     })
 

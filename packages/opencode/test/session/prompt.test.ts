@@ -53,6 +53,7 @@ import { Format } from "../../src/format"
 import { TestInstance } from "../fixture/fixture"
 import { awaitWithTimeout, pollWithTimeout, testEffect } from "../lib/effect"
 import { reply, TestLLMServer } from "../lib/llm-server"
+import { DeployShutdown } from "../../src/deploy/shutdown"
 import { RuntimeFlags } from "@/effect/runtime-flags"
 import { ProviderV2 } from "@opencode-ai/core/provider"
 import { ModelV2 } from "@opencode-ai/core/model"
@@ -916,6 +917,50 @@ it.instance("loop continues when finish is tool-calls", () =>
     expect(result.info.role).toBe("assistant")
     if (result.info.role === "assistant") {
       expect(result.parts.some((part) => part.type === "text" && part.text === "second")).toBe(true)
+      expect(result.info.finish).toBe("stop")
+    }
+  }),
+)
+
+it.instance("loop wraps up at the step boundary when shutdown is requested", () =>
+  Effect.gen(function* () {
+    const { llm } = yield* useServerConfig(providerCfg)
+    const prompt = yield* SessionPrompt.Service
+    const sessions = yield* Session.Service
+    const session = yield* sessions.create({
+      title: "Pinned",
+      permission: [{ permission: "*", pattern: "*", action: "allow" }],
+    })
+    yield* prompt.prompt({
+      sessionID: session.id,
+      agent: "build",
+      noReply: true,
+      parts: [{ type: "text", text: "hello" }],
+    })
+    yield* llm.tool("first", { value: "first" })
+    yield* llm.text("second")
+
+    // requested before the loop starts, so the very first boundary stops it:
+    // exactly one provider call, turn left unfinished and durable
+    DeployShutdown.request()
+    const wrapped = yield* Effect.gen(function* () {
+      const fiber = yield* prompt.loop({ sessionID: session.id }).pipe(Effect.forkChild)
+      yield* llm.wait(1)
+      const exit = yield* Fiber.await(fiber)
+      return { exit, calls: yield* llm.calls }
+    }).pipe(Effect.ensuring(Effect.sync(() => DeployShutdown.clear())))
+    expect(wrapped.calls).toBe(1)
+    expect(Exit.isSuccess(wrapped.exit)).toBe(true)
+    if (Exit.isSuccess(wrapped.exit) && wrapped.exit.value.info.role === "assistant") {
+      expect(wrapped.exit.value.info.finish).toBe("tool-calls")
+      expect(wrapped.exit.value.info.error).toBeUndefined()
+    }
+
+    // clearing the latch lets the same turn continue to completion
+    const result = yield* prompt.loop({ sessionID: session.id })
+    expect(yield* llm.calls).toBe(2)
+    expect(result.parts.some((part) => part.type === "text" && part.text === "second")).toBe(true)
+    if (result.info.role === "assistant") {
       expect(result.info.finish).toBe("stop")
     }
   }),

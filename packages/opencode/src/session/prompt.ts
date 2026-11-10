@@ -45,6 +45,7 @@ import { Process } from "@/util/process"
 import { Cause, Effect, Exit, Latch, Layer, Option, Scope, Context, Schema, Types } from "effect"
 import { InstanceState } from "@/effect/instance-state"
 import { TaskTool, type TaskPromptOps } from "@/tool/task"
+import { DeployShutdown } from "@/deploy/shutdown"
 import { SessionRunState } from "./run-state"
 import { RuntimeFlags } from "@/effect/runtime-flags"
 import { EventV2Bridge } from "@/event-v2-bridge"
@@ -1188,6 +1189,14 @@ const layer = Layer.effect(
               "session.id": sessionID,
               messageID: lastAssistant.id,
             })
+          }
+
+          // A pending shutdown wraps up at the provider-call boundary: the
+          // previous step's tool results are durable, so the turn simply stops
+          // here and the boot resume re-drives the rest of it.
+          if (step > 0 && DeployShutdown.requested()) {
+            yield* Effect.logInfo("wrapping up turn at the step boundary for shutdown", { "session.id": sessionID })
+            break
           }
 
           step++
