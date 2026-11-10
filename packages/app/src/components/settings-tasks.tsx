@@ -327,13 +327,13 @@ export function SettingsTasks() {
       fallback={<TaskForm task={view.task} api={api} agents={agentOptions()} onDone={closeForm} />}
     >
       <div class="settings-v2-tab-header">
-        <div class="settings-v2-tab-header-row">
+        <div class="flex items-center justify-between gap-4">
           <h2 class="settings-v2-tab-title">{language.t("settings.tasks.tab")}</h2>
           <ButtonV2 size="small" onClick={openCreate}>
             {language.t("dialog.tasks.new")}
           </ButtonV2>
         </div>
-        <p class="m-0 text-[13px] leading-5 text-v2-text-text-muted">{language.t("settings.tasks.description")}</p>
+        <p class="m-0 mt-2 text-[13px] leading-5 text-v2-text-text-muted">{language.t("settings.tasks.description")}</p>
       </div>
 
       <div class="settings-v2-tab-body">
@@ -373,10 +373,9 @@ export function SettingsTasks() {
                         }
                         description={
                           <>
-                            <span>{entry.task.directory}</span>
-                            <span>{meta()}</span>
+                            <div>{[entry.task.directory, meta()].filter(Boolean).join(" · ")}</div>
                             <Show when={entry.run.error}>
-                              <span class="text-v2-state-fg-danger">{entry.run.error}</span>
+                              <div class="text-v2-state-fg-danger">{entry.run.error}</div>
                             </Show>
                           </>
                         }
@@ -457,20 +456,18 @@ export function SettingsTasks() {
                               <span class="text-[13px] font-normal text-v2-text-text-muted">{task.description}</span>
                             </Show>
                           </button>
-                          <div data-slot="settings-v2-row-description" class="flex-wrap items-center gap-x-3">
-                            <span>{task.directory}</span>
-                            <span>{language.t("dialog.tasks.cron", { cron: task.cron })}</span>
-                            <Show when={task.timezone}>{(timezone) => <span>{timezone()}</span>}</Show>
-                            <Show when={task.agent}>
-                              {(agent) => (
-                                <span>
-                                  {language.t("dialog.tasks.form.agent")}: {agent()}
-                                </span>
-                              )}
-                            </Show>
-                            <Show when={task.enabled && formatTime(task.nextRunAt)}>
-                              {(time) => <span>{language.t("dialog.tasks.nextRun", { time: time() })}</span>}
-                            </Show>
+                          <div data-slot="settings-v2-row-description">
+                            {[
+                              task.directory,
+                              language.t("dialog.tasks.cron", { cron: task.cron }),
+                              task.timezone ?? "",
+                              task.agent ? `${language.t("dialog.tasks.form.agent")}: ${task.agent}` : "",
+                              task.enabled && task.nextRunAt
+                                ? language.t("dialog.tasks.nextRun", { time: formatTime(task.nextRunAt) ?? "" })
+                                : "",
+                            ]
+                              .filter(Boolean)
+                              .join(" · ")}
                           </div>
                           <div class="flex items-center gap-2 pt-1">
                             <ButtonV2
