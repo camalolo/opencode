@@ -1,9 +1,11 @@
-import { Button } from "@opencode-ai/ui/button"
-import { Icon } from "@opencode-ai/ui/icon"
-import { Select } from "@opencode-ai/ui/select"
-import { Switch } from "@opencode-ai/ui/switch"
-import { TextField } from "@opencode-ai/ui/text-field"
-import { Dialog } from "@opencode-ai/ui/dialog"
+import { ButtonV2 } from "@opencode-ai/ui/v2/button-v2"
+import { Field } from "@opencode-ai/ui/v2/field-v2"
+import { Icon as IconV2 } from "@opencode-ai/ui/v2/icon"
+import { IconButtonV2 } from "@opencode-ai/ui/v2/icon-button-v2"
+import { SelectV2 } from "@opencode-ai/ui/v2/select-v2"
+import { Switch } from "@opencode-ai/ui/v2/switch-v2"
+import { TextInputV2 } from "@opencode-ai/ui/v2/text-input-v2"
+import { Dialog, DialogHeader, DialogTitle } from "@opencode-ai/ui/v2/dialog-v2"
 import { useDialog } from "@opencode-ai/ui/context/dialog"
 import { useNavigate } from "@solidjs/router"
 import { createQuery, useMutation } from "@tanstack/solid-query"
@@ -19,15 +21,9 @@ import { legacySessionHref } from "@/utils/session-route"
 import { pathKey } from "@/utils/path-key"
 import { authTokenFromCredentials } from "@/utils/server"
 import { showToast } from "@/utils/toast"
-
-const RUN_STATUS_KEYS = {
-  pending: "dialog.tasks.run.status.pending",
-  running: "dialog.tasks.run.status.running",
-  completed: "dialog.tasks.run.status.completed",
-  failed: "dialog.tasks.run.status.failed",
-  skipped: "dialog.tasks.run.status.skipped",
-  cancelled: "dialog.tasks.run.status.cancelled",
-} as const
+import { SettingsListV2 } from "./settings-v2/parts/list"
+import { SettingsRowV2 } from "./settings-v2/parts/row"
+import "./settings-v2/settings-v2.css"
 
 const RUN_TRIGGER_KEYS = {
   schedule: "dialog.tasks.run.trigger.schedule",
@@ -61,9 +57,24 @@ function runResult(language: { t: (key: string) => string }, run: Task.Run) {
     return { ok: false as const, label: language.t("settings.tasks.reason.cancelled") }
   }
   if (run.status === "pending" || run.status === "running") {
-    return { ok: false as const, label: language.t(RUN_STATUS_KEYS[run.status]) }
+    return { ok: false as const, label: language.t("dialog.tasks.run.status." + run.status) }
   }
   return { ok: false as const, label: language.t("settings.tasks.result.problem") }
+}
+
+function resultMark(language: { t: (key: string) => string }, run: Task.Run) {
+  const result = runResult(language, run)
+  return (
+    <span class="inline-flex items-center gap-1.5">
+      <span
+        class="size-1.5 shrink-0 rounded-full"
+        classList={{ "bg-icon-success-base": result.ok, "bg-icon-critical-base": !result.ok }}
+      />
+      <span classList={{ "text-v2-text-text-base": result.ok, "text-v2-state-fg-danger": !result.ok }}>
+        {result.label}
+      </span>
+    </span>
+  )
 }
 
 function createTasksApi(input: {
@@ -269,15 +280,32 @@ export function SettingsTasks() {
 
   const confirmRemove = (task: Task.Info) => {
     void dialog.push(() => (
-      <SettingsTasksRemove
-        task={task}
-        pending={removeMutation.isPending && removeMutation.variables === task}
-        onCancel={() => dialog.close()}
-        onConfirm={(confirmed) => {
-          dialog.close()
-          removeMutation.mutate(confirmed)
-        }}
-      />
+      <Dialog fit>
+        <DialogHeader>
+          <DialogTitle>{language.t("dialog.tasks.delete.confirm.title")}</DialogTitle>
+        </DialogHeader>
+        <div class="flex flex-col gap-4 px-5 pb-4">
+          <span class="text-[13px] text-v2-text-text-base">
+            {language.t("dialog.tasks.delete.confirm.message", { name: task.name })}
+          </span>
+          <div class="flex justify-end gap-2">
+            <ButtonV2 variant="ghost-muted" size="small" onClick={() => dialog.close()}>
+              {language.t("common.cancel")}
+            </ButtonV2>
+            <ButtonV2
+              variant="danger"
+              size="small"
+              disabled={removeMutation.isPending && removeMutation.variables === task}
+              onClick={() => {
+                dialog.close()
+                removeMutation.mutate(task)
+              }}
+            >
+              {language.t("common.delete")}
+            </ButtonV2>
+          </div>
+        </div>
+      </Dialog>
     ))
   }
 
@@ -288,141 +316,258 @@ export function SettingsTasks() {
       .map((agent) => ({ value: agent.name, label: agent.name })),
   ]
 
+  const directoryFilterOptions = () => [
+    { value: "all", label: language.t("settings.tasks.directory.all") },
+    ...directories().map((item) => ({ value: item, label: item })),
+  ]
+
   return (
-    <div class="flex min-h-0 flex-1 flex-col">
-      <Show
-        when={view.mode === "list"}
-        fallback={
-          <TaskForm
-            task={view.task}
-            api={api}
-            agents={agentOptions()}
-            fallbackDirectory="/"
-            onDone={closeForm}
-          />
-        }
-      >
-        <div class="flex items-center justify-between gap-2 pb-3">
-          <span class="text-13-regular text-text-weak">{language.t("settings.tasks.description")}</span>
-          <Button icon="plus-small" tabIndex={-1} onClick={openCreate}>
+    <Show
+      when={view.mode === "list"}
+      fallback={<TaskForm task={view.task} api={api} agents={agentOptions()} onDone={closeForm} />}
+    >
+      <div class="settings-v2-tab-header">
+        <div class="settings-v2-tab-header-row">
+          <h2 class="settings-v2-tab-title">{language.t("settings.tasks.tab")}</h2>
+          <ButtonV2 size="small" onClick={openCreate}>
             {language.t("dialog.tasks.new")}
-          </Button>
+          </ButtonV2>
         </div>
-        <div class="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto">
-          <section class="flex flex-col gap-2">
-            <span class="text-13-medium text-text-strong">{language.t("settings.tasks.recent")}</span>
+        <p class="m-0 text-[13px] leading-5 text-v2-text-text-muted">{language.t("settings.tasks.description")}</p>
+      </div>
+
+      <div class="settings-v2-tab-body">
+        <section class="settings-v2-section">
+          <h3 class="settings-v2-section-title">{language.t("settings.tasks.recent")}</h3>
+          <Show
+            when={!recentRuns.loading}
+            fallback={
+              <div class="settings-v2-models-status">
+                {language.t("common.loading")}
+                {language.t("common.loading.ellipsis")}
+              </div>
+            }
+          >
             <Show
-              when={!recentRuns.loading}
-              fallback={<SettingsTasksStatus text={language.t("common.loading")} />}
+              when={(recentRuns.latest ?? []).length > 0}
+              fallback={<div class="settings-v2-models-status">{language.t("dialog.tasks.run.history.empty")}</div>}
+            >
+              <SettingsListV2>
+                <For each={recentRuns.latest ?? []}>
+                  {(entry) => {
+                    const meta = () =>
+                      [
+                        language.t(RUN_TRIGGER_KEYS[entry.run.trigger]),
+                        formatTime(entry.run.timeCompleted ?? entry.run.scheduledAt),
+                        formatDuration(entry.run.timeStarted, entry.run.timeCompleted),
+                      ]
+                        .filter(Boolean)
+                        .join(" · ")
+                    return (
+                      <SettingsRowV2
+                        title={
+                          <span class="flex items-center gap-2">
+                            {resultMark(language, entry.run)}
+                            <span>{entry.task.name}</span>
+                          </span>
+                        }
+                        description={
+                          <>
+                            <span>{entry.task.directory}</span>
+                            <span>{meta()}</span>
+                            <Show when={entry.run.error}>
+                              <span class="text-v2-state-fg-danger">{entry.run.error}</span>
+                            </Show>
+                          </>
+                        }
+                      >
+                        <Show when={entry.run.sessionID}>
+                          {(sessionID) => (
+                            <ButtonV2
+                              variant="ghost-muted"
+                              size="small"
+                              onClick={() => openSession(entry.task.directory, sessionID())}
+                            >
+                              {language.t("dialog.tasks.run.session", { id: sessionID() })}
+                            </ButtonV2>
+                          )}
+                        </Show>
+                      </SettingsRowV2>
+                    )
+                  }}
+                </For>
+              </SettingsListV2>
+            </Show>
+          </Show>
+        </section>
+
+        <section class="settings-v2-section">
+          <div class="settings-v2-models-group-header justify-between">
+            <h3 class="settings-v2-section-title">{language.t("dialog.tasks.title")}</h3>
+            <Show when={directories().length > 0}>
+              <SelectV2
+                appearance="inline"
+                options={directoryFilterOptions()}
+                current={directoryFilterOptions().find((option) => option.value === directoryFilter())}
+                value={(option) => option.value}
+                label={(option) => option.label}
+                onSelect={(option) => setDirectoryFilter(option?.value ?? "all")}
+                placement="bottom-end"
+                gutter={6}
+              />
+            </Show>
+          </div>
+          <Show
+            when={!tasksQuery.isLoading}
+            fallback={<div class="settings-v2-models-status">{language.t("common.loading")}</div>}
+          >
+            <Show
+              when={!tasksQuery.error}
+              fallback={
+                <div class="settings-v2-models-status">
+                  {errorMessage(tasksQuery.error) ?? language.t("common.requestFailed")}
+                  <ButtonV2 variant="ghost-muted" size="small" onClick={() => void tasksQuery.refetch()}>
+                    {language.t("common.retry")}
+                  </ButtonV2>
+                </div>
+              }
             >
               <Show
-                when={(recentRuns.latest ?? []).length > 0}
-                fallback={<SettingsTasksStatus text={language.t("dialog.tasks.run.history.empty")} />}
+                when={visibleTasks().length > 0}
+                fallback={<div class="settings-v2-models-status">{language.t("dialog.tasks.empty")}</div>}
               >
-                <div class="flex flex-col divide-y rounded-md border border-border-weak-base">
-                  <For each={recentRuns.latest ?? []}>
-                    {(entry) => {
-                      const result = () => runResult(language, entry.run)
-                      return (
-                        <div class="flex items-center justify-between gap-2 px-3 py-2 text-12-regular">
-                          <div class="flex min-w-0 flex-col">
-                            <div class="flex flex-wrap items-center gap-x-2 gap-y-0.5">
-                              <span class="flex items-center gap-1">
-                                <span
-                                  class="size-1.5 rounded-full shrink-0"
-                                  classList={{
-                                    "bg-icon-success-base": result().ok,
-                                    "bg-icon-error-base": !result().ok,
-                                  }}
-                                />
-                                {result().label}
-                              </span>
-                              <span class="text-text-strong">{entry.task.name}</span>
-                              <span class="text-text-weaker">{entry.task.directory}</span>
-                              <span class="text-text-weaker">{language.t(RUN_TRIGGER_KEYS[entry.run.trigger])}</span>
-                              <span class="text-text-weaker">{formatTime(entry.run.timeCompleted ?? entry.run.scheduledAt)}</span>
-                              <Show when={formatDuration(entry.run.timeStarted, entry.run.timeCompleted)}>
-                                {(duration) => <span class="text-text-weaker">{duration()}</span>}
-                              </Show>
-                            </div>
-                            <Show when={entry.run.error}>
-                              <span class="truncate text-text-weaker">{entry.run.error}</span>
-                            </Show>
-                          </div>
-                          <Show when={entry.run.sessionID}>
-                            {(sessionID) => (
-                              <button
-                                type="button"
-                                class="max-w-[40%] truncate font-mono text-text-weak hover:text-text-strong"
-                                onClick={() => openSession(entry.task.directory, sessionID())}
-                              >
-                                {language.t("dialog.tasks.run.session", { id: sessionID() })}
-                              </button>
-                            )}
-                          </Show>
-                        </div>
-                      )
-                    }}
-                  </For>
-                </div>
-              </Show>
-            </Show>
-          </section>
-
-          <section class="flex flex-col gap-2">
-            <div class="flex items-center justify-between gap-2">
-              <span class="text-13-medium text-text-strong">{language.t("dialog.tasks.title")}</span>
-              <Show when={directories().length > 0}>
-                <Select
-                  options={[{ value: "all", label: language.t("settings.tasks.directory.all") }].concat(
-                    directories().map((item) => ({ value: item, label: item })),
-                  )}
-                  value={(option) => option.value}
-                  label={(option) => option.label}
-                  current={
-                    [{ value: "all", label: language.t("settings.tasks.directory.all") }]
-                      .concat(directories().map((item) => ({ value: item, label: item })))
-                      .find((option) => option.value === directoryFilter()) ?? {
-                      value: "all",
-                      label: language.t("settings.tasks.directory.all"),
-                    }
-                  }
-                  onSelect={(option) => setDirectoryFilter(option?.value ?? "all")}
-                  variant="secondary"
-                  size="small"
-                />
-              </Show>
-            </div>
-            <Show when={!tasksQuery.isLoading} fallback={<SettingsTasksStatus text={language.t("common.loading")} />}>
-              <Show
-                when={!tasksQuery.error}
-                fallback={
-                  <SettingsTasksStatus
-                    text={errorMessage(tasksQuery.error) ?? language.t("common.requestFailed")}
-                    onRetry={() => void tasksQuery.refetch()}
-                  />
-                }
-              >
-                <Show when={visibleTasks().length > 0} fallback={<SettingsTasksStatus text={language.t("dialog.tasks.empty")} />}>
+                <SettingsListV2>
                   <For each={visibleTasks()}>
                     {(task) => (
-                      <div class="flex flex-col gap-2 border-t border-border-weak-base py-3 first:border-t-0 first:pt-0">
-                        <div class="flex items-center gap-2">
+                      <div data-component="settings-v2-row">
+                        <div data-slot="settings-v2-row-copy" class="gap-2">
                           <button
                             type="button"
-                            class="flex min-w-0 flex-1 items-center gap-2 text-left"
+                            class="flex items-center gap-2 text-left"
                             onClick={() => setExpanded(expanded() === task.id ? undefined : task.id)}
                           >
-                            <Icon
+                            <IconV2
                               name="chevron-down"
                               size="small"
+                              class="text-v2-icon-icon-muted"
                               classList={{ "-rotate-90": expanded() !== task.id }}
                             />
-                            <span class="truncate text-14-medium text-text-strong">{task.name}</span>
+                            <span data-slot="settings-v2-row-title">{task.name}</span>
                             <Show when={task.description}>
-                              <span class="truncate text-12-regular text-text-weak">{task.description}</span>
+                              <span class="text-[13px] font-normal text-v2-text-text-muted">{task.description}</span>
                             </Show>
                           </button>
+                          <div data-slot="settings-v2-row-description" class="flex-wrap items-center gap-x-3">
+                            <span>{task.directory}</span>
+                            <span>{language.t("dialog.tasks.cron", { cron: task.cron })}</span>
+                            <Show when={task.timezone}>{(timezone) => <span>{timezone()}</span>}</Show>
+                            <Show when={task.agent}>
+                              {(agent) => (
+                                <span>
+                                  {language.t("dialog.tasks.form.agent")}: {agent()}
+                                </span>
+                              )}
+                            </Show>
+                            <Show when={task.enabled && formatTime(task.nextRunAt)}>
+                              {(time) => <span>{language.t("dialog.tasks.nextRun", { time: time() })}</span>}
+                            </Show>
+                          </div>
+                          <div class="flex items-center gap-2 pt-1">
+                            <ButtonV2
+                              size="small"
+                              onClick={() => triggerMutation.mutate(task)}
+                              disabled={
+                                activeRuns[task.id] ||
+                                (triggerMutation.isPending && triggerMutation.variables === task)
+                              }
+                            >
+                              {language.t("dialog.tasks.run.now")}
+                            </ButtonV2>
+                            <ButtonV2 size="small" variant="ghost-muted" onClick={() => openEdit(task)}>
+                              {language.t("common.edit")}
+                            </ButtonV2>
+                            <ButtonV2 size="small" variant="ghost-muted" onClick={() => confirmRemove(task)}>
+                              {language.t("common.delete")}
+                            </ButtonV2>
+                          </div>
+                          <Show when={expanded() === task.id}>
+                            <Show
+                              when={!runs.loading}
+                              fallback={
+                                <span class="text-[13px] text-v2-text-text-muted">
+                                  {language.t("common.loading")}
+                                  {language.t("common.loading.ellipsis")}
+                                </span>
+                              }
+                            >
+                              <Show
+                                when={!runs.error}
+                                fallback={
+                                  <div class="settings-v2-models-status">
+                                    {language.t("common.requestFailed")}
+                                    <ButtonV2
+                                      variant="ghost-muted"
+                                      size="small"
+                                      onClick={() => void runsActions.refetch()}
+                                    >
+                                      {language.t("common.retry")}
+                                    </ButtonV2>
+                                  </div>
+                                }
+                              >
+                                <Show
+                                  when={(runs.latest ?? []).length > 0}
+                                  fallback={
+                                    <div class="settings-v2-models-status">
+                                      {language.t("dialog.tasks.run.history.empty")}
+                                    </div>
+                                  }
+                                >
+                                  <div class="flex flex-col pt-1">
+                                    <For each={runs.latest ?? []}>
+                                      {(run) => {
+                                        const meta = () =>
+                                          [
+                                            language.t(RUN_TRIGGER_KEYS[run.trigger]),
+                                            formatTime(run.scheduledAt),
+                                            formatDuration(run.timeStarted, run.timeCompleted),
+                                          ]
+                                            .filter(Boolean)
+                                            .join(" · ")
+                                        return (
+                                          <div class="flex items-center justify-between gap-3 py-1.5 text-[13px] font-normal">
+                                            <div class="flex min-w-0 flex-col gap-0.5">
+                                              <div class="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-v2-text-text-muted">
+                                                {resultMark(language, run)}
+                                                <span>{meta()}</span>
+                                              </div>
+                                              <Show when={run.error}>
+                                                <span class="text-v2-state-fg-danger">{run.error}</span>
+                                              </Show>
+                                            </div>
+                                            <Show when={run.sessionID}>
+                                              {(sessionID) => (
+                                                <ButtonV2
+                                                  variant="ghost-muted"
+                                                  size="small"
+                                                  class="max-w-[45%] truncate font-mono"
+                                                  onClick={() => openSession(task.directory, sessionID())}
+                                                >
+                                                  {language.t("dialog.tasks.run.session", { id: sessionID() })}
+                                                </ButtonV2>
+                                              )}
+                                            </Show>
+                                          </div>
+                                        )
+                                      }}
+                                    </For>
+                                  </div>
+                                </Show>
+                              </Show>
+                            </Show>
+                          </Show>
+                        </div>
+                        <div data-slot="settings-v2-row-control" class="self-start">
                           <Switch
                             checked={task.enabled}
                             disabled={toggleMutation.isPending && toggleMutation.variables?.task.id === task.id}
@@ -432,141 +577,42 @@ export function SettingsTasks() {
                             {task.name}
                           </Switch>
                         </div>
-                        <div class="flex flex-wrap items-center gap-x-3 gap-y-1 text-12-regular text-text-weak">
-                          <span class="text-text-weaker">{task.directory}</span>
-                          <span>{language.t("dialog.tasks.cron", { cron: task.cron })}</span>
-                          <Show when={task.timezone}>{(timezone) => <span>{timezone()}</span>}</Show>
-                          <Show when={task.agent}>
-                            {(agent) => <span>{language.t("dialog.tasks.form.agent")}: {agent()}</span>}
-                          </Show>
-                          <Show when={task.enabled && formatTime(task.nextRunAt)}>
-                            {(time) => <span>{language.t("dialog.tasks.nextRun", { time: time() })}</span>}
-                          </Show>
-                        </div>
-                        <div class="flex items-center gap-2">
-                          <Button
-                            size="small"
-                            onClick={() => triggerMutation.mutate(task)}
-                            disabled={activeRuns[task.id] || (triggerMutation.isPending && triggerMutation.variables === task)}
-                          >
-                            {language.t("dialog.tasks.run.now")}
-                          </Button>
-                          <Button size="small" variant="ghost" onClick={() => openEdit(task)}>
-                            {language.t("common.edit")}
-                          </Button>
-                          <Button size="small" variant="ghost" onClick={() => confirmRemove(task)}>
-                            {language.t("common.delete")}
-                          </Button>
-                        </div>
-                        <Show when={expanded() === task.id}>
-                          <div class="flex flex-col gap-1 rounded-md bg-surface-base px-3 py-2">
-                            <span class="text-12-medium text-text-weak">{language.t("dialog.tasks.run.history")}</span>
-                            <Show
-                              when={!runs.loading}
-                              fallback={
-                                <span class="text-12-regular text-text-weaker">
-                                  {language.t("common.loading")}
-                                  {language.t("common.loading.ellipsis")}
-                                </span>
-                              }
-                            >
-                              <Show
-                                when={!runs.error}
-                                fallback={<SettingsTasksStatus text={language.t("common.requestFailed")} onRetry={() => void runsActions.refetch()} />}
-                              >
-                                <Show
-                                  when={(runs.latest ?? []).length > 0}
-                                  fallback={<SettingsTasksStatus text={language.t("dialog.tasks.run.history.empty")} />}
-                                >
-                                  <For each={runs.latest ?? []}>
-                                    {(run) => {
-                                      const result = () => runResult(language, run)
-                                      return (
-                                        <div class="flex items-center justify-between gap-2 text-12-regular">
-                                          <div class="flex min-w-0 flex-col">
-                                            <div class="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-text-weaker">
-                                              <span class="flex items-center gap-1">
-                                                <span
-                                                  class="size-1.5 rounded-full shrink-0"
-                                                  classList={{
-                                                    "bg-icon-success-base": result().ok,
-                                                    "bg-icon-error-base": !result().ok,
-                                                  }}
-                                                />
-                                                {result().label}
-                                              </span>
-                                              <span>{language.t(RUN_TRIGGER_KEYS[run.trigger])}</span>
-                                              <span>{formatTime(run.scheduledAt)}</span>
-                                              <Show when={formatDuration(run.timeStarted, run.timeCompleted)}>
-                                                {(duration) => <span>{duration()}</span>}
-                                              </Show>
-                                            </div>
-                                            <Show when={run.error}>
-                                              <span class="truncate text-text-weaker">{run.error}</span>
-                                            </Show>
-                                          </div>
-                                          <Show when={run.sessionID}>
-                                            {(sessionID) => (
-                                              <button
-                                                type="button"
-                                                class="max-w-[40%] truncate font-mono text-text-weak hover:text-text-strong"
-                                                onClick={() => openSession(task.directory, sessionID())}
-                                              >
-                                                {language.t("dialog.tasks.run.session", { id: sessionID() })}
-                                              </button>
-                                            )}
-                                          </Show>
-                                        </div>
-                                      )
-                                    }}
-                                  </For>
-                                </Show>
-                              </Show>
-                            </Show>
-                          </div>
-                        </Show>
                       </div>
                     )}
                   </For>
-                </Show>
+                </SettingsListV2>
               </Show>
             </Show>
-          </section>
-        </div>
-      </Show>
-    </div>
+          </Show>
+        </section>
+      </div>
+    </Show>
   )
 }
 
-function SettingsTasksStatus(props: { text: string; onRetry?: () => void }) {
+function SettingsTasksRemove(props: {
+  task: Task.Info
+  pending: boolean
+  onCancel: () => void
+  onConfirm: (task: Task.Info) => void
+}) {
   const language = useLanguage()
   return (
-    <div class="flex flex-col items-center gap-2 px-4 py-6">
-      <span class="text-13-regular text-text-weak">{props.text}</span>
-      <Show when={props.onRetry}>
-        <Button size="small" onClick={props.onRetry}>
-          {language.t("common.retry")}
-        </Button>
-      </Show>
-    </div>
-  )
-}
-
-function SettingsTasksRemove(props: { task: Task.Info; pending: boolean; onCancel: () => void; onConfirm: (task: Task.Info) => void }) {
-  const language = useLanguage()
-  return (
-    <Dialog title={language.t("dialog.tasks.delete.confirm.title")} fit>
-      <div class="flex flex-col gap-4 pl-6 pr-2.5 pb-3">
-        <span class="text-14-regular text-text-strong">
+    <Dialog fit>
+      <DialogHeader>
+        <DialogTitle>{language.t("dialog.tasks.delete.confirm.title")}</DialogTitle>
+      </DialogHeader>
+      <div class="flex flex-col gap-4 px-5 pb-4">
+        <span class="text-[13px] text-v2-text-text-base">
           {language.t("dialog.tasks.delete.confirm.message", { name: props.task.name })}
         </span>
         <div class="flex justify-end gap-2">
-          <Button variant="ghost" size="large" onClick={() => props.onCancel()}>
+          <ButtonV2 variant="ghost-muted" size="small" onClick={() => props.onCancel()}>
             {language.t("common.cancel")}
-          </Button>
-          <Button variant="primary" size="large" disabled={props.pending} onClick={() => props.onConfirm(props.task)}>
+          </ButtonV2>
+          <ButtonV2 variant="danger" size="small" disabled={props.pending} onClick={() => props.onConfirm(props.task)}>
             {language.t("common.delete")}
-          </Button>
+          </ButtonV2>
         </div>
       </div>
     </Dialog>
@@ -607,11 +653,10 @@ function TaskForm(props: {
   task?: Task.Info
   api: TasksApi
   agents: { value: string; label: string }[]
-  fallbackDirectory: string
   onDone: () => void
 }) {
   const language = useLanguage()
-  const [form, setForm] = createStore<TaskFormState>(formState(props.task, props.fallbackDirectory))
+  const [form, setForm] = createStore<TaskFormState>(formState(props.task))
   const [cronCheck, setCronCheck] = createSignal<{ cron: string; timezone: string }>()
 
   const [checkResult] = createResource(cronCheck, (input) =>
@@ -680,125 +725,194 @@ function TaskForm(props: {
   }
 
   const nextFire = () => checkResult.latest?.next?.[0]
-  const cronInvalid = () => !checkResult.loading && cronCheck() !== undefined && (checkResult.latest?.next?.length ?? 0) === 0
+  const cronInvalid = () =>
+    !checkResult.loading && cronCheck() !== undefined && (checkResult.latest?.next?.length ?? 0) === 0
   const formatTime = (value: number | undefined) => {
     if (!value) return
     return DateTime.fromMillis(value).setLocale(language.intl()).toLocaleString(DateTime.DATETIME_MED)
   }
 
   return (
-    <form class="flex flex-col gap-3" onSubmit={submit}>
-      <div class="grid grid-cols-2 gap-3">
-        <TextField
-          label={language.t("dialog.tasks.form.name")}
-          placeholder={language.t("dialog.tasks.form.name.placeholder")}
-          value={form.name}
-          onChange={(value) => setField("name", value)}
-          error={form.errors.name}
-          autofocus
-        />
-        <TextField
-          label={language.t("dialog.tasks.form.cron")}
-          placeholder={language.t("dialog.tasks.form.cron.placeholder")}
-          value={form.cron}
-          onChange={(value) => setField("cron", value)}
-          onBlur={checkCron}
-          error={form.errors.cron || (cronInvalid() ? language.t("settings.tasks.form.cron.invalid") : undefined)}
-        />
-        <TextField
-          label={language.t("dialog.tasks.form.timezone")}
-          placeholder={language.t("dialog.tasks.form.timezone.placeholder")}
-          value={form.timezone}
-          onChange={(value) => setField("timezone", value)}
-          onBlur={checkCron}
-        />
-        <TextField
-          label={language.t("dialog.tasks.form.model")}
-          placeholder={language.t("dialog.tasks.form.model.placeholder")}
-          value={form.model}
-          onChange={(value) => setField("model", value)}
-        />
-        <TextField
-          label={language.t("dialog.tasks.form.timeout")}
-          value={form.runTimeoutMs}
-          onChange={(value) => setField("runTimeoutMs", value)}
-        />
-        <TextField
-          label={language.t("dialog.tasks.form.retain")}
-          value={form.retainRuns}
-          onChange={(value) => setField("retainRuns", value)}
-        />
-      </div>
-      <Show
-        when={props.task}
-        fallback={
-          <TextField
-            label={language.t("settings.tasks.form.directory")}
-            placeholder={language.t("settings.tasks.form.directory.placeholder")}
-            value={form.directory ?? ""}
-            onChange={(value) => setForm("directory", value)}
-          />
-        }
-      >
-        <div class="flex flex-col gap-1">
-          <span class="text-12-medium text-text-weak">{language.t("settings.tasks.form.directory")}</span>
-          <span class="text-12-regular text-text-weak">{props.task?.directory}</span>
+    <>
+      <div class="settings-v2-tab-header">
+        <div class="settings-v2-tab-header-row">
+          <div class="flex items-center gap-2">
+            <IconButtonV2
+              variant="ghost-muted"
+              size="small"
+              aria-label={language.t("common.cancel")}
+              onClick={props.onDone}
+              icon={<IconV2 name="arrow-left" />}
+            />
+            <h2 class="settings-v2-tab-title">
+              {props.task ? language.t("dialog.tasks.form.edit.title") : language.t("dialog.tasks.new")}
+            </h2>
+          </div>
         </div>
-      </Show>
-      <div class="flex flex-col gap-1">
-        <span class="text-12-medium text-text-weak">{language.t("dialog.tasks.form.agent")}</span>
-        <Select
-          options={agentOptions()}
-          value={(option) => option.value}
-          label={(option) => option.label}
-          current={agentOptions().find((option) => option.value === form.agent) ?? agentOptions()[0]}
-          onSelect={(option) => setField("agent", option?.value ?? "")}
-          variant="secondary"
-          size="small"
-        />
-        <span class="text-11-regular text-text-weaker">{language.t("dialog.tasks.form.agent.hint")}</span>
       </div>
-      <Show when={cronCheck() && (checkResult.loading || nextFire())}>
-        <span class="text-11-regular text-text-weaker">
-          {checkResult.loading
-            ? language.t("settings.tasks.form.cron.checking")
-            : `${language.t("settings.tasks.form.cron.next")} ${formatTime(nextFire())}`}
-        </span>
-      </Show>
-      <TextField
-        label={language.t("dialog.tasks.form.description")}
-        placeholder={language.t("dialog.tasks.form.description.placeholder")}
-        value={form.description}
-        onChange={(value) => setField("description", value)}
-      />
-      <TextField
-        label={language.t("dialog.tasks.form.prompt")}
-        placeholder={language.t("dialog.tasks.form.prompt.placeholder")}
-        value={form.prompt}
-        onChange={(value) => setField("prompt", value)}
-        error={form.errors.prompt}
-        multiline
-      />
-      <Switch checked={form.enabled} onChange={(checked) => setEnabled(checked)}>
-        {language.t("dialog.tasks.form.enabled")}
-      </Switch>
-      <Show when={form.errors.submit}>
-        <span class="text-12-regular text-text-error">{form.errors.submit}</span>
-      </Show>
-      <div class="flex justify-end gap-2">
-        <Button type="button" variant="ghost" onClick={props.onDone}>
-          {language.t("common.cancel")}
-        </Button>
-        <Button type="submit" variant="primary" disabled={saveMutation.isPending}>
-          {saveMutation.isPending ? language.t("common.saving") : language.t("common.save")}
-        </Button>
+      <div class="settings-v2-tab-body">
+        <form class="settings-v2-section max-w-[560px]" onSubmit={submit}>
+          <Field>
+            <Field.Label>{language.t("dialog.tasks.form.name")}</Field.Label>
+            <TextInputV2
+              autofocus
+              appearance="large"
+              class="!w-full"
+              value={form.name}
+              placeholder={language.t("dialog.tasks.form.name.placeholder")}
+              onInput={(event) => setField("name", event.currentTarget.value)}
+              invalid={!!form.errors.name}
+            />
+          </Field>
+          <div class="grid grid-cols-2 gap-4">
+            <Field invalid={!!form.errors.cron || cronInvalid()}>
+              <Field.Label>{language.t("dialog.tasks.form.cron")}</Field.Label>
+              <TextInputV2
+                appearance="large"
+                class="!w-full"
+                value={form.cron}
+                placeholder={language.t("dialog.tasks.form.cron.placeholder")}
+                onInput={(event) => setField("cron", event.currentTarget.value)}
+                onBlur={checkCron}
+              />
+            </Field>
+            <Field>
+              <Field.Label>{language.t("dialog.tasks.form.timezone")}</Field.Label>
+              <TextInputV2
+                appearance="large"
+                class="!w-full"
+                value={form.timezone}
+                placeholder={language.t("dialog.tasks.form.timezone.placeholder")}
+                onInput={(event) => setField("timezone", event.currentTarget.value)}
+                onBlur={checkCron}
+              />
+            </Field>
+          </div>
+          <Show when={cronCheck() && (checkResult.loading || nextFire() || cronInvalid())}>
+            <span
+              class="text-[13px]"
+              classList={{
+                "text-v2-text-text-muted": !cronInvalid(),
+                "text-v2-state-fg-danger": cronInvalid(),
+              }}
+            >
+              {checkResult.loading
+                ? language.t("settings.tasks.form.cron.checking")
+                : cronInvalid()
+                  ? language.t("settings.tasks.form.cron.invalid")
+                  : `${language.t("settings.tasks.form.cron.next")} ${formatTime(nextFire())}`}
+            </span>
+          </Show>
+          <div class="grid grid-cols-2 gap-4">
+            <Field>
+              <Field.Label>{language.t("dialog.tasks.form.model")}</Field.Label>
+              <TextInputV2
+                appearance="large"
+                class="!w-full"
+                value={form.model}
+                placeholder={language.t("dialog.tasks.form.model.placeholder")}
+                onInput={(event) => setField("model", event.currentTarget.value)}
+              />
+            </Field>
+            <Show
+              when={props.task}
+              fallback={
+                <Field>
+                  <Field.Label>{language.t("settings.tasks.form.directory")}</Field.Label>
+                  <TextInputV2
+                    appearance="large"
+                    class="!w-full"
+                    value={form.directory}
+                    placeholder={language.t("settings.tasks.form.directory.placeholder")}
+                    onInput={(event) => setField("directory", event.currentTarget.value)}
+                  />
+                </Field>
+              }
+            >
+              <Field>
+                <Field.Label>{language.t("settings.tasks.form.directory")}</Field.Label>
+                <TextInputV2 appearance="large" class="!w-full" value={props.task?.directory ?? ""} disabled />
+              </Field>
+            </Show>
+          </div>
+          <div class="grid grid-cols-2 gap-4">
+            <Field>
+              <Field.Label>{language.t("dialog.tasks.form.timeout")}</Field.Label>
+              <TextInputV2
+                numeric
+                appearance="large"
+                class="!w-full"
+                value={form.runTimeoutMs}
+                onInput={(event) => setField("runTimeoutMs", event.currentTarget.value)}
+              />
+            </Field>
+            <Field>
+              <Field.Label>{language.t("dialog.tasks.form.retain")}</Field.Label>
+              <TextInputV2
+                numeric
+                appearance="large"
+                class="!w-full"
+                value={form.retainRuns}
+                onInput={(event) => setField("retainRuns", event.currentTarget.value)}
+              />
+            </Field>
+          </div>
+          <Field>
+            <Field.Label>{language.t("dialog.tasks.form.agent")}</Field.Label>
+            <SelectV2
+              appearance="inline"
+              options={agentOptions()}
+              current={agentOptions().find((option) => option.value === form.agent) ?? agentOptions()[0]}
+              value={(option) => option.value}
+              label={(option) => option.label}
+              onSelect={(option) => setField("agent", option?.value ?? "")}
+              placement="bottom-start"
+              gutter={6}
+            />
+            <span class="text-[12px] text-v2-text-text-muted">{language.t("dialog.tasks.form.agent.hint")}</span>
+          </Field>
+          <Field>
+            <Field.Label>{language.t("dialog.tasks.form.description")}</Field.Label>
+            <TextInputV2
+              appearance="large"
+              class="!w-full"
+              value={form.description}
+              placeholder={language.t("dialog.tasks.form.description.placeholder")}
+              onInput={(event) => setField("description", event.currentTarget.value)}
+            />
+          </Field>
+          <Field>
+            <Field.Label>{language.t("dialog.tasks.form.prompt")}</Field.Label>
+            <textarea
+              class="settings-v2-tasks-prompt"
+              value={form.prompt}
+              placeholder={language.t("dialog.tasks.form.prompt.placeholder")}
+              onInput={(event) => setField("prompt", event.currentTarget.value)}
+              rows={6}
+            />
+          </Field>
+          <Switch checked={form.enabled} onChange={(checked) => setEnabled(checked)}>
+            {language.t("dialog.tasks.form.enabled")}
+          </Switch>
+          <Show when={form.errors.submit}>
+            <span class="text-[13px] text-v2-state-fg-danger">{form.errors.submit}</span>
+          </Show>
+          <div class="flex justify-end gap-2">
+            <ButtonV2 type="button" variant="ghost-muted" size="small" onClick={props.onDone}>
+              {language.t("common.cancel")}
+            </ButtonV2>
+            <ButtonV2 type="submit" size="small" disabled={saveMutation.isPending}>
+              {saveMutation.isPending ? language.t("common.saving") : language.t("common.save")}
+            </ButtonV2>
+          </div>
+        </form>
       </div>
-    </form>
+    </>
   )
 }
 
-function formState(task: Task.Info | undefined, fallbackDirectory?: string): TaskFormState {
-  if (!task) return { ...emptyForm, directory: fallbackDirectory ?? "", errors: {} }
+function formState(task: Task.Info | undefined): TaskFormState {
+  if (!task) return { ...emptyForm, errors: {} }
   return {
     name: task.name,
     description: task.description ?? "",
