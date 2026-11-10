@@ -133,7 +133,7 @@ const layer = Layer.effect(
       for (const entry of pending) {
         if (dispatched.has(entry.run.id)) continue
         dispatched.add(entry.run.id)
-        FiberSet.run(
+        yield* FiberSet.run(
           deliveries,
           deliverySlots.withPermit(
             deliver(entry.task, entry.run).pipe(
