@@ -7,15 +7,25 @@ import { existsSync } from "fs"
 import { RuntimeFlags } from "@/effect/runtime-flags"
 import { SessionStatus } from "@/session/status"
 import { EffectBridge } from "@/effect/bridge"
+import { DeployResume } from "./resume"
 
 // Self-deploy: pull, build, drain in-flight sessions, then hand the process to
 // the platform restart command. Intended for fleet servers that run from a
 // source checkout (see AGENTS.md "Deploying").
+//
+// Sessions still mid-turn when the restart happens are captured through
+// DeployResume and resumed at the next boot, so a forced drain (or a session
+// that turned busy again late) does not silently drop the turn.
 
 const STABILITY_WINDOW_MS = 5_000
 const POLL_INTERVAL_MS = 2_000
 const STEP_TIMEOUT = "10 minutes"
 const MAX_STEP_OUTPUT_BYTES = 4 * 1024 * 1024
+
+/** Statuses that mean a provider turn or retry loop is in flight. Sleeping
+ * sessions are parked on a durable trigger and survive restarts untouched, so
+ * they neither block the drain nor need resuming. */
+const blocksDeploy = (info: SessionStatus.Info) => info.type === "busy" || info.type === "retry"
 
 export type Phase = "idle" | "pull" | "install" | "build" | "manifest" | "drain" | "restart"
 
@@ -84,14 +94,18 @@ const layer = Layer.effect(
       return { ok: true as const }
     })
 
+    const activeSessions = Effect.fn("Deploy.activeSessions")(function* () {
+      const sessions = yield* statusSvc.listAll()
+      return [...sessions.entries()].filter(([, info]) => blocksDeploy(info)).map(([id]) => id)
+    })
+
     const drain = Effect.fn("Deploy.drain")(function* (timeoutSeconds: number) {
       state.phase = "drain"
       yield* Effect.logInfo("deploy drain", { timeoutSeconds })
       const deadline = Date.now() + timeoutSeconds * 1000
       let idleSince: number | undefined = undefined
       while (Date.now() < deadline) {
-        const sessions = yield* statusSvc.listAll()
-        const active = [...sessions.entries()].filter(([, info]) => info.type !== "idle").map(([id]) => id)
+        const active = yield* activeSessions()
         state.activeSessions = active.length > 0 ? active : undefined
         if (active.length === 0) {
           if (idleSince === undefined) idleSince = Date.now()
@@ -123,7 +137,11 @@ const layer = Layer.effect(
       }
       yield* drain(timeoutSeconds)
       state.phase = "restart"
-      state.activeSessions = undefined
+      // Last capture before the kill: sessions that went busy again during the
+      // drain (or never went idle) are about to be interrupted mid-turn.
+      const interrupted = yield* activeSessions()
+      state.activeSessions = interrupted.length > 0 ? interrupted : undefined
+      yield* DeployResume.capture(interrupted)
       // "self-exit": the supervisor (systemd Restart=, NSSM AppExit Restart)
       // owns restarts; the deploy just terminates the process. This avoids the
       // Windows job-object race where an in-tree restart client is killed with
@@ -151,6 +169,7 @@ const layer = Layer.effect(
         yield* Effect.logError("deploy restart spawn failed", { error: String(error) })
         state.error = `restart command failed to spawn: ${String(error)}`
         state.phase = "idle"
+        yield* DeployResume.discard()
         return
       }
       // Brief grace so status readers can observe the restart phase; the
@@ -170,6 +189,7 @@ const layer = Layer.effect(
       yield* Effect.logError("deploy restart command exited without killing the server", outcome)
       state.error = `restart command exited with code ${outcome.code}: ${outcome.stderr || outcome.stdout}`
       state.phase = "idle"
+      yield* DeployResume.discard()
     })
 
     const start: Interface["start"] = Effect.fn("Deploy.start")(function* (input) {

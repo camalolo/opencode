@@ -49,6 +49,7 @@ import { Snapshot } from "@/snapshot"
 import { Storage } from "@/storage/storage"
 import { ToolRegistry } from "@/tool/registry"
 import { Deploy } from "@/deploy/deploy"
+import { DeployResume } from "@/deploy/resume"
 import { Truncate } from "@/tool/truncate"
 import { Worktree } from "@/worktree"
 import { RuntimeFlags } from "@/effect/runtime-flags"
@@ -265,6 +266,7 @@ const app = LayerNode.group([
   ToolRegistry.node,
   Format.node,
   Deploy.node,
+  DeployResume.node,
   Project.node,
   Vcs.node,
   Workspace.node,

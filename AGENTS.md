@@ -192,6 +192,8 @@ UI changes need build + manifest regen + restart on EVERY server (restarting alo
 
 Each server can deploy itself: `POST /global/deploy` runs pull → `bun install` → web UI build → manifest regen, waits for in-flight sessions to go idle (drain, `?timeout=<seconds>`, default 600), then runs the configured restart command. The request returns immediately; the triggering turn finishes naturally and the server restarts when the fleet is quiet. `GET /global/deploy` reports the phase (`idle|pull|install|build|manifest|drain|restart`) and any error.
 
+Sessions still mid-turn when the restart fires are auto-resumed after the reboot: the deploy captures busy/retry sessions into `deploy-resume.json` in the data dir (`.activeSessions` in `GET /global/deploy` shows them), and the next boot re-drives their turns ~5s after startup (sleeping sessions don't block the drain — their triggers are durable and survive restarts). Interrupted `task` subagent calls are resumed too: the subagent session finishes first and its real output is written back into the parent's tool part, so the parent continues with the result instead of re-running the task. Manual restarts (systemctl/NSSM without `/global/deploy`) bypass the capture and keep the old abort behavior.
+
 ```sh
 # home (this machine, run locally; respects the idle rule by draining)
 curl -X POST "http://127.0.0.1:4096/global/deploy?timeout=600"
