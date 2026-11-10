@@ -1,6 +1,6 @@
 export * as TaskScheduler from "./scheduler"
 
-import { Cause, Context, Duration, Effect, Layer, Schedule } from "effect"
+import { Cause, Context, Duration, Effect, FiberSet, Layer, Schedule, Semaphore } from "effect"
 import { Database } from "@opencode-ai/core/database/database"
 import { EventV2 } from "@opencode-ai/core/event"
 import { makeGlobalNode } from "@opencode-ai/core/effect/app-node"
@@ -112,6 +112,12 @@ const layer = Layer.effect(
     })
 
     let lastPruneAt = 0
+    const deliveries = yield* FiberSet.make<void>()
+    const deliverySlots = Semaphore.makeUnsafe(DELIVERY_CONCURRENCY)
+    // Runs already dispatched this epoch: pending rows stay visible until a
+    // delivery claims them, so the set prevents re-forking the same run every
+    // tick. Entries clear on fiber exit, letting pre-claim failures retry.
+    const dispatched = new Set<Task.RunID>()
 
     const tick = Effect.fn("TaskScheduler.tick")(function* () {
       const now = Date.now()
@@ -120,18 +126,25 @@ const layer = Layer.effect(
       for (const entry of claimed) yield* publish(entry.task, entry.run)
 
       // Pending rows include this tick's claims, manual triggers, and runs
-      // whose earlier delivery attempt failed before claiming.
+      // whose earlier delivery attempt failed before claiming. Deliveries fork
+      // into the background: a wedged run must not starve the watchdog below
+      // or hold later deliveries hostage.
       const pending = yield* ScheduledTask.pendingRuns(db)
-      yield* Effect.forEach(
-        pending,
-        (entry) =>
-          deliver(entry.task, entry.run).pipe(
-            Effect.catchCause((cause) =>
-              Effect.logError("task delivery failed", { cause, run: entry.run.id, task: entry.task.id }),
+      for (const entry of pending) {
+        if (dispatched.has(entry.run.id)) continue
+        dispatched.add(entry.run.id)
+        FiberSet.run(
+          deliveries,
+          deliverySlots.withPermit(
+            deliver(entry.task, entry.run).pipe(
+              Effect.catchCause((cause) =>
+                Effect.logError("task delivery failed", { cause, run: entry.run.id, task: entry.task.id }),
+              ),
+              Effect.ensuring(Effect.sync(() => dispatched.delete(entry.run.id))),
             ),
           ),
-        { concurrency: DELIVERY_CONCURRENCY, discard: true },
-      )
+        )
+      }
 
       // Timeout watchdog: terminal verdict first (the delivery fiber cannot
       // overwrite it), then interrupt the drain that is still running.
