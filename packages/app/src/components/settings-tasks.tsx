@@ -451,11 +451,11 @@ export function SettingsTasks() {
                               class="text-v2-icon-icon-muted"
                               classList={{ "-rotate-90": expanded() !== task.id }}
                             />
-                            <span data-slot="settings-v2-row-title" class="shrink-0 whitespace-nowrap">{task.name}</span>
-                            <Show when={task.description}>
-                              <span class="text-[13px] font-normal text-v2-text-text-muted">{task.description}</span>
-                            </Show>
+                            <span data-slot="settings-v2-row-title" class="whitespace-nowrap">{task.name}</span>
                           </button>
+                          <Show when={task.description}>
+                            <div class="text-[13px] font-normal text-v2-text-text-muted">{task.description}</div>
+                          </Show>
                           <div data-slot="settings-v2-row-description">
                             {[
                               task.directory,
