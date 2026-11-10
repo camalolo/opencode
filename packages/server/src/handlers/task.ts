@@ -1,4 +1,5 @@
 import { ScheduledTask } from "@opencode-ai/core/task/task"
+import { TaskSchedule } from "@opencode-ai/core/task/schedule"
 import { ConflictError, InvalidRequestError, TaskNotFoundError } from "@opencode-ai/protocol/errors"
 import { Effect } from "effect"
 import { HttpApiBuilder, HttpApiSchema } from "effect/unstable/httpapi"
@@ -7,7 +8,9 @@ import { response } from "../location"
 
 export const TaskHandler = HttpApiBuilder.group(Api, "server.task", (handlers) =>
   handlers
-    .handle("task.list", () => response(ScheduledTask.Service.use((tasks) => tasks.list())))
+    .handle("task.list", (ctx) =>
+      response(ScheduledTask.Service.use((tasks) => (ctx.query.all ? tasks.listAll() : tasks.list()))),
+    )
     .handle(
       "task.create",
       (ctx) =>
@@ -88,7 +91,25 @@ export const TaskHandler = HttpApiBuilder.group(Api, "server.task", (handlers) =
             Effect.catchTag("Task.NotFoundError", (error) => Effect.fail(notFound(error.taskID))),
           ),
         ),
-    ),
+    )
+    .handle("task.listRunsRecent", (ctx) =>
+      response(ScheduledTask.Service.use((tasks) => tasks.recentRuns(ctx.query.limit ?? 50))),
+    )
+    .handle("task.validate", (ctx) => {
+      const timezone = ctx.payload.timezone ?? undefined
+      const invalid = TaskSchedule.validate({ cron: ctx.payload.cron, timezone })
+      if (invalid) {
+        return Effect.fail(new InvalidRequestError({ message: invalid.message, kind: "invalid_schedule" }))
+      }
+      const next: Array<number> = []
+      let after = Date.now()
+      for (let i = 0; i < 5; i++) {
+        const fire = TaskSchedule.nextAfter({ cron: ctx.payload.cron, timezone, after })
+        next.push(fire)
+        after = fire
+      }
+      return response(Effect.succeed({ next }))
+    }),
 )
 
 function notFound(taskID: string) {

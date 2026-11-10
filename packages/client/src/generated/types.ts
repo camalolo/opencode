@@ -270,6 +270,7 @@ export type SessionsListOutput = {
         readonly patch: string
       }>
     }
+    readonly unattended?: boolean
   }>
   readonly cursor: { readonly previous?: string | null; readonly next?: string | null }
 }
@@ -332,6 +333,7 @@ export type SessionsCreateOutput = {
         readonly patch: string
       }>
     }
+    readonly unattended?: boolean
   }
 }["data"]
 
@@ -370,6 +372,7 @@ export type SessionsGetOutput = {
         readonly patch: string
       }>
     }
+    readonly unattended?: boolean
   }
 }["data"]
 
@@ -2506,7 +2509,12 @@ export type FilesFindOutput = {
 export type TasksListInput = {
   readonly location?: {
     readonly location?: { readonly directory?: string | undefined; readonly workspace?: string | undefined } | undefined
+    readonly all?: boolean | undefined
   }["location"]
+  readonly all?: {
+    readonly location?: { readonly directory?: string | undefined; readonly workspace?: string | undefined } | undefined
+    readonly all?: boolean | undefined
+  }["all"]
 }
 
 export type TasksListOutput = {
@@ -2897,6 +2905,7 @@ export type TasksTriggerOutput = {
     readonly sessionID?: string
     readonly status: "pending" | "running" | "completed" | "failed" | "skipped" | "cancelled"
     readonly trigger: "schedule" | "manual"
+    readonly reason?: "error" | "timeout" | "cancelled" | "interrupted"
     readonly scheduledAt: number
     readonly timeStarted?: number
     readonly timeCompleted?: number
@@ -2923,11 +2932,67 @@ export type TasksListRunsOutput = {
     readonly sessionID?: string
     readonly status: "pending" | "running" | "completed" | "failed" | "skipped" | "cancelled"
     readonly trigger: "schedule" | "manual"
+    readonly reason?: "error" | "timeout" | "cancelled" | "interrupted"
     readonly scheduledAt: number
     readonly timeStarted?: number
     readonly timeCompleted?: number
     readonly error?: string
   }>
+}
+
+export type TasksListRunsRecentInput = { readonly limit?: { readonly limit?: number | undefined }["limit"] }
+
+export type TasksListRunsRecentOutput = {
+  readonly location: {
+    readonly directory: string
+    readonly workspaceID?: string
+    readonly project: { readonly id: string; readonly directory: string }
+  }
+  readonly data: ReadonlyArray<{
+    readonly task: {
+      readonly id: string
+      readonly directory: string
+      readonly name: string
+      readonly description?: string
+      readonly cron: string
+      readonly timezone?: string
+      readonly agent?: string
+      readonly model?: { readonly id: string; readonly providerID: string; readonly variant?: string }
+      readonly prompt: string
+      readonly enabled: boolean
+      readonly runTimeoutMs?: number
+      readonly retainRuns?: number
+      readonly nextRunAt?: number
+      readonly timeCreated: number
+      readonly timeUpdated: number
+    }
+    readonly run: {
+      readonly id: string
+      readonly taskID: string
+      readonly sessionID?: string
+      readonly status: "pending" | "running" | "completed" | "failed" | "skipped" | "cancelled"
+      readonly trigger: "schedule" | "manual"
+      readonly reason?: "error" | "timeout" | "cancelled" | "interrupted"
+      readonly scheduledAt: number
+      readonly timeStarted?: number
+      readonly timeCompleted?: number
+      readonly error?: string
+    }
+  }>
+}
+
+export type TasksValidateInput = {
+  readonly cron: { readonly cron: string; readonly timezone?: string | null | undefined }["cron"]
+  readonly timezone?: { readonly cron: string; readonly timezone?: string | null | undefined }["timezone"]
+}
+
+export type TasksValidateOutput = {
+  readonly location: {
+    readonly directory: string
+    readonly workspaceID?: string
+    readonly project: { readonly id: string; readonly directory: string }
+  }
+  readonly data: { readonly next: ReadonlyArray<number> }
 }
 
 export type CommandsListInput = {

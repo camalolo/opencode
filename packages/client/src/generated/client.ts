@@ -95,6 +95,10 @@ import type {
   TasksTriggerOutput,
   TasksListRunsInput,
   TasksListRunsOutput,
+  TasksListRunsRecentInput,
+  TasksListRunsRecentOutput,
+  TasksValidateInput,
+  TasksValidateOutput,
   CommandsListInput,
   CommandsListOutput,
   SkillsListInput,
@@ -800,7 +804,7 @@ export function make(options: ClientOptions) {
           {
             method: "GET",
             path: `/api/task`,
-            query: { location: input?.["location"] },
+            query: { location: input?.["location"], all: input?.["all"] },
             successStatus: 200,
             declaredStatuses: [401, 400],
             empty: false,
@@ -899,6 +903,30 @@ export function make(options: ClientOptions) {
             query: { location: input["location"] },
             successStatus: 200,
             declaredStatuses: [404, 401, 400],
+            empty: false,
+          },
+          requestOptions,
+        ),
+      listRunsRecent: (input?: TasksListRunsRecentInput, requestOptions?: RequestOptions) =>
+        request<TasksListRunsRecentOutput>(
+          {
+            method: "GET",
+            path: `/api/task-runs`,
+            query: { limit: input?.["limit"] },
+            successStatus: 200,
+            declaredStatuses: [401, 400],
+            empty: false,
+          },
+          requestOptions,
+        ),
+      validate: (input: TasksValidateInput, requestOptions?: RequestOptions) =>
+        request<TasksValidateOutput>(
+          {
+            method: "POST",
+            path: `/api/task/validate`,
+            body: { cron: input["cron"], timezone: input["timezone"] },
+            successStatus: 200,
+            declaredStatuses: [400, 401],
             empty: false,
           },
           requestOptions,

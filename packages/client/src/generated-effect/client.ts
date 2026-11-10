@@ -495,9 +495,14 @@ const Endpoint10_1 = (raw: RawClient["server.fs"]) => (input: Endpoint10_1Input)
 const adaptGroup10 = (raw: RawClient["server.fs"]) => ({ list: Endpoint10_0(raw), find: Endpoint10_1(raw) })
 
 type Endpoint11_0Request = Parameters<RawClient["server.task"]["task.list"]>[0]
-type Endpoint11_0Input = { readonly location?: Endpoint11_0Request["query"]["location"] }
+type Endpoint11_0Input = {
+  readonly location?: Endpoint11_0Request["query"]["location"]
+  readonly all?: Endpoint11_0Request["query"]["all"]
+}
 const Endpoint11_0 = (raw: RawClient["server.task"]) => (input?: Endpoint11_0Input) =>
-  raw["task.list"]({ query: { location: input?.["location"] } }).pipe(Effect.mapError(mapClientError))
+  raw["task.list"]({ query: { location: input?.["location"], all: input?.["all"] } }).pipe(
+    Effect.mapError(mapClientError),
+  )
 
 type Endpoint11_1Request = Parameters<RawClient["server.task"]["task.create"]>[0]
 type Endpoint11_1Input = {
@@ -603,6 +608,21 @@ const Endpoint11_6 = (raw: RawClient["server.task"]) => (input: Endpoint11_6Inpu
     Effect.mapError(mapClientError),
   )
 
+type Endpoint11_7Request = Parameters<RawClient["server.task"]["task.listRunsRecent"]>[0]
+type Endpoint11_7Input = { readonly limit?: Endpoint11_7Request["query"]["limit"] }
+const Endpoint11_7 = (raw: RawClient["server.task"]) => (input?: Endpoint11_7Input) =>
+  raw["task.listRunsRecent"]({ query: { limit: input?.["limit"] } }).pipe(Effect.mapError(mapClientError))
+
+type Endpoint11_8Request = Parameters<RawClient["server.task"]["task.validate"]>[0]
+type Endpoint11_8Input = {
+  readonly cron: Endpoint11_8Request["payload"]["cron"]
+  readonly timezone?: Endpoint11_8Request["payload"]["timezone"]
+}
+const Endpoint11_8 = (raw: RawClient["server.task"]) => (input: Endpoint11_8Input) =>
+  raw["task.validate"]({ payload: { cron: input["cron"], timezone: input["timezone"] } }).pipe(
+    Effect.mapError(mapClientError),
+  )
+
 const adaptGroup11 = (raw: RawClient["server.task"]) => ({
   list: Endpoint11_0(raw),
   create: Endpoint11_1(raw),
@@ -611,6 +631,8 @@ const adaptGroup11 = (raw: RawClient["server.task"]) => ({
   remove: Endpoint11_4(raw),
   trigger: Endpoint11_5(raw),
   listRuns: Endpoint11_6(raw),
+  listRunsRecent: Endpoint11_7(raw),
+  validate: Endpoint11_8(raw),
 })
 
 type Endpoint12_0Request = Parameters<RawClient["server.command"]["command.list"]>[0]

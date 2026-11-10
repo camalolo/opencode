@@ -82,6 +82,10 @@ import type {
   GlobalConfigGetResponses,
   GlobalConfigUpdateErrors,
   GlobalConfigUpdateResponses,
+  GlobalDeployStartErrors,
+  GlobalDeployStartResponses,
+  GlobalDeployStatusErrors,
+  GlobalDeployStatusResponses,
   GlobalDisposeErrors,
   GlobalDisposeResponses,
   GlobalEventErrors,
@@ -406,6 +410,8 @@ import type {
   V2TaskListErrors,
   V2TaskListResponses,
   V2TaskListRunsErrors,
+  V2TaskListRunsRecentErrors,
+  V2TaskListRunsRecentResponses,
   V2TaskListRunsResponses,
   V2TaskRemoveErrors,
   V2TaskRemoveResponses,
@@ -413,6 +419,8 @@ import type {
   V2TaskTriggerResponses,
   V2TaskUpdateErrors,
   V2TaskUpdateResponses,
+  V2TaskValidateErrors,
+  V2TaskValidateResponses,
   VcsApplyErrors,
   VcsApplyResponses,
   VcsDiffErrors,
@@ -1343,6 +1351,39 @@ export class Config extends HeyApiClient {
   }
 }
 
+export class Deploy extends HeyApiClient {
+  /**
+   * Get deploy status
+   *
+   * Get the current phase of a self-deploy (pull, build, drain, restart).
+   */
+  public status<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
+    return (options?.client ?? this.client).get<GlobalDeployStatusResponses, GlobalDeployStatusErrors, ThrowOnError>({
+      url: "/global/deploy",
+      ...options,
+    })
+  }
+
+  /**
+   * Start self-deploy
+   *
+   * Pull, rebuild the web UI, wait for in-flight sessions to go idle, then restart the server via the configured restart command.
+   */
+  public start<ThrowOnError extends boolean = false>(
+    parameters?: {
+      timeout?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "timeout" }] }])
+    return (options?.client ?? this.client).post<GlobalDeployStartResponses, GlobalDeployStartErrors, ThrowOnError>({
+      url: "/global/deploy",
+      ...options,
+      ...params,
+    })
+  }
+}
+
 export class Global extends HeyApiClient {
   /**
    * Get health
@@ -1407,6 +1448,11 @@ export class Global extends HeyApiClient {
   private _config?: Config
   get config(): Config {
     return (this._config ??= new Config({ client: this.client }))
+  }
+
+  private _deploy?: Deploy
+  get deploy(): Deploy {
+    return (this._deploy ??= new Deploy({ client: this.client }))
   }
 }
 
@@ -6719,7 +6765,7 @@ export class Task extends HeyApiClient {
   /**
    * List scheduled tasks
    *
-   * Retrieve scheduled tasks bound to the requested location.
+   * Retrieve scheduled tasks bound to the requested location, or every task across directories with all=true.
    */
   public list<ThrowOnError extends boolean = false>(
     parameters?: {
@@ -6727,10 +6773,21 @@ export class Task extends HeyApiClient {
         directory?: string
         workspace?: string
       }
+      all?: "true" | "false"
     },
     options?: Options<never, ThrowOnError>,
   ) {
-    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "location" }] }])
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "location" },
+            { in: "query", key: "all" },
+          ],
+        },
+      ],
+    )
     return (options?.client ?? this.client).get<V2TaskListResponses, V2TaskListErrors, ThrowOnError>({
       url: "/api/task",
       ...options,
@@ -6981,6 +7038,64 @@ export class Task extends HeyApiClient {
       url: "/api/task/{taskID}/run",
       ...options,
       ...params,
+    })
+  }
+
+  /**
+   * List recent scheduled task runs
+   *
+   * Retrieve the newest runs across every scheduled task, newest first.
+   */
+  public listRunsRecent<ThrowOnError extends boolean = false>(
+    parameters?: {
+      limit?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "limit" }] }])
+    return (options?.client ?? this.client).get<
+      V2TaskListRunsRecentResponses,
+      V2TaskListRunsRecentErrors,
+      ThrowOnError
+    >({
+      url: "/api/task-runs",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Validate a task schedule
+   *
+   * Check a cron expression and timezone; returns the next fire times in epoch ms.
+   */
+  public validate<ThrowOnError extends boolean = false>(
+    parameters?: {
+      cron?: string
+      timezone?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "body", key: "cron" },
+            { in: "body", key: "timezone" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<V2TaskValidateResponses, V2TaskValidateErrors, ThrowOnError>({
+      url: "/api/task/validate",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
     })
   }
 }

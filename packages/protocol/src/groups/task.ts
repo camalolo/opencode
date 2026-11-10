@@ -1,6 +1,7 @@
 import { Agent } from "@opencode-ai/schema/agent"
 import { Model } from "@opencode-ai/schema/model"
 import { Task } from "@opencode-ai/schema/task"
+import { NonNegativeInt, PositiveInt } from "@opencode-ai/schema/schema"
 import { Schema } from "effect"
 import { HttpApiEndpoint, HttpApiGroup, HttpApiSchema, OpenApi } from "effect/unstable/httpapi"
 import { ConflictError, InvalidRequestError, TaskNotFoundError } from "../errors"
@@ -9,6 +10,37 @@ import { LocationQuery, locationQueryOpenApi } from "./location"
 
 const NullableString = Schema.NullOr(Schema.String)
 const NullableNumber = Schema.NullOr(Schema.Number)
+
+const TaskListQuery = Schema.Struct({
+  ...LocationQuery.fields,
+  all: Schema.optional(
+    Schema.Boolean.annotate({
+      description: "List every task across directories instead of only the requested location",
+    }),
+  ),
+})
+
+const TaskRecentRunsQuery = Schema.Struct({
+  limit: Schema.NumberFromString.pipe(Schema.decodeTo(PositiveInt), Schema.optional).annotate({
+    description: "Maximum number of runs to return. Defaults to the newest 50 runs.",
+  }),
+})
+
+const RunWithTask = Schema.Struct({
+  task: Task.Info,
+  run: Task.Run,
+}).annotate({ identifier: "Task.RunWithTask" })
+
+const TaskValidatePayload = Schema.Struct({
+  cron: Schema.String,
+  timezone: Schema.optional(NullableString),
+})
+
+const TaskValidateSuccess = Schema.Struct({
+  next: Schema.Array(NonNegativeInt).annotate({
+    description: "Epoch ms of the next fire times; empty when the schedule has no future occurrence",
+  }),
+}).annotate({ identifier: "Task.ValidateSuccess" })
 
 const TaskPayloadFields = {
   name: Schema.String,
@@ -39,7 +71,7 @@ const TaskUpdatePayloadFields = {
 export const TaskGroup = HttpApiGroup.make("server.task")
   .add(
     HttpApiEndpoint.get("task.list", "/api/task", {
-      query: LocationQuery,
+      query: TaskListQuery,
       success: Location.response(Schema.Array(Task.Info)),
     })
       .annotateMerge(locationQueryOpenApi)
@@ -47,7 +79,8 @@ export const TaskGroup = HttpApiGroup.make("server.task")
         OpenApi.annotations({
           identifier: "v2.task.list",
           summary: "List scheduled tasks",
-          description: "Retrieve scheduled tasks bound to the requested location.",
+          description:
+            "Retrieve scheduled tasks bound to the requested location, or every task across directories with all=true.",
         }),
       ),
   )
@@ -145,6 +178,33 @@ export const TaskGroup = HttpApiGroup.make("server.task")
           identifier: "v2.task.listRuns",
           summary: "List scheduled task runs",
           description: "Retrieve the run history of a scheduled task, newest first.",
+        }),
+      ),
+  )
+  .add(
+    HttpApiEndpoint.get("task.listRunsRecent", "/api/task-runs", {
+      query: TaskRecentRunsQuery,
+      success: Location.response(Schema.Array(RunWithTask)),
+    })
+      .annotateMerge(
+        OpenApi.annotations({
+          identifier: "v2.task.listRunsRecent",
+          summary: "List recent scheduled task runs",
+          description: "Retrieve the newest runs across every scheduled task, newest first.",
+        }),
+      ),
+  )
+  .add(
+    HttpApiEndpoint.post("task.validate", "/api/task/validate", {
+      payload: TaskValidatePayload,
+      success: Location.response(TaskValidateSuccess),
+      error: InvalidRequestError,
+    })
+      .annotateMerge(
+        OpenApi.annotations({
+          identifier: "v2.task.validate",
+          summary: "Validate a task schedule",
+          description: "Check a cron expression and timezone; returns the next fire times in epoch ms.",
         }),
       ),
   )
