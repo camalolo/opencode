@@ -1,5 +1,6 @@
 import { describe, expect, mock, test } from "bun:test"
 import type { SessionMessageInfo } from "@opencode-ai/client/promise"
+import type { UserMessage } from "@opencode-ai/sdk/v2"
 import { normalizeSessionMessages } from "@/utils/session-message"
 
 mock.module("@opencode-ai/session-ui/message-part", () => ({
@@ -352,5 +353,63 @@ describe("current session timeline rows", () => {
     )
 
     expect(result.rows.map((row) => row._tag)).toEqual(["UserMessage", "AssistantPart", "Thinking"])
+  })
+
+  test("shows the changed-files summary for the active turn once the session sleeps", () => {
+    const source = [
+      { id: "msg_user", type: "user", text: "edit the file", time: { created: 1 } },
+      {
+        id: "msg_assistant",
+        type: "assistant",
+        agent: "build",
+        model: { id: "model", providerID: "provider" },
+        content: [{ type: "text", text: "done" }],
+        time: { created: 2, completed: 3 },
+      },
+    ] satisfies SessionMessageInfo[]
+    const normalized = normalizeSessionMessages("ses_1", source)
+    const user: UserMessage = {
+      ...(normalized.messages.find((message) => message.id === "msg_user") as UserMessage),
+      summary: {
+        diffs: [{ file: "app.txt", patch: "", additions: 1, deletions: 1, status: "modified" }],
+      },
+    }
+    const messages = new Map(
+      normalized.messages.map((message) => (message.id === "msg_user" ? user : message)).map((message) => [message.id, message]),
+    )
+
+    // An armed sleep_until trigger settles the session to "sleeping" instead of
+    // "idle" when the turn ends; the turn itself is finished, so the diff
+    // summary must render for the still-active turn.
+    const sleeping = Timeline.constructSessionMessageRows(
+      source,
+      (messageID) => messages.get(messageID),
+      (messageID) => normalized.parts.get(messageID) ?? [],
+      true,
+      "sleeping",
+      true,
+      normalized.messages.filter((message) => message.role === "user"),
+    )
+    expect(sleeping.rows.map(TimelineRow.key)).toEqual([
+      "user-message:msg_user",
+      "assistant-part:msg_user:msg_assistant:text:0",
+      "diff-summary:msg_user",
+    ])
+
+    // While the turn is still working the summary stays hidden.
+    const busy = Timeline.constructSessionMessageRows(
+      source,
+      (messageID) => messages.get(messageID),
+      (messageID) => normalized.parts.get(messageID) ?? [],
+      true,
+      "busy",
+      true,
+      normalized.messages.filter((message) => message.role === "user"),
+    )
+    expect(busy.rows.map(TimelineRow.key)).toEqual([
+      "user-message:msg_user",
+      "assistant-part:msg_user:msg_assistant:text:0",
+      "thinking:msg_user",
+    ])
   })
 })

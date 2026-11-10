@@ -27,6 +27,7 @@ import { useLocal } from "@/context/local"
 import { FileProvider, selectionFromLines, useFile, type FileSelection, type SelectedLineRange } from "@/context/file"
 import { createStore } from "solid-js/store"
 import type { SessionReviewLineComment } from "@opencode-ai/session-ui/session-review"
+import { sessionWorking } from "@opencode-ai/session-ui/session-status"
 import { ResizeHandle } from "@opencode-ai/ui/resize-handle"
 import { Select } from "@opencode-ai/ui/select"
 import { SelectV2 } from "@opencode-ai/ui/v2/select-v2"
@@ -1130,7 +1131,11 @@ export default function Page() {
     on(
       () => sync().data.session_status[params.id ?? ""]?.type,
       (next, prev) => {
-        if (next !== "idle" || prev === undefined || prev === "idle") return
+        // Refresh when the turn's work settles (busy/retry -> idle or sleeping):
+        // a session that armed a sleep_until trigger finished its turn without
+        // ever passing through idle.
+        if (!next || !prev) return
+        if (sessionWorking(next) || !sessionWorking(prev)) return
         refreshVcs()
       },
       { defer: true },

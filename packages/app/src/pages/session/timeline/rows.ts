@@ -2,6 +2,7 @@ import { parseCommentNote, readCommentMetadata } from "@/utils/comment-note"
 import type { SessionMessageInfo } from "@opencode-ai/client/promise"
 import { AssistantMessage, Part, SessionStatus, UserMessage } from "@opencode-ai/sdk/v2"
 import { groupParts, renderable, type PartGroup } from "@opencode-ai/session-ui/message-part"
+import { sessionWorking } from "@opencode-ai/session-ui/session-status"
 import { TimelineRow, type SummaryDiff } from "./timeline-row"
 import { uniqueSummaryDiffs } from "./summary-diffs"
 import { compareMessages } from "@/utils/session-message"
@@ -238,7 +239,10 @@ export namespace Timeline {
     if (isActive && status === "retry") rows.push(new TimelineRow.Retry({ userMessageID: userMessage.id }))
 
     const diffs = uniqueSummaryDiffs(userMessage.summary?.diffs)
-    if (diffs.length > 0 && (status === "idle" || !isActive)) {
+    // Sleeping sessions finished their turn (an armed sleep_until trigger only
+    // defers the next wake), so the changed-files summary must render for the
+    // active turn there too — only busy/retry work keeps it hidden.
+    if (diffs.length > 0 && (!isActive || !sessionWorking(status))) {
       rows.push(
         new TimelineRow.DiffSummary({
           userMessageID: userMessage.id,

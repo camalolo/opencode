@@ -58,6 +58,7 @@ import { downloadSessionExport, fetchSessionExport, sessionExportFilename } from
 import { getDirectory, getFilename } from "@opencode-ai/core/util/path"
 import { Popover as KobaltePopover } from "@kobalte/core/popover"
 import { normalize } from "@opencode-ai/session-ui/session-diff"
+import { sessionWorking } from "@opencode-ai/session-ui/session-status"
 import { useFileComponent } from "@opencode-ai/ui/context/file"
 import { shouldMarkBoundaryGesture, normalizeWheelDelta } from "@/pages/session/message-gesture"
 import { createScrollPreservation } from "@/pages/session/timeline/scroll-preservation"
@@ -1104,7 +1105,7 @@ export function MessageTimeline(props: {
     )
   }
 
-  const workingTurn = (userMessageID: string) => sessionStatus().type !== "idle" && activeMessageID() === userMessageID
+  const workingTurn = (userMessageID: string) => sessionWorking(sessionStatus().type) && activeMessageID() === userMessageID
 
   const turnDurationMs = (userMessageID: string) => {
     const message = messageByID().get(userMessageID)
