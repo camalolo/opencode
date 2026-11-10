@@ -15,7 +15,6 @@ import { useLanguage } from "@/context/language"
 import { usePlatform } from "@/context/platform"
 import { useServer, type ServerConnection } from "@/context/server"
 import { useQueryOptions } from "@/context/server-sync"
-import { useSDK } from "@/context/sdk"
 import { legacySessionHref } from "@/utils/session-route"
 import { pathKey } from "@/utils/path-key"
 import { authTokenFromCredentials } from "@/utils/server"
@@ -154,11 +153,9 @@ export function SettingsTasks() {
   const server = useServer()
   const platform = usePlatform()
   const navigate = useNavigate()
-  const sdk = useSDK()
   const queryOptions = useQueryOptions()
   const dialog = useDialog()
 
-  const directory = () => sdk().directory
   const api = createTasksApi({
     server: () => server.current?.http,
     // fetch must stay bound to its global receiver; calling it as an object
@@ -184,7 +181,9 @@ export function SettingsTasks() {
     return api.listRuns(task)
   })
 
-  const agentsQuery = createQuery(() => queryOptions().agents(pathKey(directory() ?? "/")))
+  // Root-project agents: global agents are the sane default for the fleet
+  // view; the tasks themselves may live in any directory.
+  const agentsQuery = createQuery(() => queryOptions().agents(pathKey("/")))
 
   const tasks = () => tasksQuery.data ?? []
   const directories = () => [...new Set(tasks().map((task) => task.directory))].toSorted()
@@ -199,20 +198,10 @@ export function SettingsTasks() {
     if (expanded()) void runsActions.refetch()
   }
 
-  onCleanup(
-    sdk().event.listen((event) => {
-      const name = event.name as string
-      if (name === "task.updated") {
-        void tasksQuery.refetch()
-        return
-      }
-      if (name !== "task.run.updated") return
-      const run = (event.details as { properties?: { run?: Task.Run } }).properties?.run
-      if (!run) return
-      setActiveRuns(run.taskID, run.status === "pending" || run.status === "running")
-      refresh()
-    }),
-  )
+  // Settings has no directory SDK event stream; poll instead. Runs update a
+  // few times per minute while a run is in flight.
+  const refreshTimer = setInterval(refresh, 30_000)
+  onCleanup(() => clearInterval(refreshTimer))
 
   const toggleMutation = useMutation(() => ({
     mutationFn: (input: { task: Task.Info; enabled: boolean }) => api.update(input.task, { enabled: input.enabled }),
@@ -308,7 +297,7 @@ export function SettingsTasks() {
             task={view.task}
             api={api}
             agents={agentOptions()}
-            fallbackDirectory={directory() ?? "/"}
+            fallbackDirectory="/"
             onDone={closeForm}
           />
         }
