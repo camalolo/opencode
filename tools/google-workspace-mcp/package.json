@@ -1,0 +1,33 @@
+{
+  "name": "@alanxchen/google-workspace-mcp",
+  "version": "2.0.1",
+  "description": "Unified Google Workspace MCP Server for Gmail, Calendar, Drive, Docs, Sheets, Slides, and People",
+  "type": "module",
+  "main": "./build/index.js",
+  "exports": {
+    ".": "./build/index.js"
+  },
+  "bin": {
+    "google-workspace-mcp": "build/index.js"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "google-workspace",
+    "gmail",
+    "calendar",
+    "drive",
+    "oauth"
+  ],
+  "author": "alanx",
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.4",
+    "googleapis": "^144.0.0",
+    "open": "^10.1.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "private": true
+}
