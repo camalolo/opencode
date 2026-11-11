@@ -404,6 +404,12 @@ function createServerSdkContextBase(server: ServerConnection.Any, scope: ServerS
                 pendingReconnect = false
                 for (const listener of reconnectListeners) listener()
                 for (const listener of snapshotListeners) listener()
+                // A restart usually means a deploy swapped the UI out from
+                // under this page: its lazy chunks may no longer exist in
+                // dist and fail to import mid-session. Reload once; the
+                // fresh document records the new boot as its first connect
+                // and never re-enters this branch for it.
+                location.reload()
               }
             }
             if (marker === "server.resumed") {
