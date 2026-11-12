@@ -28,7 +28,15 @@ export const LogInput = Schema.Struct({
   }),
 })
 
+export const AuthEntry = Schema.Struct({
+  type: Schema.Literals(["oauth", "api", "wellknown"]),
+}).annotate({
+  identifier: "AuthEntry",
+  description: "Authentication entry type. Secrets are never returned.",
+})
+
 export const ControlPaths = {
+  authList: "/auth",
   auth: "/auth/:providerID",
   log: "/log",
 } as const
@@ -36,6 +44,15 @@ export const ControlPaths = {
 export const ControlApi = HttpApi.make("control").add(
   HttpApiGroup.make("control")
     .add(
+      HttpApiEndpoint.get("authList", ControlPaths.authList, {
+        success: described(Schema.Record(Schema.String, AuthEntry), "Authentication entries (types only, no secrets)"),
+      }).annotateMerge(
+        OpenApi.annotations({
+          identifier: "auth.list",
+          summary: "List auth credentials",
+          description: "List configured authentication entries (types only, no secrets).",
+        }),
+      ),
       HttpApiEndpoint.put("authSet", ControlPaths.auth, {
         params: AuthParams,
         payload: Auth.Info,

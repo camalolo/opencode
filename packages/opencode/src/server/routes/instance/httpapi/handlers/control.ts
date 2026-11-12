@@ -1,6 +1,6 @@
 import { Auth } from "@/auth"
 
-import { Effect } from "effect"
+import { Effect, Record } from "effect"
 import { HttpApiBuilder } from "effect/unstable/httpapi"
 import { RootHttpApi } from "../api"
 import { LogInput } from "../groups/control"
@@ -9,6 +9,11 @@ import { ProviderV2 } from "@opencode-ai/core/provider"
 export const controlHandlers = HttpApiBuilder.group(RootHttpApi, "control", (handlers) =>
   Effect.gen(function* () {
     const auth = yield* Auth.Service
+
+    const authList = Effect.fn("ControlHttpApi.authList")(function* () {
+      const entries = yield* auth.all().pipe(Effect.orDie)
+      return Record.map(entries, (info) => ({ type: info.type }))
+    })
 
     const authSet = Effect.fn("ControlHttpApi.authSet")(function* (ctx: {
       params: { providerID: ProviderV2.ID }
@@ -38,6 +43,6 @@ export const controlHandlers = HttpApiBuilder.group(RootHttpApi, "control", (han
       return true
     })
 
-    return handlers.handle("authSet", authSet).handle("authRemove", authRemove).handle("log", log)
+    return handlers.handle("authList", authList).handle("authSet", authSet).handle("authRemove", authRemove).handle("log", log)
   }),
 )

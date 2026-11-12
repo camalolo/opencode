@@ -107,6 +107,17 @@ export type QuestionRejected = {
   requestID: string
 }
 
+export type AuthEntry = {
+  type: "oauth" | "api" | "wellknown"
+}
+
+export type InvalidRequestError = {
+  _tag: "InvalidRequestError"
+  message: string
+  kind?: string
+  field?: string
+}
+
 export type OAuth = {
   type: "oauth"
   refresh: string
@@ -134,13 +145,6 @@ export type Auth = OAuth | ApiAuth | WellKnownAuth
 
 export type EffectHttpApiErrorBadRequest = {
   _tag: "BadRequest"
-}
-
-export type InvalidRequestError = {
-  _tag: "InvalidRequestError"
-  message: string
-  kind?: string
-  field?: string
 }
 
 export type MoveSessionError = {
@@ -7742,6 +7746,33 @@ export type BadRequestError = {
     kind?: "Params" | "Headers" | "Query" | "Body" | "Payload"
   }
 }
+
+export type AuthListData = {
+  body?: never
+  path?: never
+  query?: never
+  url: "/auth"
+}
+
+export type AuthListErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type AuthListError = AuthListErrors[keyof AuthListErrors]
+
+export type AuthListResponses = {
+  /**
+   * Authentication entries (types only, no secrets)
+   */
+  200: {
+    [key: string]: AuthEntry
+  }
+}
+
+export type AuthListResponse = AuthListResponses[keyof AuthListResponses]
 
 export type AuthRemoveData = {
   body?: never
