@@ -13,6 +13,7 @@ import PROMPT_META from "./prompt/meta.txt"
 
 import PROMPT_CODEX from "./prompt/codex.txt"
 import PROMPT_TRINITY from "./prompt/trinity.txt"
+import PROMPT_POLICY from "./prompt/policy.txt"
 import type { Provider } from "@/provider/provider"
 import type { Agent } from "@/agent/agent"
 import { Permission } from "@/permission"
@@ -47,6 +48,11 @@ export function provider(model: Provider.Model) {
     return [PROMPT_KIMI]
   return [PROMPT_DEFAULT]
 }
+
+// Shared machine-hygiene policy appended to every system prompt, including
+// custom agent prompts: repositories are self-contained, installs prefer
+// system packages, anything else lands inside the repository.
+export const policy = PROMPT_POLICY
 
 export interface Interface {
   readonly environment: (model: Provider.Model) => Effect.Effect<string[]>

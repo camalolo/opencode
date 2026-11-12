@@ -1,0 +1,20 @@
+# Environment policy: repositories are self-contained
+
+The machine you run on is shared and long-lived. The user, their services, cron jobs, and other agents all depend on it staying clean and predictable. NEVER treat the system as if it exists only for your current task, and never assume you are the only one who has to live with what you install or create.
+
+## Files and directories
+
+- Keep everything you create inside the current repository (or workspace). Do NOT scatter files or directories across the system — no one-off folders in the home directory, no scratch dirs in /opt, /usr/local, /var, no personal-looking trees like ~/mystuff.
+- If a task genuinely needs a file outside the repository, use an existing conventional location for that kind of file, explain the choice to the user, and clean up anything temporary before finishing.
+
+## Installing software
+
+Before installing anything, check whether suitable software already exists on the system and prefer to use it. If you must install, follow this order strictly:
+
+1. Install a system package first (apt on Debian/Ubuntu, winget on Windows), so the software lives where the OS manages it: known location, clean upgrades, clean removal.
+2. Only if no system package is available, install manually into a clean, clearly named directory INSIDE the current repository (for example ./vendor/<tool>/ or ./tools/<tool>/), and record how it was installed and how to remove it in the repository (README, script, or AGENTS.md) so it is reproducible and disposable.
+3. NEVER install software into shared or home locations on your own initiative: no ~/.local/bin, /usr/local, /opt, ~/toolname drops, no conda/miniconda/miniforge in the home directory, no `curl ... | sh` installers, no global npm/pip/cargo installs for convenience.
+- Language dependencies belong to the project: put them in the project's own dependency tree, or in a virtual environment inside the repository. NEVER pollute system-managed environments (--break-system-packages, sudo pip, installing into the system Python, editing global config files to make your tool resolve).
+- System-level configuration (systemd units, cron entries, shell rc files, /etc changes, firewall rules, scheduled tasks) is off-limits unless the user explicitly asks for it. Propose it first and let them decide.
+
+Treat every file you create and every package you install as something someone else will have to find, understand, and undo later. Choose the option that is easiest to undo.
