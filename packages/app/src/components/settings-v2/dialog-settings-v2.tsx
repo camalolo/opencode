@@ -7,6 +7,7 @@ import { usePlatform } from "@/context/platform"
 import { SettingsGeneralV2 } from "./general"
 import { SettingsKeybinds } from "../settings-keybinds"
 import { SettingsProvidersV2 } from "./providers"
+import { SettingsWebSearchV2 } from "./websearch"
 import { SettingsModelsV2 } from "./models"
 import { SettingsTasks } from "../settings-tasks"
 import "./settings-v2.css"
@@ -80,6 +81,10 @@ export const DialogSettings: Component<{
                       <Icon name="providers" />
                       {language.t("settings.providers.title")}
                     </TabsV2.Trigger>
+                    <TabsV2.Trigger value="websearch">
+                      <Icon name="magnifying-glass" />
+                      {language.t("settings.websearch.title")}
+                    </TabsV2.Trigger>
                     <TabsV2.Trigger value="models">
                       <Icon name="models" />
                       {language.t("settings.models.title")}
@@ -109,6 +114,9 @@ export const DialogSettings: Component<{
         </TabsV2.Content>
         <TabsV2.Content value="providers" class="settings-v2-panel">
           <SettingsProvidersV2 directory={directory} onBack={showProviders} />
+        </TabsV2.Content>
+        <TabsV2.Content value="websearch" class="settings-v2-panel">
+          <SettingsWebSearchV2 />
         </TabsV2.Content>
         <TabsV2.Content value="models" class="settings-v2-panel">
           <SettingsModelsV2 />
