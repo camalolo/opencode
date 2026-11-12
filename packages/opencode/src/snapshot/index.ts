@@ -447,17 +447,45 @@ const layer: Layer.Layer<Service, never, FSUtil.Service | AppProcess.Service | C
           return [...d.files]
         }
 
+        // Windows caps a spawn's command line at 32767 chars. Pathspec args
+        // carry a :(top,literal) prefix plus the full path, and win32 escaping
+        // can double backslashes, so a big watcher burst (an extracted
+        // dependency tree) overflows the limit and the spawn dies with
+        // ENAMETOOLONG. Batch the list by a conservative char budget.
+        function chunkPathspecs(files: string[], budget = 8000): string[][] {
+          const batches: string[][] = []
+          let batch: string[] = []
+          let size = 0
+          for (const file of files) {
+            const arg = `:(top,literal)${file}`
+            if (batch.length && size + arg.length > budget) {
+              batches.push(batch)
+              batch = []
+              size = 0
+            }
+            batch.push(arg)
+            size += arg.length + 1
+          }
+          if (batch.length) batches.push(batch)
+          return batches
+        }
+
         const deltaAdd = Effect.fnUntraced(function* (d: Dirty, files: string[]) {
           // Stage exactly the evented paths instead of rescanning the worktree.
           // Mirrors the full scan's decisions for these files: ignore
           // resolution, the untracked 2MB cap, and dropping entries that turned
           // ignored. Returns undefined to fall back to a full scan.
-          const classified = yield* git(
-            [...quote, ...args(["ls-files", "-z", "--", ...files.map((file) => `:(top,literal)${file}`)])],
-            { cwd: state.worktree },
-          )
-          if (classified.code !== 0) return undefined
-          const tracked = new Set(classified.text.split("\0").filter(Boolean))
+          const tracked = new Set<string>()
+          for (const batch of chunkPathspecs(files)) {
+            const classified = yield* git(
+              [...quote, ...args(["ls-files", "-z", "--", ...batch])],
+              { cwd: state.worktree },
+            )
+            if (classified.code !== 0) return undefined
+            for (const item of classified.text.split("\0")) {
+              if (item) tracked.add(item)
+            }
+          }
 
           const stats = yield* Effect.all(
             files.map((file) =>
