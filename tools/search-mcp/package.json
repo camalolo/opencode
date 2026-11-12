@@ -1,0 +1,10 @@
+{
+  "name": "search-mcp",
+  "version": "0.1.0",
+  "description": "Zero-dependency MCP stdio server unifying Tavily, Exa and TinyFish web search/scrape APIs",
+  "type": "module",
+  "scripts": {
+    "start": "bun src/index.ts",
+    "test": "bun test/stdio-test.ts"
+  }
+}
