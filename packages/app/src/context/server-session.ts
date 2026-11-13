@@ -183,6 +183,19 @@ function reconcileFetched<T extends { id: string }>(
   return options.compare ? items.sort(options.compare) : items
 }
 
+// A page fetch cannot vouch for parts that are still streaming: their text is
+// event-only (deltas are never persisted server-side), so a resync fetched
+// mid-turn may not contain them or may contain only their start snapshot.
+// Absence from a fetch must therefore not remove an in-flight part - dropping
+// it would freeze the live timeline until the part finalizes (and any delta
+// that arrives meanwhile would be silently discarded).
+function preserveStreamingPart(part: Part) {
+  if (part.type === "tool") return part.state.status === "pending" || part.state.status === "running"
+  if (part.type === "text" || part.type === "reasoning")
+    return part.time?.start !== undefined && part.time?.end === undefined
+  return false
+}
+
 type ServerSessionOptions = { retry?: typeof retry; protocol?: Promise<"v1" | "v2"> }
 
 export function createServerSession(
@@ -605,6 +618,26 @@ export function createServerSession(
     }
   }
 
+  const hydratingParts = new Set<string>()
+  // Re-fetch a single message after a resync wiped its in-flight parts, so a
+  // delta arriving for a part the store no longer has restores the part
+  // instead of being dropped. Each fetched part is applied through the normal
+  // part.updated path, and present (fresher) parts are left untouched.
+  const hydrateMessageParts = (sessionID: string, messageID: string) => {
+    if (hydratingParts.has(messageID)) return
+    hydratingParts.add(messageID)
+    void fetchMessage(sessionID, messageID)
+      .then(({ message, parts: fetched }) => {
+        apply({ type: "message.updated", properties: { sessionID, info: message } })
+        for (const part of fetched) {
+          if (data.part[messageID]?.some((current) => current.id === part.id)) continue
+          apply({ type: "message.part.updated", properties: { sessionID, part } })
+        }
+      })
+      .catch(() => {})
+      .finally(() => hydratingParts.delete(messageID))
+  }
+
   const replaceMessages = (sessionID: string, messages: Message[]) => {
     const messageIDs = new Set(messages.map((message) => message.id))
     const dropped = (data.message[sessionID] ?? []).filter((message) => !messageIDs.has(message.id))
@@ -648,7 +681,11 @@ export function createServerSession(
       for (const partID of load?.carriedDeltaParts.get(item.id) ?? []) {
         if (!fetchedIDs.has(partID)) touched.delete(partID)
       }
-      const parts = reconcileFetched(fetched, data.part[item.id] ?? [], { touched })
+      const parts = reconcileFetched(fetched, data.part[item.id] ?? [], {
+        touched,
+        preserveUnfetched: preserveStreamingPart,
+        compare: (a, b) => cmp(a.id, b.id),
+      })
       if (!parts.length) {
         orphanParts.get(sessionID)?.delete(item.id)
         setData(produce((draft) => deleteMessageParts(draft, item.id)))
@@ -1219,7 +1256,15 @@ export function createServerSession(
           delta: string
         }
         const parts = data.part[props.messageID]
-        if (!parts) return
+        if (!parts) {
+          // A resync (forced snapshot after a stream gap) can drop an in-flight
+          // part the fetched page did not contain. Dropping the delta too would
+          // leave the chat inert until the part finalizes, so re-fetch the
+          // message: its parts come back and later deltas keep appending.
+          if (data.message[props.sessionID]?.some((message) => message.id === props.messageID))
+            hydrateMessageParts(props.sessionID, props.messageID)
+          return
+        }
         const result = Binary.search(parts, props.partID, (part) => part.id)
         if (!result.found) return
         trackPartChange(props.sessionID, props.messageID, props.partID)
