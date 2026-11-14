@@ -86,7 +86,9 @@ const predicateDone =
     ? `findstr done >NUL 2>&1 || (echo still waiting & exit 1)`
     : `grep -q done || { echo 'still waiting'; exit 1; }`
 const metExample = "state-abc done"
-const stateCheck = { observe: observeState, predicate: predicateDone, met_example: metExample }
+const stateCheck = {
+  check: { type: "custom" as const, observe: observeState, predicate: predicateDone, met_example: metExample },
+}
 
 // ---------------------------------------------------------------------------
 // Scheduler
@@ -700,7 +702,7 @@ toolIt.instance(
 
       // Condition already met: no sleep armed, permission still asked.
       const met = yield* untilDef.execute(
-        { observe: "echo state-a", predicate: "exit 0", met_example: "", description: "instant" },
+        { check: { type: "custom", observe: "echo state-a", predicate: "exit 0", met_example: "" }, description: "instant" },
         ctx,
       )
       expect(met.output).toContain("already satisfies the predicate")
@@ -782,7 +784,7 @@ toolIt.instance(
       // alone.
       const refused = yield* untilDef
         .execute(
-          { observe: "opencode-sleep-missing-cmd", predicate: predicateDone, met_example: metExample, description: "broken" },
+          { check: { type: "custom", observe: "opencode-sleep-missing-cmd", predicate: predicateDone, met_example: metExample }, description: "broken" },
           ctx,
         )
         .pipe(Effect.exit)
@@ -818,7 +820,7 @@ toolIt.instance(
 
       // Non-zero, non-1 exit code from the predicate: broken contract, nothing armed.
       const exit7 = yield* untilDef
-        .execute({ observe: observeState, predicate: "exit 7", met_example: "", description: "broken" }, ctx)
+        .execute({ check: { type: "custom", observe: observeState, predicate: "exit 7", met_example: "" }, description: "broken" }, ctx)
         .pipe(Effect.exit)
       expect(toolDieMessage(exit7)).toContain("refused to arm")
       expect(toolDieMessage(exit7)).toContain("predicate is broken")
@@ -853,7 +855,7 @@ toolIt.instance(
       // exit 1 with no output cannot prove the predicate is alive, so arming
       // is refused instead of sleeping to the timeout on a dead check.
       const silent = yield* untilDef
-        .execute({ observe: observeState, predicate: "exit 1", met_example: "", description: "silent" }, ctx)
+        .execute({ check: { type: "custom", observe: observeState, predicate: "exit 1", met_example: "" }, description: "silent" }, ctx)
         .pipe(Effect.exit)
       const message = toolDieMessage(silent)
       expect(message).toContain("refused to arm")
@@ -897,7 +899,7 @@ toolIt.instance(
       // -for state. Refused before arming (and before the permission ask).
       const predicate = `pgrep -f dpkg-buildpackage >/dev/null || { echo running; exit 1; }; echo done`
       const refused = yield* untilDef
-        .execute({ observe: observeState, predicate, met_example: "", description: "build watch" }, ctx)
+        .execute({ check: { type: "custom", observe: observeState, predicate, met_example: "" }, description: "build watch" }, ctx)
         .pipe(Effect.exit)
       expect(toolDieMessage(refused)).toContain("refused to arm")
       expect(toolDieMessage(refused)).toContain("own wrapper shell")
@@ -929,7 +931,9 @@ toolIt.instance(
       const until = yield* SleepUntilTool
       const untilDef = yield* until.init()
 
-      const stateCheckOther = { observe: "echo state-xyz", predicate: predicateDone, met_example: "state-xyz done" }
+      const stateCheckOther = {
+        check: { type: "custom" as const, observe: "echo state-xyz", predicate: predicateDone, met_example: "state-xyz done" },
+      }
       const failWait = (params: typeof stateCheck) =>
         Effect.gen(function* () {
           const armed = yield* untilDef.execute({ ...params, description: "budget loop" }, ctx)
@@ -1012,7 +1016,7 @@ toolIt.instance(
       // The fabricated positive is the only thing that can tell.
       const predicate = process.platform === "win32" ? "echo not yet & exit 1" : "echo 'not yet'; exit 1"
       const refused = yield* untilDef
-        .execute({ observe: observeState, predicate, met_example: "state done", description: "vague" }, ctx)
+        .execute({ check: { type: "custom", observe: observeState, predicate, met_example: "state done" }, description: "vague" }, ctx)
         .pipe(Effect.exit)
       const message = toolDieMessage(refused)
       expect(message).toContain("refused to arm")
@@ -1055,7 +1059,7 @@ toolIt.instance(
           : `grep -q '15:29 done' || { echo waiting; exit 1; }`
       const refused = yield* untilDef
         .execute(
-          { observe: observeState, predicate, met_example: "at 15:29 done", description: "clock" },
+          { check: { type: "custom", observe: observeState, predicate, met_example: "at 15:29 done" }, description: "clock" },
           ctx,
         )
         .pipe(Effect.exit)
@@ -1066,9 +1070,7 @@ toolIt.instance(
       // The explicit override arms it — the escape hatch stays visible.
       const armed = yield* untilDef.execute(
         {
-          observe: observeState,
-          predicate,
-          met_example: "at 15:29 done",
+          check: { type: "custom", observe: observeState, predicate, met_example: "at 15:29 done" },
           allow_clock_predicate: true,
           description: "clock, allowed",
         },
@@ -1105,7 +1107,7 @@ toolIt.instance(
       yield* Effect.promise(() => Bun.write(watch, "job started\n"))
       const observe = process.platform === "win32" ? `type ${watch}` : `cat ${watch}`
       const armed = yield* untilDef.execute(
-        { observe, predicate: predicateDone, met_example: "job done\n", description: "job completes" },
+        { check: { type: "custom", observe, predicate: predicateDone, met_example: "job done\n" }, description: "job completes" },
         ctx,
       )
       expect(armed.output).toContain("Sleep armed")
@@ -1143,6 +1145,166 @@ toolIt.instance(
       )
       expect(fired.lastOutput).toContain("[state]")
       expect(fired.lastOutput).toContain("job done")
+    }),
+  30_000,
+)
+
+// ---------------------------------------------------------------------------
+// Typed checks
+// ---------------------------------------------------------------------------
+
+const typedCtx = (sessionID: SessionID): Tool.Context => ({
+  sessionID,
+  messageID: MessageID.make("msg_tool_typed"),
+  callID: "",
+  agent: "build",
+  abort: AbortSignal.any([]),
+  messages: [],
+  metadata: () => Effect.void,
+  ask: () => Effect.void,
+})
+
+toolIt.instance(
+  "sleep_until arms a typed output_marker check with the compiled triple",
+  () =>
+    Effect.gen(function* () {
+      yield* TestInstance
+      const sessionID = SessionID.make("ses_tool_typed_marker")
+      const db = (yield* Database.Service).db
+      yield* insertSession(db, sessionID)
+      const scheduler = yield* SessionSleepScheduler.Service
+      const ctx = typedCtx(sessionID)
+      const until = yield* SleepUntilTool
+      const untilDef = yield* until.init()
+
+      const armed = yield* untilDef.execute(
+        {
+          check: { type: "output_marker", command: "echo build running", marker: "deploy complete" },
+          description: "deploy finishes",
+        },
+        ctx,
+      )
+      expect(armed.output).toContain("Sleep armed")
+      expect(armed.output).toContain('output of echo build running contains "deploy complete"')
+      const trigger = yield* scheduler.get(sessionID)
+      expect(trigger?.status).toBe("pending")
+      expect(trigger?.observe).toBe("echo build running 2>&1")
+      expect(trigger?.predicate).toContain("grep -qF -- 'deploy complete'")
+      expect(trigger?.metExample).toBe("deploy complete")
+    }),
+  30_000,
+)
+
+toolIt.instance(
+  "sleep_until refuses a typed check whose condition is already met",
+  () =>
+    Effect.gen(function* () {
+      yield* TestInstance
+      const sessionID = SessionID.make("ses_tool_typed_met")
+      const db = (yield* Database.Service).db
+      yield* insertSession(db, sessionID)
+      const scheduler = yield* SessionSleepScheduler.Service
+      const ctx = typedCtx(sessionID)
+      const until = yield* SleepUntilTool
+      const untilDef = yield* until.init()
+
+      const met = yield* untilDef.execute(
+        {
+          check: { type: "output_marker", command: "echo deploy complete", marker: "deploy complete" },
+          description: "already done",
+        },
+        ctx,
+      )
+      expect(met.output).toContain("already satisfies the predicate")
+      expect(yield* scheduler.get(sessionID)).toBeUndefined()
+    }),
+  30_000,
+)
+
+toolIt.instance(
+  "sleep_until arms a typed file_quiet check without the clock gate",
+  () =>
+    Effect.gen(function* () {
+      yield* TestInstance
+      const sessionID = SessionID.make("ses_tool_typed_quiet")
+      const db = (yield* Database.Service).db
+      yield* insertSession(db, sessionID)
+      const scheduler = yield* SessionSleepScheduler.Service
+      const ctx = typedCtx(sessionID)
+      const until = yield* SleepUntilTool
+      const untilDef = yield* until.init()
+
+      const armed = yield* untilDef.execute(
+        {
+          check: { type: "file_quiet", path: "/var/log/nonexistent-quiet.log", seconds: 600 },
+          description: "log goes quiet",
+        },
+        ctx,
+      )
+      // A missing file reads as quiet: the live probe reports "already met"
+      // instead of arming a trigger on a typo'd path.
+      expect(armed.output).toContain("already satisfies the predicate")
+
+      const log = path.join((yield* TestInstance).directory, "activity.log")
+      yield* Effect.promise(() => Bun.write(log, "activity\n"))
+      const armedReal = yield* untilDef.execute(
+        { check: { type: "file_quiet", path: log, seconds: 600 }, description: "activity stops" },
+        ctx,
+      )
+      expect(armedReal.output).toContain("Sleep armed")
+      const trigger = yield* scheduler.get(sessionID)
+      expect(trigger?.status).toBe("pending")
+      // Engine-generated clock arithmetic, not an agent-authored time window.
+      expect(trigger?.predicate).toContain("date +%s")
+    }),
+  30_000,
+)
+
+toolIt.instance(
+  "sleep_until refuses typed checks that do not compile, and suggests typed forms for refused custom checks",
+  () =>
+    Effect.gen(function* () {
+      yield* TestInstance
+      const sessionID = SessionID.make("ses_tool_typed_refuse")
+      const db = (yield* Database.Service).db
+      yield* insertSession(db, sessionID)
+      const scheduler = yield* SessionSleepScheduler.Service
+      const ctx = typedCtx(sessionID)
+      const until = yield* SleepUntilTool
+      const untilDef = yield* until.init()
+
+      if (process.platform === "win32") {
+        const platform = yield* untilDef
+          .execute(
+            { check: { type: "process_exited", pattern: "worker" }, description: "worker exits" },
+            ctx,
+          )
+          .pipe(Effect.exit)
+        expect(toolDieMessage(platform)).toContain("typed checks compile to POSIX sh")
+        expect(yield* scheduler.get(sessionID)).toBeUndefined()
+        return
+      }
+
+      const refused = yield* untilDef
+        .execute({ check: { type: "process_exited", pattern: "-foo" }, description: "worker exits" }, ctx)
+        .pipe(Effect.exit)
+      expect(toolDieMessage(refused)).toContain("refused to arm")
+      expect(toolDieMessage(refused)).toContain("pattern must start with a letter or digit")
+      expect(yield* scheduler.get(sessionID)).toBeUndefined()
+
+      // A refused custom check that a typed shape expresses directly points at it.
+      const silentGrep = yield* untilDef
+        .execute(
+          {
+            check: { type: "custom", observe: "echo building", predicate: "grep -q done; exit 1", met_example: "done" },
+            description: "build watch",
+          },
+          ctx,
+        )
+        .pipe(Effect.exit)
+      expect(toolDieMessage(silentGrep)).toContain("refused to arm")
+      expect(toolDieMessage(silentGrep)).toContain("output_marker")
+      expect(yield* scheduler.get(sessionID)).toBeUndefined()
     }),
   30_000,
 )

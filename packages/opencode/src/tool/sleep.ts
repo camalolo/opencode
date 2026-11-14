@@ -9,23 +9,13 @@ import { Config } from "@/config/config"
 import { InstanceState } from "@/effect/instance-state"
 import { SessionStatus } from "@/session/status"
 import { SessionSleepScheduler } from "@/session/sleep-scheduler"
+import { SleepCheck } from "./sleep-check"
 
 export const SleepUntilParameters = Schema.Struct({
-  observe: Schema.String.annotate({
-    description:
-      "Shell command that prints the current state to stdout (the state document) — e.g. `tail -n 50 /var/log/build.log`, `pgrep -f '[b]uild.sh' || true`, `curl -s -o /dev/null -w '%{http_code}' https://example.com`. Runs at every check; stdout is piped into `predicate` and becomes your progress output and wake payload. Its exit code is ignored (only timeouts and missing commands count as broken). Keep it fast and free of side effects.",
-  }),
-  predicate: Schema.String.annotate({
-    description:
-      "Shell code that reads the state document on stdin and decides: exit 0 = met, exit 1 = unmet (print a progress line — a silent exit 1 counts as broken), anything else = broken. It must judge the stdin it is given: sleep_until proves at arm time that the predicate exits 0 on `met_example` and 1 on the live state, so a predicate that ignores stdin and reads the world itself cannot be armed.",
-  }),
-  met_example: Schema.String.annotate({
-    description:
-      "Literal state document that means done — your fabricated positive. Verified at arm time: sleep_until refuses to arm unless your own predicate exits 0 on this text. If you cannot write it, you cannot detect the state — refine observe/predicate instead. Empty string is valid when the state document is empty at completion (e.g. a process-exit watch).",
-  }),
+  check: SleepCheck.Check,
   allow_clock_predicate: Schema.Boolean.pipe(Schema.optional).annotate({
     description:
-      "Set true only when the predicate genuinely needs clock arithmetic (e.g. file mtime age). By default sleep_until refuses predicates containing time literals (clock times, dates, $(date …)) because they usually encode a window that silently expires — rewrite the check as a state comparison instead.",
+      "custom checks only: set true only when the predicate genuinely needs clock arithmetic (e.g. file mtime age). Predicates containing time literals (clock times, dates, $(date …)) are refused by default because they encode windows that silently expire — typed checks never need this.",
   }),
   description: Schema.String.annotate({
     description: "What you are waiting for, in one sentence. Shown to the user and included in the wake message.",
@@ -146,6 +136,25 @@ export const conditionClock = (predicate: string): string | undefined => {
   return undefined
 }
 
+/**
+ * Recognizes a refused custom check that a typed variant expresses directly,
+ * so the retry points at the structured form instead of another round of
+ * shell authoring. Order matters: the more specific shapes first.
+ */
+const suggestCheck = (observe: string, predicate: string): string | undefined => {
+  if (/curl\b/.test(observe) && observe.includes("%{http_code}"))
+    return "url_status { url, expect } polls a URL until it returns the expected HTTP status"
+  if (/\b(?:pgrep|pkill)\b/.test(observe) || /\b(?:pgrep|pkill)\b/.test(predicate))
+    return "process_exited { pattern } waits for a pgrep -f pattern to disappear (the compiler bracket-escapes it, so it cannot match its own wrapper shell)"
+  if (/\b(?:tail|cat|type)\b/.test(observe) && /\bgrep\b/.test(predicate))
+    return "file_contains { path, pattern } watches a file tail for a fixed string"
+  if (/\bgrep\b/.test(predicate))
+    return "output_marker { command, marker } watches a command's output for a fixed string"
+  if (/\bstat\b/.test(observe) && predicate.includes("-ge"))
+    return "file_quiet { path, seconds } waits until a file has been unwritten for N seconds"
+  return undefined
+}
+
 export const SleepUntilTool = Tool.define<
   typeof SleepUntilParameters,
   Metadata,
@@ -170,9 +179,16 @@ export const SleepUntilTool = Tool.define<
         )
         const timeoutMinutes = Math.min(params.timeout_minutes ?? limits.timeoutMinutes, limits.maxTimeoutMinutes)
 
+        const compiled = SleepCheck.compileCheck(params.check)
+        if (!compiled.ok)
+          return yield* Effect.fail(new Error(`sleep_until refused to arm: ${compiled.reason}.`))
+        const { observe, predicate, met_example, human } = compiled.compiled
+        const suggestion = params.check.type === "custom" ? suggestCheck(observe, predicate) : undefined
+        const hint = suggestion ? ` A typed check may fit instead: ${suggestion}.` : ""
+
         for (const [name, text] of [
-          ["observe", params.observe],
-          ["predicate", params.predicate],
+          ["observe", observe],
+          ["predicate", predicate],
         ] as const) {
           const selfMatch = conditionSelfMatch(text)
           if (selfMatch)
@@ -186,8 +202,11 @@ export const SleepUntilTool = Tool.define<
             )
         }
 
-        if (params.allow_clock_predicate !== true) {
-          const clock = conditionClock(params.predicate)
+        // The clock gate applies to agent-authored shell only; typed checks
+        // cannot contain an agent-authored time window (file_quiet's
+        // generated mtime arithmetic is trusted by construction).
+        if (params.check.type === "custom" && params.allow_clock_predicate !== true) {
+          const clock = conditionClock(predicate)
           if (clock)
             return yield* Effect.fail(
               new Error(
@@ -196,6 +215,7 @@ export const SleepUntilTool = Tool.define<
                   "Time-window predicates silently expire — once the window passes, the check stays not-met forever while looking healthy.",
                   "Rewrite the predicate as a state comparison over the state document (what is true when done that is false now?),",
                   "or pass allow_clock_predicate: true if the clock arithmetic is genuinely the wait (e.g. file mtime age).",
+                  hint,
                 ].join(" "),
               ),
             )
@@ -204,12 +224,13 @@ export const SleepUntilTool = Tool.define<
         // Re-arm budget: re-arming the same never-firing wait burns a billed
         // turn on every timeout. Count terminal failures of THIS check only —
         // failures of different waits are iteration, not a loop, and must not
-        // lock the session out.
+        // lock the session out. The compiled triple is a pure function of the
+        // check, so equal triples mean the same wait.
         const recent = yield* SessionSleep.history(db, ctx.sessionID)
         let repeatedFailures = 0
         for (const row of recent) {
           if (row.status !== "timed_out" && row.status !== "failed") break
-          if (row.observe === params.observe && row.predicate === params.predicate) repeatedFailures += 1
+          if (row.observe === observe && row.predicate === predicate) repeatedFailures += 1
         }
         if (repeatedFailures >= limits.maxConsecutiveTimeouts)
           return yield* Effect.fail(
@@ -224,9 +245,9 @@ export const SleepUntilTool = Tool.define<
 
         yield* ctx.ask({
           permission: "sleep_until",
-          patterns: [params.observe, params.predicate],
-          always: [params.observe, params.predicate],
-          metadata: { description: params.description, command: `${params.observe} | ${params.predicate}` },
+          patterns: [observe, predicate],
+          always: [observe, predicate],
+          metadata: { description: params.description, command: `${observe} | ${predicate}`, check: human },
         })
 
         const instance = yield* InstanceState.context
@@ -249,7 +270,7 @@ export const SleepUntilTool = Tool.define<
           verdict.kind === "met" ? "exit 0" : verdict.kind === "unmet" ? "exit 1" : `broken (${verdict.reason})`
 
         const observed = yield* scheduler.probe({
-          condition: params.observe,
+          condition: observe,
           cwd,
           timeoutMs: limits.checkTimeoutMs,
         })
@@ -260,6 +281,7 @@ export const SleepUntilTool = Tool.define<
               [
                 `sleep_until refused to arm: the observe is broken — ${observeFailure}.`,
                 "The observe must print the current state to stdout (its exit code is ignored).",
+                hint || undefined,
                 tail2k(observed.output) !== undefined ? `Observe output:\n${tail2k(observed.output)}` : undefined,
               ]
                 .filter(Boolean)
@@ -268,7 +290,7 @@ export const SleepUntilTool = Tool.define<
           )
 
         const live = yield* scheduler.probe({
-          condition: params.predicate,
+          condition: predicate,
           cwd,
           timeoutMs: limits.checkTimeoutMs,
           stdin: observed.output,
@@ -293,7 +315,7 @@ export const SleepUntilTool = Tool.define<
             new Error(
               [
                 `sleep_until refused to arm: the predicate is broken on the live state — ${liveVerdict.reason}.`,
-                "Nothing was armed. Fix the predicate so it exits 0 when met and 1 (with a progress line) when not met.",
+                "Nothing was armed. Fix the predicate so it exits 0 when met and 1 (with a progress line) when not met." + hint,
                 tail2k(live.output) !== undefined ? `Predicate output:\n${tail2k(live.output)}` : undefined,
               ]
                 .filter(Boolean)
@@ -302,10 +324,10 @@ export const SleepUntilTool = Tool.define<
           )
 
         const example = yield* scheduler.probe({
-          condition: params.predicate,
+          condition: predicate,
           cwd,
           timeoutMs: limits.checkTimeoutMs,
-          stdin: params.met_example,
+          stdin: met_example,
         })
         const exampleVerdict = SessionSleepScheduler.classifyCheck(example)
 
@@ -316,16 +338,16 @@ export const SleepUntilTool = Tool.define<
                 "sleep_until refused to arm: your met_example does not satisfy your own predicate.",
                 `Predicate on live state  → ${describeVerdict(liveVerdict)}: ${tail2k(live.output) ?? "(no output)"}`,
                 `Predicate on met_example → ${describeVerdict(exampleVerdict)}: ${tail2k(example.output) ?? "(no output)"}`,
-                "You cannot currently detect the state you are waiting for: either the predicate or the example is wrong — fix one, then re-arm. Nothing was armed.",
+                "You cannot currently detect the state you are waiting for: either the predicate or the example is wrong — fix one, then re-arm. Nothing was armed." + hint,
               ].join("\n\n"),
             ),
           )
 
         const trigger = yield* scheduler.arm({
           sessionID: ctx.sessionID,
-          observe: params.observe,
-          predicate: params.predicate,
-          metExample: params.met_example,
+          observe,
+          predicate,
+          metExample: met_example,
           description: params.description,
           intervalMs: intervalSeconds * 1000,
           timeoutMs: timeoutMinutes * 60 * 1000,
@@ -344,6 +366,7 @@ export const SleepUntilTool = Tool.define<
           "session.id": ctx.sessionID,
           trigger: trigger.id,
           description: params.description,
+          check: params.check.type,
           intervalMs: trigger.intervalMs,
           deadline,
         })
@@ -351,7 +374,7 @@ export const SleepUntilTool = Tool.define<
           title: `sleeping: ${params.description}`,
           output: [
             `Sleep armed (${trigger.id}). Waiting for: ${params.description}`,
-            `Check: observe | predicate — proven at arm time (met_example → exit 0, live state → exit 1).`,
+            `Check: ${human} — proven at arm time (met_example → exit 0, live state → exit 1).`,
             `Checks run every ${intervalSeconds}s in the background; timeout at ${deadline}.`,
             `A broken check (bad exit code, command not found, timeout, or silent exit 1) counts toward a ${MAX_BROKEN_CHECKS}-strike breaker: reaching it disarms the trigger and wakes you.`,
             tail2k(observed.output) !== undefined ? `Live state now (unmet):\n${tail2k(observed.output)}` : undefined,
@@ -373,15 +396,14 @@ export const SleepUntilTool = Tool.define<
     return {
       description: [
         "Arm a background trigger that wakes this session automatically when a state condition becomes true.",
-        "Shape: `observe` prints the current state (the state document), `predicate` reads it on stdin and exits 0 = met / 1 = unmet (with a progress line), `met_example` is a literal state document that means done.",
-        "Arm-time proof, enforced: the tool refuses to arm unless the observe runs, the live state is judged unmet, and your own predicate exits 0 on your met_example. A predicate that ignores stdin fails the met_example check, so predicates are state comparisons by construction — never-firing triggers are impossible to arm, and the worst case left is firing early, which is visible.",
-        "If you cannot write a met_example, you cannot detect the state — refine observe/predicate instead of arming.",
-        "Predicates containing time literals (clock times, dates, $(date …)) are refused unless allow_clock_predicate is true: time windows silently expire; wait for state instead.",
+        "check states what to wait for; the engine compiles it to shell internally and proves it at arm time (the fabricated met_example → exit 0, the live state → exit 1), so a trigger that can never fire cannot be armed — the worst case left is firing early, which is visible.",
+        "Prefer a typed check: output_marker (a command's output contains a fixed string), file_contains (a file tail contains a fixed string), process_exited (a pgrep -f pattern disappears), url_status (a URL returns the expected HTTP status), file_quiet (a file has been unwritten for N seconds).",
+        "custom (raw observe/predicate/met_example shell) is for waits no typed check expresses: observe prints the state document to stdout, predicate judges it on stdin (exit 0 = met, exit 1 = unmet with a progress line), met_example is a literal state document that means done. If you cannot write a met_example, you cannot detect the state — refine observe/predicate instead of arming.",
+        "custom predicates containing time literals (clock times, dates, $(date …)) are refused unless allow_clock_predicate is true: time windows silently expire; wait for state instead.",
         "When armed, END YOUR TURN (or do unrelated work) — never busy-wait with sleep in bash while a trigger is armed; the wake message arrives automatically, even mid-turn, carrying the final state document. To see the latest state, call sleep_status instead of polling.",
         "The trigger survives server restarts. Arming again replaces the previous trigger; cancel with sleep_cancel.",
         `Broken checks accumulate while armed: ${MAX_BROKEN_CHECKS} of them disarm the trigger and wake you with the failure, so a misbehaving check can never spin silently until the timeout.`,
-        "Re-arming the same wait (identical observe and predicate) that already timed out or broke repeatedly is refused after a few attempts (sleep.max_consecutive_timeouts, default 3): change the approach, or report to the user instead. Waiting for something different always remains available.",
-        "Blessed shapes — file gained a line: observe `tail -n 50 /var/log/x.log`, predicate `grep -q 'pattern' && echo done || { echo 'not yet'; exit 1; }`; process exited: observe `pgrep -f '[w]ork.sh' || true`, predicate `grep -q . && { echo running; exit 1; }; echo exited`, met_example empty; URL healthy: observe `curl -s -o /dev/null -w '%{http_code}' https://example.com`, predicate `code=$(cat); [ \"$code\" = 200 ] && echo ok || { echo \"status $code\"; exit 1; }`, met_example `200`; command output contains marker: observe `<command> 2>&1`, predicate `grep -q 'Exit 0' && echo ok || { echo waiting; exit 1; }`.",
+        "Re-arming the same wait (identical check) that already timed out or broke repeatedly is refused after a few attempts (sleep.max_consecutive_timeouts, default 3): change the approach, or report to the user instead. Waiting for something different always remains available.",
         "Use for external events: a forum reply appears, a payment lands, a long job finishes, a file changes.",
         "Do not use it as a short timer — to wait a few seconds inside a command, use sleep in bash instead.",
       ].join(" "),
