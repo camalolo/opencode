@@ -228,6 +228,11 @@ export const make = Effect.gen(function* () {
     Effect.suspend(() => {
       let sink: Sink.Sink<void, unknown, never, PlatformError.PlatformError> = Sink.drain
       if (Predicate.isNotNull(proc.stdin)) {
+        // Attach synchronously: the child may exit and destroy the pipe
+        // before the forked feeder below even starts, and an unhandled
+        // 'error' event on the writable takes down the process. The feeder's
+        // own write failures stay handled by the sink.
+        proc.stdin.on("error", () => {})
         sink = NodeSink.fromWritable({
           evaluate: () => proc.stdin!,
           onError: (err) => toPlatformError("fromWritable(stdin)", toError(err), command),
@@ -235,7 +240,13 @@ export const make = Effect.gen(function* () {
           encoding: cfg.encoding,
         })
       }
-      if (Stream.isStream(cfg.stream)) return Effect.as(Effect.forkScoped(Stream.run(cfg.stream, sink)), sink)
+      // A child that exits without consuming its stdin closes the pipe before
+      // the feeder finishes writing; the feeder then dies with EPIPE. The
+      // child's exit code is the authoritative result in that case (a child
+      // that reads stdin can never EPIPE the writer), so the feeder failure
+      // must be dropped rather than surfacing as an unhandled fiber failure.
+      if (Stream.isStream(cfg.stream))
+        return Effect.as(Effect.forkScoped(Stream.run(cfg.stream, sink).pipe(Effect.ignore)), sink)
       return Effect.succeed(sink)
     })
 
