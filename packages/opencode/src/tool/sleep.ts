@@ -415,7 +415,7 @@ export const SleepUntilTool = Tool.define<
         "The trigger survives server restarts. Arming again replaces the previous trigger; cancel with sleep_cancel.",
         `Broken checks accumulate while armed: ${MAX_BROKEN_CHECKS} of them disarm the trigger and wake you with the failure, so a misbehaving check can never spin silently until the timeout.`,
         "Re-arming the same wait (identical check) that already timed out or broke repeatedly is refused after a few attempts (sleep.max_consecutive_timeouts, default 3): change the approach, or report to the user instead. Waiting for something different always remains available.",
-        "loop_forever keeps a looping session alive: whenever a turn ends without a new sleep_until armed, this exact watcher re-arms itself (after fired or timed-out wakes; a failed trigger is never re-armed, and the same cost guard applies). Each wake announces the auto re-arm — stop the loop with sleep_cancel, or by re-arming without loop_forever.",
+        "loop_forever keeps a looping session alive: whenever a turn ends without a new sleep_until armed, this exact watcher re-arms itself (after fired or timed-out wakes — a timeout is a normal cycle for a looping watch, and the manual cost guard above does not apply to it). Only a broken check stops the auto re-arm; each wake announces the re-arm, and you stop the loop with sleep_cancel or by re-arming without loop_forever.",
         "Use for external events: a forum reply appears, a payment lands, a long job finishes, a file changes.",
         "Do not use it as a short timer — to wait a few seconds inside a command, use sleep in bash instead.",
       ].join(" "),

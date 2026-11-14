@@ -491,7 +491,7 @@ schedulerIt.effect(
 )
 
 schedulerIt.effect(
-  "the cost guard stops re-arming a wait that keeps timing out, a different wait still re-arms",
+  "timeouts keep the loop alive, a broken check stops it",
   () =>
     Effect.gen(function* () {
       const sessionID = SessionID.make("ses_loop_budget")
@@ -499,19 +499,30 @@ schedulerIt.effect(
       yield* insertSession(db, "ses_loop_budget")
       const scheduler = yield* SessionSleepScheduler.Service
       const status = settleStatus()
-      for (let i = 0; i < 3; i++) yield* finishLoopTrigger(db, "ses_loop_budget", loopCheck, "timed_out")
+      yield* finishLoopTrigger(db, "ses_loop_budget", loopCheck, "timed_out")
 
-      yield* SessionSleepScheduler.settleIdle(scheduler, status, sessionID, { maxConsecutiveFailures: 3 })
-      expect((yield* scheduler.get(sessionID))?.status).toBe("timed_out")
+      // An eternal watch times out every cycle — that is its heartbeat, not a
+      // failure: consecutive timeouts of the same check must keep re-arming.
+      for (let i = 0; i < 3; i++) {
+        yield* SessionSleepScheduler.settleIdle(scheduler, status, sessionID, { maxConsecutiveFailures: 3 })
+        const rearmed = yield* scheduler.get(sessionID)
+        expect(rearmed?.status).toBe("pending")
+        expect(rearmed?.loopForever).toBe(true)
+        expect(status.recorded.at(-1)?.status.type).toBe("sleeping")
+        yield* SessionSleep.finish(db, rearmed!.id, "timed_out", SessionSleep.wakeMessageID(rearmed!))
+        yield* SessionSleep.confirmDelivery(db, rearmed!.id)
+      }
+
+      // A broken check is a defect in the watcher itself: the breaker walks up
+      // over consecutive failed cycles and stops the loop on the third.
+      for (let i = 0; i < 3; i++) {
+        const current = yield* scheduler.get(sessionID)
+        yield* SessionSleep.finish(db, current!.id, "failed", SessionSleep.wakeMessageID(current!))
+        yield* SessionSleep.confirmDelivery(db, current!.id)
+        yield* SessionSleepScheduler.settleIdle(scheduler, status, sessionID, { maxConsecutiveFailures: 3 })
+      }
+      expect((yield* scheduler.get(sessionID))?.status).toBe("failed")
       expect(status.recorded.at(-1)?.status.type).toBe("idle")
-
-      // A different wait is iteration, not a loop: it re-arms freely.
-      yield* finishLoopTrigger(db, "ses_loop_budget", { ...loopCheck, observe: "echo other-state" }, "timed_out")
-      yield* SessionSleepScheduler.settleIdle(scheduler, status, sessionID, { maxConsecutiveFailures: 3 })
-      const rearmed = yield* scheduler.get(sessionID)
-      expect(rearmed?.status).toBe("pending")
-      expect(rearmed?.loopForever).toBe(true)
-      expect(status.recorded.at(-1)?.status.type).toBe("sleeping")
     }),
   30_000,
 )

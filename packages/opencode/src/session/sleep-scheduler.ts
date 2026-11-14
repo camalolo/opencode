@@ -424,17 +424,19 @@ const layer = Layer.effect(
           // A staged revert discarded the branch this watcher works on; the
           // user's next prompt clears the revert and can restart the watch.
           if (yield* SessionSleep.reverted(db, input.sessionID)) return undefined
-          // Same cost guard as the tool's arm gate: a wait that keeps timing
-          // out must not loop billed wake turns forever, with or without an
-          // agent in the loop. The compiled check identifies the wait.
+          // Cost guard, loop semantics: a timeout is a normal cycle for a
+          // looping watch (each wake announces it and can stop the loop), so
+          // only a BROKEN check counts here — a check that keeps failing must
+          // not loop billed wake turns forever. The compiled check identifies
+          // the wait.
           const recent = yield* SessionSleep.history(db, input.sessionID)
           let repeatedFailures = 0
           for (const row of recent) {
-            if (row.status !== "timed_out" && row.status !== "failed") break
+            if (row.status !== "failed") break
             if (row.observe === latest.observe && row.predicate === latest.predicate) repeatedFailures += 1
           }
           if (repeatedFailures >= input.maxConsecutiveFailures) {
-            yield* Effect.logWarning("loop_forever re-arm refused: the same wait keeps timing out or failing", {
+            yield* Effect.logWarning("loop_forever re-arm refused: the same check keeps failing", {
               "session.id": input.sessionID,
               trigger: latest.id,
               repeatedFailures,
