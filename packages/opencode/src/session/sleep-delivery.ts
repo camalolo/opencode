@@ -26,17 +26,17 @@ export const wakeText = (row: SessionSleep.Trigger, output: string) => {
   // their original wake shape.
   const check = state || row.variant !== undefined ? `Check: ${SleepCheck.describeTrigger(row)}` : undefined
   const detail = output.trim().length > 0 ? `\n\nLast check output:\n${tail(output)}` : ""
-  // loop_forever wakes must tell the agent the loop continues on its own, and
-  // how to stop it — ending the turn without a new sleep_until is not enough.
+  // loop_forever wakes must not read like manual-wait guidance: the loop IS
+  // the continuation, so the only real content is "it continues by itself"
+  // and the way out (sleep_cancel).
   const loop = row.loopForever
     ? row.status === "failed"
       ? "loop_forever never re-arms a failed (broken-check) trigger — fix the check and re-arm manually if you want to keep watching."
-      : "loop_forever is on: if this turn ends without a new sleep_until armed, this exact watcher re-arms itself automatically. Call sleep_cancel to stop the loop, or re-arm without loop_forever."
+      : "loop_forever: this watcher re-arms itself automatically when your turn ends — nothing to do. Call sleep_cancel to stop the loop."
     : undefined
-  // On a timeout the disarmed guidance must not tell a loop_forever agent to
-  // re-arm — the loop does that itself; only the escape hatches matter.
+  // On a timeout the loop IS the continuation: no manual re-arm guidance.
   const timedOutGuidance = row.loopForever
-    ? "The trigger is disarmed — no need to re-arm: loop_forever re-arms this exact watcher automatically when your turn ends. To stop the loop instead, call sleep_cancel, or re-arm without loop_forever."
+    ? "The trigger timed out, but the loop continues: this watcher re-arms itself automatically when your turn ends. Call sleep_cancel to stop the loop."
     : "The trigger is disarmed. Re-arm it, adjust the condition, or move on."
   if (row.status === "fired")
     return [

@@ -796,11 +796,12 @@ test("wake text speaks state-check vocabulary for state triggers", () => {
 
 test("wake text announces the loop_forever auto re-arm and how to stop it", () => {
   const fired = wakeText(row("fired", "hello", { loopForever: true }), "hello")
-  expect(fired).toContain("loop_forever is on")
+  expect(fired).toContain("re-arms itself automatically when your turn ends")
   expect(fired).toContain("sleep_cancel")
+  expect(fired).not.toContain("re-arm without loop_forever")
 
   const timedOut = wakeText(row("timed_out", "", { loopForever: true }), "")
-  expect(timedOut).toContain("no need to re-arm")
+  expect(timedOut).toContain("the loop continues")
   expect(timedOut).toContain("sleep_cancel")
   expect(timedOut).not.toContain("Re-arm it, adjust the condition")
 
