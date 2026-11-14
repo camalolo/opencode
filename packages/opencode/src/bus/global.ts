@@ -13,8 +13,15 @@ export type GlobalEvent = {
 // retains the newest events so a reconnecting stream can replay "everything
 // after X" via Last-Event-ID. Event IDs are `evt_` + monotonic time-hex +
 // random tail at fixed length, so plain string comparison orders them.
-const RING_MAX = Number(process.env.OPENCODE_EVENT_RING_MAX ?? 4096)
-const RING_BYTES = 8 * 1024 * 1024
+//
+// Keep both caps generous: when a returning client's cursor is older than the
+// ring floor, replay is refused and the client falls back to a full-state
+// resync - a refetch storm whose message-page queries run seconds each on
+// large sessions, during which the chat sits on its stale pre-gap state.
+// Replay is cheap (small events, applied through the normal reducers), so a
+// big ring is what keeps a wake-up feeling live.
+const RING_MAX = Number(process.env.OPENCODE_EVENT_RING_MAX ?? 32768)
+const RING_BYTES = Number(process.env.OPENCODE_EVENT_RING_BYTES ?? 32 * 1024 * 1024)
 
 // Boot identity: the ring dies with the process, so a cursor issued by a
 // previous process can never be validated against it. Connection markers
