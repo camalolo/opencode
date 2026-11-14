@@ -242,6 +242,7 @@ export default {
           \`permission\` text,
           \`agent\` text,
           \`unattended\` integer,
+          \`compaction_threshold\` real,
           \`model\` text,
           \`time_created\` integer NOT NULL,
           \`time_updated\` integer NOT NULL,

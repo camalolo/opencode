@@ -3,6 +3,8 @@ import { DateTime, Option, Schema, SchemaGetter } from "effect"
 export const PositiveInt = Schema.Int.check(Schema.isGreaterThan(0))
 export const NonNegativeInt = Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))
 
+export const UnitFraction = Schema.Finite.check(Schema.isGreaterThan(0), Schema.isLessThanOrEqualTo(1))
+
 export const RelativePath = Schema.String.pipe(Schema.brand("RelativePath"))
 export type RelativePath = typeof RelativePath.Type
 

@@ -39,7 +39,7 @@ import { SessionID, MessageID, PartID } from "./schema"
 import type { Provider } from "@/provider/provider"
 import { Global } from "@opencode-ai/core/global"
 import { Effect, Layer, Option, Context, Schema, Types } from "effect"
-import { NonNegativeInt, optional } from "@opencode-ai/core/schema"
+import { NonNegativeInt, optional, UnitFraction } from "@opencode-ai/core/schema"
 import { RuntimeFlags } from "@/effect/runtime-flags"
 import { ProviderV2 } from "@opencode-ai/core/provider"
 import { ModelV2 } from "@opencode-ai/core/model"
@@ -107,6 +107,7 @@ export function fromRow(row: SessionRow): Info {
     share,
     metadata: row.metadata ?? undefined,
     revert,
+    compactionThreshold: row.compaction_threshold ?? undefined,
     permission: row.permission ? [...row.permission] : undefined,
     time: {
       created: row.time_created,
@@ -136,6 +137,7 @@ export function toRow(info: Info) {
     summary_files: info.summary?.files,
     summary_diffs: info.summary?.diffs,
     metadata: info.metadata,
+    compaction_threshold: info.compactionThreshold ?? null,
     cost: info.cost ?? 0,
     tokens_input: (info.tokens ?? EmptyTokens).input,
     tokens_output: (info.tokens ?? EmptyTokens).output,
@@ -238,6 +240,7 @@ export const Info = Schema.Struct({
   model: optional(Model),
   version: Schema.String,
   metadata: optional(Metadata),
+  compactionThreshold: optional(UnitFraction),
   time: Time,
   permission: optional(PermissionV1.Ruleset),
   revert: optional(Revert),
@@ -429,6 +432,7 @@ export interface Interface {
   readonly get: (id: SessionID) => Effect.Effect<Info, NotFound>
   readonly setTitle: (input: { sessionID: SessionID; title: string }) => Effect.Effect<void>
   readonly setArchived: (input: { sessionID: SessionID; time?: number }) => Effect.Effect<void>
+  readonly setCompactionThreshold: (input: { sessionID: SessionID; threshold?: number }) => Effect.Effect<void>
   readonly setMetadata: (input: typeof SetMetadataInput.Type) => Effect.Effect<void>
   readonly setAgentModel: (input: {
     sessionID: SessionID
@@ -760,6 +764,15 @@ const layer: Layer.Layer<
       yield* patch(input.sessionID, { time: { archived: input.time } }).pipe(Effect.orDie)
     })
 
+    const setCompactionThreshold = Effect.fn("Session.setCompactionThreshold")(function* (input: {
+      sessionID: SessionID
+      threshold?: number
+    }) {
+      yield* patch(input.sessionID, { compactionThreshold: input.threshold, time: { updated: Date.now() } }).pipe(
+        Effect.orDie,
+      )
+    })
+
     const setMetadata = Effect.fn("Session.setMetadata")(function* (input: typeof SetMetadataInput.Type) {
       yield* patch(input.sessionID, { metadata: input.metadata, time: { updated: Date.now() } }).pipe(Effect.orDie)
     })
@@ -914,6 +927,7 @@ const layer: Layer.Layer<
       get,
       setTitle,
       setArchived,
+      setCompactionThreshold,
       setMetadata,
       setAgentModel,
       setPermission,

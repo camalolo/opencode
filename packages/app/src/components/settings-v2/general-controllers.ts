@@ -72,6 +72,25 @@ export function createShellSettingsController() {
   }
 }
 
+// Auto-compact trigger as a fraction of the model context window. `null`
+// resets to the engine default (reserved-token buffer based). The generated
+// SDK flattens the nullable schema to `number`, but the wire contract accepts
+// null as an explicit reset (mergeDeep drops the key server-side).
+export const compactionThresholdOptions = [0.7, 0.75, 0.8, 0.85, 0.9, 0.95] as const
+
+export function createCompactionSettingsController() {
+  const serverSync = useServerSync()
+  const current = createMemo(() => serverSync().data.config.compaction?.threshold ?? null)
+
+  return {
+    current,
+    select: (value: number | null) => {
+      if (value === current()) return
+      void serverSync().updateConfig({ compaction: { threshold: value as unknown as number } })
+    },
+  }
+}
+
 export function createAppearanceSettingsController() {
   const settings = useSettings()
   const theme = useTheme()
@@ -169,5 +188,6 @@ export function createSoundSettingsController() {
 
 export type PermissionScopeController = ReturnType<typeof createPermissionScopeController>
 export type ShellSettingsController = ReturnType<typeof createShellSettingsController>
+export type CompactionSettingsController = ReturnType<typeof createCompactionSettingsController>
 export type AppearanceSettingsController = ReturnType<typeof createAppearanceSettingsController>
 export type SoundSettingsController = ReturnType<typeof createSoundSettingsController>

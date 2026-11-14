@@ -1,6 +1,7 @@
 import { createMemo, createEffect, on, onCleanup, For, Show } from "solid-js"
 import type { JSX } from "solid-js"
 import { useSync } from "@/context/sync"
+import { useServerSync } from "@/context/server-sync"
 import { checksum } from "@opencode-ai/core/util/encode"
 import { findLast } from "@opencode-ai/core/util/array"
 import { same } from "@/utils/same"
@@ -8,6 +9,7 @@ import { Icon } from "@opencode-ai/ui/icon"
 import { Button } from "@opencode-ai/ui/button"
 import { Accordion } from "@opencode-ai/ui/accordion"
 import { StickyAccordionHeader } from "@opencode-ai/ui/sticky-accordion-header"
+import { SelectV2 } from "@opencode-ai/ui/v2/select-v2"
 import { File } from "@opencode-ai/session-ui/file"
 import { Markdown } from "@opencode-ai/session-ui/markdown"
 import { ScrollView } from "@opencode-ai/ui/scroll-view"
@@ -94,8 +96,12 @@ function RawMessage(props: {
 const emptyMessages: Message[] = []
 const emptyUserMessages: UserMessage[] = []
 
+const compactionThresholdOptions: number[] = [0.7, 0.75, 0.8, 0.85, 0.9, 0.95]
+const compactionPercent = (value: number) => `${Math.round(value * 100)}%`
+
 export function SessionContextTab() {
   const sync = useSync()
+  const serverSync = useServerSync()
   const language = useLanguage()
   const sdk = useSDK()
   const providers = useProviders(() => sdk().directory)
@@ -199,6 +205,27 @@ export function SessionContextTab() {
     if (key === "assistant") return language.t("context.breakdown.assistant")
     if (key === "tool") return language.t("context.breakdown.tool")
     return language.t("context.breakdown.other")
+  }
+
+  const sessionThreshold = createMemo(() => info()?.compactionThreshold ?? null)
+  const globalThreshold = createMemo(() => serverSync().data.config.compaction?.threshold ?? null)
+  const thresholdOptions = createMemo(() => {
+    const options: Array<number | null> = [null, ...compactionThresholdOptions]
+    return options
+  })
+  const setThreshold = (value: number | null) => {
+    const sessionID = params.id
+    if (!sessionID) return
+    if (value === sessionThreshold()) return
+    // The generated SDK flattens the nullable schema to `number`, but the wire
+    // contract accepts null as an explicit reset of the session override.
+    void sdk()
+      .client.session.update({
+        sessionID,
+        directory: sdk().directory,
+        compactionThreshold: value as unknown as number,
+      })
+      .catch(() => undefined)
   }
 
   const stats = [
@@ -313,6 +340,32 @@ export function SessionContextTab() {
             {(stat) => <Stat label={language.t(stat.label as Parameters<typeof language.t>[0])} value={stat.value()} />}
           </For>
         </div>
+
+        <Show when={params.id}>
+          <div class="flex flex-col gap-2">
+            <div class="text-12-regular text-text-weak">{language.t("context.compaction.title")}</div>
+            <div class="flex flex-wrap items-center justify-between gap-2">
+              <div class="text-11-regular text-text-weaker">{language.t("context.compaction.description")}</div>
+              <SelectV2
+                appearance="inline"
+                data-action="session-compaction-threshold"
+                options={thresholdOptions()}
+                current={thresholdOptions().find((option) => option === sessionThreshold())}
+                placement="bottom-end"
+                gutter={6}
+                value={(option) => (option === null ? "default" : String(option))}
+                label={(option) => {
+                  if (option !== null) return compactionPercent(option)
+                  const global = globalThreshold()
+                  return global
+                    ? `${language.t("context.compaction.default")} (${compactionPercent(global)})`
+                    : language.t("context.compaction.default")
+                }}
+                onSelect={(option) => setThreshold(option ?? null)}
+              />
+            </div>
+          </div>
+        </Show>
 
         <Show when={breakdown().length > 0}>
           <div class="flex flex-col gap-2">

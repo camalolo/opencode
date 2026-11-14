@@ -1,7 +1,7 @@
 export * as ConfigV1 from "./config"
 
 import { Schema } from "effect"
-import { NonNegativeInt, PositiveInt, type DeepMutable } from "../../schema"
+import { NonNegativeInt, PositiveInt, UnitFraction, type DeepMutable } from "../../schema"
 import { ConfigExperimental } from "../../config/experimental"
 import { ConfigReference } from "../../config/reference"
 import { ConfigAgentV1 } from "./agent"
@@ -155,7 +155,11 @@ export const Info = Schema.Struct({
         description: "Enable automatic compaction when context is full (default: true)",
       }),
       prune: Schema.optional(Schema.Boolean).annotate({
-        description: "Enable pruning of old tool outputs (default: false)",
+        description: "Enable pruning of old tool outputs (default: true)",
+      }),
+      threshold: Schema.optional(Schema.NullOr(UnitFraction)).annotate({
+        description:
+          "Trigger automatic compaction at this fraction of the model context window (0 < threshold <= 1). Overrides `reserved` when set. null resets to the default.",
       }),
       tail_turns: Schema.optional(NonNegativeInt).annotate({
         description:

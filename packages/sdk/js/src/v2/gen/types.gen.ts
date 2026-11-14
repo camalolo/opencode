@@ -224,6 +224,10 @@ export type Session = {
     diff?: string
   }
   /**
+   * Per-session automatic compaction trigger as a fraction of the model context window (0 < threshold <= 1). Overrides the global compaction threshold when set
+   */
+  compactionThreshold?: number
+  /**
    * Runs without a human: permission asks resolve as deny instead of waiting
    */
   unattended?: boolean
@@ -2052,6 +2056,7 @@ export type Config = {
   compaction?: {
     auto?: boolean
     prune?: boolean
+    threshold?: number
     tail_turns?: number
     preserve_recent_tokens?: number
     reserved?: number
@@ -2288,6 +2293,7 @@ export type GlobalSession = {
   metadata?: {
     [key: string]: unknown
   }
+  compactionThreshold?: number
   time: {
     created: number
     updated: number
@@ -2636,6 +2642,7 @@ export type Session1 = {
   metadata?: {
     [key: string]: unknown
   }
+  compactionThreshold?: number
   time: {
     created: number
     updated: number
@@ -2689,6 +2696,7 @@ export type Session2 = {
   metadata?: {
     [key: string]: unknown
   }
+  compactionThreshold?: number
   time: {
     created: number
     updated: number
@@ -2749,6 +2757,7 @@ export type Session3 = {
   metadata?: {
     [key: string]: unknown
   }
+  compactionThreshold?: number
   time: {
     created: number
     updated: number
@@ -2802,6 +2811,7 @@ export type Session4 = {
   metadata?: {
     [key: string]: unknown
   }
+  compactionThreshold?: number
   time: {
     created: number
     updated: number
@@ -2855,6 +2865,7 @@ export type Session5 = {
   metadata?: {
     [key: string]: unknown
   }
+  compactionThreshold?: number
   time: {
     created: number
     updated: number
@@ -2908,6 +2919,7 @@ export type Session6 = {
   metadata?: {
     [key: string]: unknown
   }
+  compactionThreshold?: number
   time: {
     created: number
     updated: number
@@ -2961,6 +2973,7 @@ export type Session7 = {
   metadata?: {
     [key: string]: unknown
   }
+  compactionThreshold?: number
   time: {
     created: number
     updated: number
@@ -3068,6 +3081,7 @@ export type Session8 = {
   metadata?: {
     [key: string]: unknown
   }
+  compactionThreshold?: number
   time: {
     created: number
     updated: number
@@ -3121,6 +3135,7 @@ export type Session9 = {
   metadata?: {
     [key: string]: unknown
   }
+  compactionThreshold?: number
   time: {
     created: number
     updated: number
@@ -4475,6 +4490,7 @@ export type SessionV2Info = {
   location: LocationRef
   subpath?: string
   revert?: RevertState
+  compactionThreshold?: number
   unattended?: boolean
 }
 
@@ -10546,6 +10562,7 @@ export type SessionUpdateData = {
     metadata?: {
       [key: string]: unknown
     }
+    compactionThreshold?: number
     permission?: PermissionRuleset
     time?: {
       archived?: number

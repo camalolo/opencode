@@ -1,9 +1,9 @@
 {
   "version": "7",
   "dialect": "sqlite",
-  "id": "2505cdea-8123-4cec-9efd-5848e3e768c7",
+  "id": "30f133f4-b8d2-4659-ae0e-2297eab81f18",
   "prevIds": [
-    "7409305e-263a-4731-8ab6-ac9a24efd221"
+    "2505cdea-8123-4cec-9efd-5848e3e768c7"
   ],
   "ddl": [
     {
@@ -1605,6 +1605,16 @@
       "default": null,
       "generated": null,
       "name": "unattended",
+      "entityType": "columns",
+      "table": "session"
+    },
+    {
+      "type": "real",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "compaction_threshold",
       "entityType": "columns",
       "table": "session"
     },

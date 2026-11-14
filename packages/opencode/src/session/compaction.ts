@@ -12,7 +12,7 @@ import { Plugin } from "@/plugin"
 import { Config } from "@/config/config"
 import { NotFoundError } from "@/storage/storage"
 
-import { Effect, Layer, Context } from "effect"
+import { Effect, Layer, Context, Stream } from "effect"
 import { InstanceState } from "@/effect/instance-state"
 import { isOverflow as overflow, usable } from "./overflow"
 import { serviceUse } from "@opencode-ai/core/effect/service-use"
@@ -22,6 +22,9 @@ import { ProviderV2 } from "@opencode-ai/core/provider"
 import { ModelV2 } from "@opencode-ai/core/model"
 import { buildPrompt } from "@opencode-ai/core/session/compaction"
 import { SessionCompactionEvent } from "@opencode-ai/schema/session-compaction-event"
+import { LLMEvent } from "@opencode-ai/llm"
+import { LLM } from "@/session/llm"
+import { ProviderTransform } from "@/provider/transform"
 
 export const Event = SessionCompactionEvent
 
@@ -31,6 +34,7 @@ const TOOL_OUTPUT_MAX_CHARS = 2_000
 const PRUNE_PROTECTED_TOOLS = ["skill"]
 const MIN_PRESERVE_RECENT_TOKENS = 2_000
 const MAX_PRESERVE_RECENT_TOKENS = 15_000
+const SUMMARY_OUTPUT_TOKENS = 4_096
 type Turn = {
   start: number
   end: number
@@ -166,6 +170,7 @@ export interface Interface {
   readonly isOverflow: (input: {
     tokens: SessionV1.Assistant["tokens"]
     model: Provider.Model
+    session?: Session.Info
   }) => Effect.Effect<boolean>
   readonly prune: (input: { sessionID: SessionID }) => Effect.Effect<void>
   readonly process: (input: {
@@ -199,15 +204,18 @@ const layer = Layer.effect(
     const provider = yield* Provider.Service
     const events = yield* EventV2Bridge.Service
     const flags = yield* RuntimeFlags.Service
+    const llm = yield* LLM.Service
 
     const isOverflow = Effect.fn("SessionCompaction.isOverflow")(function* (input: {
       tokens: SessionV1.Assistant["tokens"]
       model: Provider.Model
+      session?: Session.Info
     }) {
       return overflow({
         cfg: yield* config.get(),
         tokens: input.tokens,
         model: input.model,
+        session: input.session,
         outputTokenMax: flags.outputTokenMax,
       })
     })
@@ -272,7 +280,8 @@ const layer = Layer.effect(
     // calls, then erases output of older tool calls to free context space
     const prune = Effect.fn("SessionCompaction.prune")(function* (input: { sessionID: SessionID }) {
       const cfg = yield* config.get()
-      if (!cfg.compaction?.prune) return
+      // Enabled by default; an explicit false opts out.
+      if (cfg.compaction?.prune === false) return
       yield* Effect.logInfo("pruning")
 
       const msgs = yield* session
@@ -377,14 +386,115 @@ const layer = Layer.effect(
       )
       const msgs = structuredClone(selected.head)
       yield* plugin.trigger("experimental.chat.messages.transform", {}, { messages: msgs })
-      const conversation = msgs.map(serialize).filter(Boolean).join("\n\n")
+      const conversationParts = msgs.map(serialize).filter(Boolean)
+      const conversation = conversationParts.join("\n\n")
+      const recent = (() => {
+        if (!selected.tail_start_id) return undefined
+        const index = history.findIndex((message) => message.info.id === selected.tail_start_id)
+        if (index < 0) return undefined
+        return history
+          .slice(index)
+          .map(serialize)
+          .filter(Boolean)
+          .join("\n\n")
+      })()
+      const window = usable({ cfg, model, outputTokenMax: flags.outputTokenMax })
+
+      // When the serialized history itself exceeds the summarizer's window,
+      // fold it forward in chunks (oldest first): each fold combines the
+      // running summary with the next chunk, and the final processor call
+      // folds the last chunk and reconciles against the retained tail.
+      const foldPlan = (() => {
+        if (compacting.prompt) return undefined
+        const overhead = Token.estimate(buildPrompt({ previousSummary: "", context: [], recent }))
+        const reserve =
+          Math.min(ProviderTransform.maxOutputTokens(model, flags.outputTokenMax), SUMMARY_OUTPUT_TOKENS) +
+          SUMMARY_OUTPUT_TOKENS
+        const budget = window - overhead - reserve
+        if (budget <= 0) return undefined
+        const chunks: string[][] = []
+        let current: string[] = []
+        let total = 0
+        for (const part of conversationParts) {
+          const size = Token.estimate(part)
+          if (current.length > 0 && total + size > budget) {
+            chunks.push(current)
+            current = []
+            total = 0
+          }
+          current.push(part)
+          total += size
+        }
+        if (current.length > 0) chunks.push(current)
+        return chunks.length >= 2 ? chunks : undefined
+      })()
+
+      const foldStep = Effect.fn("SessionCompaction.foldStep")(function* (input: {
+        sessionID: SessionID
+        prompt: string
+        user: SessionV1.User
+        agent: Agent.Info
+        model: Provider.Model
+      }) {
+        const chunks: string[] = []
+        let failed = false
+        const stream = llm.stream({
+          user: input.user,
+          sessionID: input.sessionID,
+          model: input.model,
+          agent: input.agent,
+          system: [],
+          messages: [{ role: "user", content: input.prompt }],
+          tools: {},
+        })
+        yield* Stream.runForEach(stream, (event) => {
+          if (LLMEvent.is.providerError(event)) failed = true
+          if (LLMEvent.is.textDelta(event)) chunks.push(event.text)
+          return Effect.void
+        }).pipe(Effect.catch(() => Effect.void))
+        const text = chunks.join("")
+        return !failed && text.trim() ? text : undefined
+      })
+
+      let foldedSummary: string | undefined
+      if (foldPlan) {
+        yield* Effect.logInfo("compaction folding oversized history", {
+          "session.id": input.sessionID,
+          chunks: foldPlan.length,
+          window,
+        })
+        let running = previousSummary
+        for (const chunk of foldPlan.slice(0, -1)) {
+          running = yield* foldStep({
+            sessionID: input.sessionID,
+            prompt: buildPrompt({ previousSummary: running, context: [chunk.join("\n\n")] }),
+            user: userMessage,
+            agent,
+            model,
+          })
+          if (!running) break
+        }
+        if (!running) {
+          yield* Effect.logInfo("compaction fold failed", { "session.id": input.sessionID })
+        } else {
+          foldedSummary = running
+        }
+      }
+
       const nextPrompt =
         compacting.prompt ??
         [
-          buildPrompt({
-            previousSummary,
-            context: [conversation],
-          }),
+          foldedSummary
+            ? buildPrompt({
+                previousSummary: foldedSummary,
+                context: [foldPlan!.at(-1)!.join("\n\n")],
+                recent,
+              })
+            : buildPrompt({
+                previousSummary,
+                context: [conversation],
+                recent,
+              }),
           ...compacting.context,
         ]
           .filter(Boolean)
@@ -602,6 +712,7 @@ export const node = LayerNode.make({
     Provider.node,
     EventV2Bridge.node,
     RuntimeFlags.node,
+    LLM.node,
   ],
 })
 

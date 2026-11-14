@@ -5,7 +5,7 @@ import { Agent } from "./agent"
 import { Location } from "./location"
 import { Model } from "./model"
 import { Project } from "./project"
-import { DateTimeUtcFromMillis, optional, RelativePath } from "./schema"
+import { DateTimeUtcFromMillis, optional, RelativePath, UnitFraction } from "./schema"
 import { SessionEvent } from "./session-event"
 import { SessionID } from "./session-id"
 import { Revert } from "./revert"
@@ -41,6 +41,10 @@ export const Info = Schema.Struct({
   location: Location.Ref,
   subpath: RelativePath.pipe(optional),
   revert: Revert.State.pipe(optional),
+  compactionThreshold: UnitFraction.pipe(optional).annotate({
+    description:
+      "Per-session automatic compaction trigger as a fraction of the model context window (0 < threshold <= 1). Overrides the global compaction threshold when set",
+  }),
   unattended: Schema.Boolean.pipe(optional).annotate({
     description: "Runs without a human: permission asks resolve as deny instead of waiting",
   }),

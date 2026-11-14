@@ -1090,7 +1090,11 @@ describe("session.compaction.process", () => {
         expect(part?.type).toBe("compaction")
         expect(part?.tail_start_id).toBe(keep.id)
         expect(captured).toContain("zzzz")
-        expect(captured).not.toContain("keep tail")
+        // The retained tail is passed to the summarizer as read-only
+        // reconciliation context, separate from the summarized conversation.
+        expect(captured).toContain("<recent-context>")
+        expect(captured).toContain("keep tail")
+        expect(captured.indexOf("[User]: older context")).toBeLessThan(captured.indexOf("<recent-context>"))
 
         const filtered = MessageV2.filterCompacted(yield* MessageV2.stream(session.id))
         expect(filtered.map((msg) => msg.info.id).slice(0, 3)).toEqual([parent!, expect.any(String), keep.id])
@@ -1373,7 +1377,7 @@ describe("session.compaction.process", () => {
   )
 
   itCompaction.instance(
-    "summarizes only the head while keeping recent tail out of summary input",
+    "summarizes the head and passes the retained tail as reconciliation context",
     () => {
       const stub = llm()
       let messages: LLM.StreamInput["messages"] = []
@@ -1409,8 +1413,12 @@ describe("session.compaction.process", () => {
           captured.indexOf("Create a new anchored summary"),
         )
         expect(captured).toContain("[User]: older context")
-        expect(captured).not.toContain("keep this turn")
-        expect(captured).not.toContain("and this one too")
+        // The tail stays out of the summarized <conversation> and is passed
+        // separately under <recent-context> for reconciliation.
+        expect(captured.indexOf("keep this turn")).toBeGreaterThan(captured.indexOf("</conversation>"))
+        expect(captured).toContain("<recent-context>")
+        expect(captured).toContain("keep this turn")
+        expect(captured).toContain("and this one too")
         expect(captured).not.toContain("What did we do so far?")
       }).pipe(
         withCompaction({

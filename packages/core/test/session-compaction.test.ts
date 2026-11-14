@@ -30,6 +30,19 @@ test("compaction prompt gives update instructions for a prior summary", () => {
   expect(prompt).toContain('Update "Objective" and "Next Move" to reflect the current work state.')
 })
 
+test("compaction prompt reconciles against the retained tail", () => {
+  const withoutRecent = SessionCompaction.buildPrompt({ context: ["older history"] })
+  const prompt = SessionCompaction.buildPrompt({
+    context: ["older history"],
+    recent: "[User]: RECENT work already finished",
+  })
+
+  expect(withoutRecent).not.toContain("<recent-context>")
+  expect(prompt).toContain("Reconcile the summary against it")
+  expect(prompt).toContain("<recent-context>\n[User]: RECENT work already finished\n</recent-context>")
+  expect(prompt.indexOf("</conversation>")).toBeLessThan(prompt.indexOf("<recent-context>"))
+})
+
 test("compaction describes tool media without embedding base64", () => {
   const base64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAAB"
   const serialized = SessionCompaction.serializeToolContent([

@@ -19,6 +19,7 @@ export function fromRow(row: typeof SessionTable.$inferSelect): SessionSchema.In
     parentID: row.parent_id ? SessionSchema.ID.make(row.parent_id) : undefined,
     agent: row.agent ? AgentV2.ID.make(row.agent) : undefined,
     unattended: row.unattended ?? undefined,
+    compactionThreshold: row.compaction_threshold ?? undefined,
     model: row.model
       ? {
           id: ModelV2.ID.make(row.model.id),

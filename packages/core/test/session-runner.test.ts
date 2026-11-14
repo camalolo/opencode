@@ -1169,7 +1169,10 @@ describe("SessionRunnerLLM", () => {
       const continuation = userTexts(requests[1])[0]
       expect(summary.match(/EARLIER_BOUNDARY/g)).toHaveLength(1)
       expect(summary).toContain(`EARLIER_BOUNDARY ${"a".repeat(3_000)} EARLIER_END`)
-      expect(summary).not.toContain("RECENT_BOUNDARY")
+      // The retained tail is passed to the summarizer as read-only
+      // reconciliation context, complete and untruncated.
+      expect(summary).toContain("<recent-context>")
+      expect(summary).toContain(`RECENT_BOUNDARY ${"b".repeat(3_000)} RECENT_END`)
       expect(continuation).not.toContain("EARLIER_BOUNDARY")
       expect(continuation).not.toContain("EARLIER_END")
       expect(continuation).toContain("<recent-context>\n[Assistant]: Earlier answer")
@@ -1281,6 +1284,49 @@ describe("SessionRunnerLLM", () => {
       expect(requests).toHaveLength(3)
       expect(yield* session.context(sessionID)).toMatchObject([
         { type: "compaction", summary: "## Objective\n- Recover raw overflow" },
+        { type: "assistant", finish: "stop" },
+      ])
+    }),
+  )
+
+  it.effect("folds an oversized history forward in chunks before summarizing", () =>
+    Effect.gen(function* () {
+      yield* setup
+      const session = yield* SessionV2.Service
+      const first = "First question ".repeat(3_000)
+      const second = "Second question ".repeat(3_000)
+      response = fragmentFixture("text", "text-first", ["First answer"]).completeEvents
+      yield* session.prompt({ sessionID, prompt: Prompt.make({ text: first }), resume: false })
+      yield* session.resume(sessionID)
+      response = fragmentFixture("text", "text-second", ["Second answer"]).completeEvents
+      yield* session.prompt({ sessionID, prompt: Prompt.make({ text: second }), resume: false })
+      yield* session.resume(sessionID)
+
+      currentModel = recoveryModel
+      requests.length = 0
+      responses = [
+        fragmentFixture("text", "text-fold", ["## Objective\n- Fold once"]).completeEvents,
+        fragmentFixture("text", "text-summary", ["## Objective\n- Fold complete"]).completeEvents,
+        fragmentFixture("text", "text-final", ["Recovered"]).completeEvents,
+      ]
+      yield* session.prompt({ sessionID, prompt: Prompt.make({ text: "Continue" }), resume: false })
+      yield* session.resume(sessionID)
+
+      // Automatic compaction fires before the provider turn; the oversized
+      // history is folded in two chunks and the final fold reconciles against
+      // the retained tail.
+      expect(requests).toHaveLength(3)
+      const fold = userTexts(requests[0])[0]
+      expect(fold).toContain("First question")
+      expect(fold).not.toContain("Second question")
+      expect(fold).not.toContain("<recent-context>")
+      const summary = userTexts(requests[1])[0]
+      expect(summary).toContain("<prior-summary>\n## Objective\n- Fold once\n</prior-summary>")
+      expect(summary).toContain("Second question")
+      expect(summary).toContain("<recent-context>")
+      expect(summary).toContain("[User]: Continue")
+      expect(yield* session.context(sessionID)).toMatchObject([
+        { type: "compaction", summary: "## Objective\n- Fold complete" },
         { type: "assistant", finish: "stop" },
       ])
     }),

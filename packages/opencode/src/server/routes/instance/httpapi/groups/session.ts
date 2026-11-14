@@ -1,4 +1,5 @@
 import { PermissionV1 } from "@opencode-ai/core/v1/permission"
+import { UnitFraction } from "@opencode-ai/core/schema"
 import { Permission } from "@/permission"
 import { SessionV1 } from "@opencode-ai/core/v1/session"
 
@@ -49,6 +50,10 @@ export const StatusMap = Schema.Record(Schema.String, SessionStatus.Info)
 export const UpdatePayload = Schema.Struct({
   title: Schema.optional(Schema.String),
   metadata: Schema.optional(Session.Metadata),
+  compactionThreshold: Schema.optional(Schema.NullOr(UnitFraction)).annotate({
+    description:
+      "Per-session automatic compaction trigger as a fraction of the model context window (0 < threshold <= 1). Overrides the global compaction threshold. null clears the session override.",
+  }),
   permission: Schema.optional(PermissionV1.Ruleset),
   time: Schema.optional(
     Schema.Struct({

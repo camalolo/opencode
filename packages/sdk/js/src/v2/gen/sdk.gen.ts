@@ -3842,6 +3842,7 @@ export class Session2 extends HeyApiClient {
       metadata?: {
         [key: string]: unknown
       }
+      compactionThreshold?: number
       permission?: PermissionRuleset
       time?: {
         archived?: number
@@ -3859,6 +3860,7 @@ export class Session2 extends HeyApiClient {
             { in: "query", key: "workspace" },
             { in: "body", key: "title" },
             { in: "body", key: "metadata" },
+            { in: "body", key: "compactionThreshold" },
             { in: "body", key: "permission" },
             { in: "body", key: "time" },
           ],

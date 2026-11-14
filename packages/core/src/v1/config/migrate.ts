@@ -54,6 +54,7 @@ export function migrate(info: typeof ConfigV1.Info.Type) {
     compaction: info.compaction && {
       auto: info.compaction.auto,
       prune: info.compaction.prune,
+      threshold: info.compaction.threshold,
       keep: {
         tokens: info.compaction.preserve_recent_tokens,
       },

@@ -7,9 +7,10 @@ import {
   PositiveInt,
   RelativePath,
   statics,
+  UnitFraction,
 } from "@opencode-ai/schema/schema"
 
-export { AbsolutePath, DateTimeUtcFromMillis, NonNegativeInt, optional, PositiveInt, RelativePath, statics }
+export { AbsolutePath, DateTimeUtcFromMillis, NonNegativeInt, optional, PositiveInt, RelativePath, statics, UnitFraction }
 
 /**
  * Strip `readonly` from a nested type. Stand-in for `effect`'s `Types.DeepMutable`

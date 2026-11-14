@@ -53,6 +53,7 @@ When combining:
 - Move completed work from "Active" to "Completed".
 - If a blocker has been resolved, update the summary to reflect that while keeping any details still needed to continue the work.
 - Update "Objective" and "Next Move" to reflect the current work state.`
+const SUMMARY_RECONCILE_INSTRUCTIONS = `The <recent-context> section contains the newest turns of the conversation, kept verbatim in the live context after this summary. Reconcile the summary against it even though it is not part of the <conversation>: work shown as finished there moves to "Completed", and "Active" and "Next Move" must reflect its latest state instead of proposing work it already did.`
 
 type Entry = {
   readonly seq: number
@@ -63,6 +64,7 @@ type Settings = {
   readonly auto: boolean
   readonly buffer: number
   readonly tokens: number
+  readonly threshold?: number
 }
 
 type Dependencies = {
@@ -78,6 +80,9 @@ type Input = {
   readonly entries: readonly Entry[]
   readonly model: Model
   readonly request: LLMRequest
+  // Per-session override of the configured compaction threshold (fraction of
+  // the model context window), read from the Session record when present.
+  readonly threshold?: number
 }
 
 const estimate = (value: unknown) => Token.estimate(JSON.stringify(value))
@@ -129,15 +134,13 @@ const settings = (documents: readonly Config.Entry[]) => {
       auto: current.auto ?? result.auto,
       buffer: current.buffer ?? result.buffer,
       tokens: current.keep?.tokens ?? result.tokens,
+      threshold: current.threshold === null ? undefined : (current.threshold ?? result.threshold),
     }),
     { auto: true, buffer: DEFAULT_BUFFER, tokens: DEFAULT_KEEP_TOKENS },
   )
 }
 
-const select = (
-  entries: readonly Entry[],
-  tokens: number,
-): { readonly head: string; readonly recent: string } | undefined => {
+const select = (entries: readonly Entry[], tokens: number) => {
   const conversation = entries
     .filter((entry) => entry.message.type !== "compaction")
     .map((entry) => serialize(entry.message))
@@ -152,29 +155,84 @@ const select = (
     split = index
   }
   return {
-    head: conversation.slice(0, split).join("\n\n"),
-    recent: conversation.slice(split).join("\n\n"),
+    head: conversation.slice(0, split),
+    recent: conversation.slice(split),
   }
 }
 
-export const buildPrompt = (input: { readonly previousSummary?: string; readonly context: readonly string[] }) => {
+export const buildPrompt = (input: {
+  readonly previousSummary?: string
+  readonly context: readonly string[]
+  readonly recent?: string
+}) => {
   const conversation = `Here is the conversation so far:\n\n<conversation>\n${input.context.join("\n\n")}\n</conversation>`
+  const recent = input.recent
+    ? `\n\n${SUMMARY_RECONCILE_INSTRUCTIONS}\n\nHere are the newest turns:\n\n<recent-context>\n${input.recent}\n</recent-context>`
+    : ""
   if (!input.previousSummary)
     return [
       conversation,
       "Create a new anchored summary from the conversation history in the <conversation> tags above so another coding agent can continue the work.",
       SUMMARY_TEMPLATE,
-    ].join("\n\n")
+    ].join("\n\n") + recent
   return [
     conversation,
     `Here is the summary of the conversation before the <conversation> above:\n\n<prior-summary>\n${input.previousSummary}\n</prior-summary>`,
     SUMMARY_UPDATE_INSTRUCTIONS,
     SUMMARY_TEMPLATE,
-  ].join("\n\n")
+  ].join("\n\n") + recent
+}
+
+// Split serialized messages into chunks that each fit `budget` tokens. Returns
+// undefined when everything already fits in a single chunk, so folding has
+// nothing to do.
+const foldChunks = (messages: readonly string[], budget: number) => {
+  if (budget <= 0) return undefined
+  const chunks: string[][] = []
+  let current: string[] = []
+  let total = 0
+  for (const message of messages) {
+    const size = Token.estimate(message)
+    if (current.length > 0 && total + size > budget) {
+      chunks.push(current)
+      current = []
+      total = 0
+    }
+    current.push(message)
+    total += size
+  }
+  if (current.length > 0) chunks.push(current)
+  return chunks.length >= 2 ? chunks : undefined
 }
 
 export const make = (dependencies: Dependencies) => {
   const config = settings(dependencies.config)
+  const summarize = (input: { prompt: string; maxTokens: number; model: Model }) =>
+    Effect.gen(function* () {
+      const chunks: string[] = []
+      let failed = false
+      const summarized = yield* dependencies.llm
+        .stream(
+          LLM.request({
+            model: input.model,
+            messages: [Message.user(input.prompt)],
+            tools: [],
+            generation: { maxTokens: input.maxTokens },
+          }),
+        )
+        .pipe(
+          Stream.runForEach((event) => {
+            if (LLMEvent.is.providerError(event)) failed = true
+            if (LLMEvent.is.textDelta(event)) chunks.push(event.text)
+            return Effect.void
+          }),
+          Effect.as(true),
+          Effect.catchTag("LLM.Error", () => Effect.succeed(false)),
+        )
+      const text = chunks.join("")
+      return summarized && !failed && text.trim() ? text : undefined
+    })
+
   const compactAfterOverflow = Effect.fn("SessionCompaction.compactAfterOverflow")(function* (input: Input) {
     const context = input.model.route.defaults.limits?.context
     if (context === undefined || context <= 0) return false
@@ -182,60 +240,86 @@ export const make = (dependencies: Dependencies) => {
     const selected = select(input.entries, config.tokens)
     const previousSummary = input.entries.find((entry) => entry.message.type === "compaction")?.message
     if (!selected || (selected.head.length === 0 && previousSummary?.type !== "compaction")) return false
-    const summaryPrompt = buildPrompt({
-      previousSummary: previousSummary?.type === "compaction" ? previousSummary.summary : undefined,
-      context: [previousSummary?.type === "compaction" ? previousSummary.recent : "", selected.head].filter(Boolean),
-    })
+    const recent = selected.recent.join("\n\n")
     const summaryOutput = Math.min(output || SUMMARY_OUTPUT_TOKENS, SUMMARY_OUTPUT_TOKENS)
-    if (Token.estimate(summaryPrompt) > context - summaryOutput) return false
-    const messageID = SessionMessage.ID.create()
-    yield* dependencies.events.publish(SessionEvent.Compaction.Started, {
-      sessionID: input.sessionID,
-      messageID,
-      timestamp: yield* DateTime.now,
-      reason: "auto",
+    const contextForSummary = (prompt: string) => Token.estimate(prompt) <= context - summaryOutput
+
+    const singlePrompt = buildPrompt({
+      previousSummary: previousSummary?.type === "compaction" ? previousSummary.summary : undefined,
+      context: [previousSummary?.type === "compaction" ? previousSummary.recent : "", ...selected.head].filter(
+        Boolean,
+      ),
+      recent,
     })
 
-    const chunks: string[] = []
-    let failed = false
-    const summarized = yield* dependencies.llm
-      .stream(
-        LLM.request({
-          model: input.model,
-          messages: [Message.user(summaryPrompt)],
-          tools: [],
-          generation: { maxTokens: summaryOutput },
-        }),
-      )
-      .pipe(
-        Stream.runForEach((event) => {
-          if (LLMEvent.is.providerError(event)) failed = true
-          if (LLMEvent.is.textDelta(event)) chunks.push(event.text)
-          return Effect.void
-        }),
-        Effect.as(true),
-        Effect.catchTag("LLM.Error", () => Effect.succeed(false)),
-      )
-    const summary = chunks.join("")
-    if (!summarized || failed || !summary.trim()) return false
-    yield* dependencies.events.publish(SessionEvent.Compaction.Ended, {
-      sessionID: input.sessionID,
-      messageID,
-      timestamp: yield* DateTime.now,
-      reason: "auto",
-      text: summary,
-      recent: selected.recent,
-    })
-    return true
+    // Publish the started marker once for the whole compaction; fold steps are
+    // invisible to consumers and only the final summary is persisted.
+    const publishSummary = (summary: string) =>
+      Effect.gen(function* () {
+        const messageID = SessionMessage.ID.create()
+        yield* dependencies.events.publish(SessionEvent.Compaction.Started, {
+          sessionID: input.sessionID,
+          messageID,
+          timestamp: yield* DateTime.now,
+          reason: "auto",
+        })
+        yield* dependencies.events.publish(SessionEvent.Compaction.Ended, {
+          sessionID: input.sessionID,
+          messageID,
+          timestamp: yield* DateTime.now,
+          reason: "auto",
+          text: summary,
+          recent,
+        })
+        return true
+      })
+
+    if (contextForSummary(singlePrompt)) {
+      const summary = yield* summarize({ prompt: singlePrompt, maxTokens: summaryOutput, model: input.model })
+      if (!summary) return false
+      return yield* publishSummary(summary)
+    }
+
+    // The full history does not fit the summarizer's window: fold it forward in
+    // chunks (oldest first), each fold combining the running summary with the
+    // next chunk, and reconcile the final fold against the retained tail.
+    // Reserve the generated-text bound for both the running summary and the
+    // final output; overhead is measured on the largest prompt branch (update
+    // instructions + recent section).
+    const promptBudget = context - summaryOutput
+    const overhead = Token.estimate(buildPrompt({ previousSummary: "", context: [], recent }))
+    const chunks = foldChunks(selected.head, promptBudget - overhead - summaryOutput)
+    const lastChunk = chunks?.at(-1)
+    if (!chunks || !lastChunk) return false
+
+    const priorSummary = previousSummary?.type === "compaction" ? previousSummary.summary : undefined
+    let running = priorSummary
+    for (const chunk of chunks.slice(0, -1)) {
+      running = yield* summarize({
+        prompt: buildPrompt({ previousSummary: running, context: chunk }),
+        maxTokens: summaryOutput,
+        model: input.model,
+      })
+      if (!running) return false
+    }
+    const finalPrompt = buildPrompt({ previousSummary: running, context: lastChunk, recent })
+    if (!contextForSummary(finalPrompt)) return false
+    const summary = yield* summarize({ prompt: finalPrompt, maxTokens: summaryOutput, model: input.model })
+    if (!summary) return false
+    return yield* publishSummary(summary)
   })
+
   const compactIfNeeded = Effect.fn("SessionCompaction.compactIfNeeded")(function* (input: Input) {
     if (!config.auto) return false
     const context = input.model.route.defaults.limits?.context
     if (context === undefined || context <= 0) return false
     const output = input.request.generation?.maxTokens ?? input.model.route.defaults.limits?.output ?? 0
+    const threshold = input.threshold ?? config.threshold
+    // A threshold is a direct fraction of the context window and replaces the
+    // reserved-buffer math when set.
+    const limit = threshold ? Math.round(context * threshold) : context - Math.max(output, config.buffer)
     if (
-      estimate({ system: input.request.system, messages: input.request.messages, tools: input.request.tools }) <=
-      context - Math.max(output, config.buffer)
+      estimate({ system: input.request.system, messages: input.request.messages, tools: input.request.tools }) <= limit
     )
       return false
     return yield* compactAfterOverflow(input)

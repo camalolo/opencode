@@ -213,7 +213,15 @@ const layer = Layer.effect(
         tools: toolMaterialization?.definitions ?? [],
         toolChoice: isLastStep ? "none" : undefined,
       })
-      if (yield* compaction.compactIfNeeded({ sessionID: session.id, entries, model, request }))
+      if (
+        yield* compaction.compactIfNeeded({
+          sessionID: session.id,
+          entries,
+          model,
+          request,
+          threshold: session.compactionThreshold,
+        })
+      )
         return yield* Effect.die(continueAfterCompaction(currentStep))
       // Nothing writes to the worktree between turns (only the provider round
       // trip), so the previous turn's end capture describes the same tree.
@@ -286,7 +294,9 @@ const layer = Layer.effect(
             recoverOverflow &&
             !publisher.hasAssistantStarted() &&
             isContextOverflowFailure(overflowFailure ?? failure) &&
-            (yield* restore(recoverOverflow({ sessionID: session.id, entries, model, request })))
+            (yield* restore(
+              recoverOverflow({ sessionID: session.id, entries, model, request, threshold: session.compactionThreshold }),
+            ))
           )
             return yield* Effect.die(continueAfterOverflowCompaction(currentStep))
           if (overflowFailure) yield* publish(overflowFailure)

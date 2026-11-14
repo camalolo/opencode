@@ -6,7 +6,7 @@ import { FileDiff } from "../file-diff"
 import { Project } from "../project"
 import { Provider } from "../provider"
 import { Model } from "../model"
-import { NonNegativeInt, optional, statics } from "../schema"
+import { NonNegativeInt, optional, statics, UnitFraction } from "../schema"
 import { ascending } from "../identifier"
 import { SessionID } from "../session-id"
 import { WorkspaceID } from "../workspace-id"
@@ -568,6 +568,10 @@ export const SessionInfo = Schema.Struct({
   }),
   permission: optional(PermissionV1.Ruleset),
   revert: optional(SessionRevert),
+  compactionThreshold: optional(UnitFraction.annotate({
+    description:
+      "Per-session automatic compaction trigger as a fraction of the model context window (0 < threshold <= 1). Overrides the global compaction threshold when set",
+  })),
   unattended: optional(Schema.Boolean.annotate({
     description: "Runs without a human: permission asks resolve as deny instead of waiting",
   })),

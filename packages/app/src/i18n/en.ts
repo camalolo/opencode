@@ -556,6 +556,10 @@ export const dict = {
   "context.breakdown.tool": "Tool Calls",
   "context.breakdown.other": "Other",
 
+  "context.compaction.title": "Auto-Compact",
+  "context.compaction.description": "Summarize this session automatically when context reaches this share of the model window",
+  "context.compaction.default": "Default",
+
   "context.systemPrompt.title": "System Prompt",
   "context.rawMessages.title": "Raw messages",
   "context.export.session": "Export session",
@@ -977,6 +981,9 @@ export const dict = {
 
   "settings.general.row.language.title": "Language",
   "settings.general.row.language.description": "Change the display language for OpenCode",
+  "settings.general.row.compaction.title": "Auto-compact threshold",
+  "settings.general.row.compaction.description": "Summarize sessions automatically when context reaches this share of the model context window",
+  "settings.general.row.compaction.default": "Default",
   "settings.general.row.shell.title": "Terminal shell",
   "settings.general.row.shell.description": "Shell used by the terminal and agent tools",
   "settings.general.row.shell.autoDefault": "Auto (Default)",

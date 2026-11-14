@@ -226,6 +226,12 @@ export const sessionHandlers = HttpApiBuilder.group(InstanceHttpApi, "session", 
       if (ctx.payload.metadata !== undefined) {
         yield* session.setMetadata({ sessionID: ctx.params.sessionID, metadata: ctx.payload.metadata })
       }
+      if (ctx.payload.compactionThreshold !== undefined) {
+        yield* session.setCompactionThreshold({
+          sessionID: ctx.params.sessionID,
+          threshold: ctx.payload.compactionThreshold ?? undefined,
+        })
+      }
       if (ctx.payload.permission !== undefined) {
         yield* session.setPermission({
           sessionID: ctx.params.sessionID,

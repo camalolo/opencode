@@ -14,13 +14,16 @@ import { SettingsListV2 } from "./parts/list"
 import { SettingsRowV2 } from "./parts/row"
 import { LayoutRetirementNotice, LayoutTransitionToggle } from "./interface-transition"
 import {
+  compactionThresholdOptions,
   createAppearanceSettingsController,
+  createCompactionSettingsController,
   createPermissionScopeController,
   createShellOptions,
   createShellSettingsController,
   createSoundSettingsController,
   soundOptions,
   type AppearanceSettingsController,
+  type CompactionSettingsController,
   type PermissionScopeController,
   type ShellSettingsController,
   type SoundSettingsController,
@@ -114,6 +117,38 @@ const ShellSetting: Component<{ controller: ShellSettingsController }> = (props)
           return `${option.name} (${language.t("settings.general.row.shell.terminalOnly")})`
         }}
         onSelect={(option) => option && props.controller.select(option.value)}
+      />
+    </SettingsRowV2>
+  )
+}
+
+const compactionPercent = (value: number) => `${Math.round(value * 100)}%`
+
+const CompactionSetting: Component<{ controller: CompactionSettingsController }> = (props) => {
+  const language = useLanguage()
+  const options = createMemo(() => {
+    const list: Array<number | null> = [null, ...compactionThresholdOptions]
+    return list
+  })
+  return (
+    <SettingsRowV2
+      title={language.t("settings.general.row.compaction.title")}
+      description={language.t("settings.general.row.compaction.description")}
+    >
+      <SelectV2
+        appearance="inline"
+        data-action="settings-compaction-threshold"
+        options={options()}
+        current={options().find((option) => option === props.controller.current())}
+        placement="bottom-end"
+        gutter={6}
+        value={(option) => (option === null ? "default" : String(option))}
+        label={(option) =>
+          option === null
+            ? language.t("settings.general.row.compaction.default")
+            : compactionPercent(option)
+        }
+        onSelect={(option) => props.controller.select(option ?? null)}
       />
     </SettingsRowV2>
   )
@@ -282,6 +317,7 @@ export const SettingsGeneralV2: Component<{
   const updater = useUpdaterAction()
   const permissionScope = createPermissionScopeController(() => props.sessionID)
   const shell = createShellSettingsController()
+  const compaction = createCompactionSettingsController()
   const appearance = createAppearanceSettingsController()
   const sounds = createSoundSettingsController()
   const desktop = createMemo(() => platform.platform === "desktop")
@@ -391,6 +427,8 @@ export const SettingsGeneralV2: Component<{
       <h3 class="settings-v2-section-title">{language.t("settings.general.section.advanced")}</h3>
 
       <SettingsListV2>
+        <CompactionSetting controller={compaction} />
+
         <SettingsRowV2
           title={language.t("settings.general.row.showFileTree.title")}
           description={language.t("settings.general.row.showFileTree.description")}
