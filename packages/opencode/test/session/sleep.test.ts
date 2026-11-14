@@ -579,6 +579,21 @@ test("wake text covers fired, timed out, and failed outcomes", () => {
   expect(failed).toContain("boom")
 })
 
+test("wake text renders the typed check from the armed variant", () => {
+  const variant = JSON.stringify({ type: "output_marker", command: "make build", marker: "deploy done" })
+  const fired = wakeText(row("fired", "deploy done\n", { variant }), "deploy done\n")
+  expect(fired).toContain('Check: output of make build contains "deploy done"')
+  expect(fired).toContain("Sleep trigger fired: forum reply appears")
+
+  const timedOut = wakeText(row("timed_out", "", { variant }), "")
+  expect(timedOut).toContain("Check: output of make build contains \"deploy done\"")
+})
+
+test("wake text renders a corrupt variant as the raw shell triple", () => {
+  const corrupted = wakeText(row("fired", "x\n", { variant: "not json {", observe: "tail -n 50 x.log", predicate: "grep -q done" }), "x\n")
+  expect(corrupted).toContain("Check: tail -n 50 x.log | grep -q done")
+})
+
 test("wake text speaks state-check vocabulary for state triggers", () => {
   const state = { observe: "tail -n 50 x.log", predicate: "grep -q done", metExample: "done" }
   const fired = wakeText(row("fired", "[state]\njob done", state), "[state]\njob done")
@@ -737,6 +752,7 @@ toolIt.instance(
       expect(peek.output).toContain("pending")
       expect(peek.output).toContain("second wait")
       expect(peek.output).toContain("21/27 images")
+      expect(peek.output).toContain("Check: custom check:")
       const peekEmpty = yield* statusDef.execute(
         {},
         { ...ctx, sessionID: SessionID.make("ses_tool_none") },
@@ -1191,6 +1207,9 @@ toolIt.instance(
       expect(trigger?.observe).toBe("echo build running 2>&1")
       expect(trigger?.predicate).toContain("grep -qF -- 'deploy complete'")
       expect(trigger?.metExample).toBe("deploy complete")
+      expect(trigger?.variant).toBe(
+        JSON.stringify({ type: "output_marker", command: "echo build running", marker: "deploy complete" }),
+      )
     }),
   30_000,
 )

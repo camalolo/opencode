@@ -116,6 +116,8 @@ export interface ArmInput {
   readonly observe?: string
   readonly predicate?: string
   readonly metExample?: string
+  /** The agent-authored check, JSON-encoded, for human rendering in status and wakes. */
+  readonly variant?: string
 }
 
 export interface Interface {
@@ -383,6 +385,7 @@ const layer = Layer.effect(
           ...(input.observe === undefined ? {} : { observe: input.observe }),
           ...(input.predicate === undefined ? {} : { predicate: input.predicate }),
           ...(input.metExample === undefined ? {} : { metExample: input.metExample }),
+          ...(input.variant === undefined ? {} : { variant: input.variant }),
           description: input.description,
           intervalMs: input.intervalMs,
           checkTimeoutMs: input.checkTimeoutMs,

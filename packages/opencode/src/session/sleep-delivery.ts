@@ -8,6 +8,7 @@ import { SessionStore } from "@opencode-ai/core/session/store"
 import { SessionSleep, MAX_BROKEN_CHECKS, MAX_DELIVER_ATTEMPTS as MAX_WAKE_ATTEMPTS } from "@opencode-ai/core/session/sleep"
 import { SupervisedLoop } from "@/effect/supervised"
 import { InstanceStore } from "@/project/instance-store"
+import { SleepCheck } from "@/tool/sleep-check"
 import { SessionPrompt } from "./prompt"
 import { SessionStatus } from "./status"
 
@@ -21,37 +22,49 @@ const tail = (output: string) =>
 
 export const wakeText = (row: SessionSleep.Trigger, output: string) => {
   const state = SessionSleep.isStateTrigger(row)
+  // Typed or state rows carry a describable check; legacy condition rows keep
+  // their original wake shape.
+  const check = state || row.variant !== undefined ? `Check: ${SleepCheck.describeTrigger(row)}` : undefined
   const detail = output.trim().length > 0 ? `\n\nLast check output:\n${tail(output)}` : ""
   if (row.status === "fired")
     return [
       `⏰ Sleep trigger fired: ${row.description}`,
       "",
+      check,
       (state
         ? "The predicate judged the observed state met (exit 0)."
         : "The condition check you armed with the sleep_until tool exited 0.") + detail,
       "",
       "The trigger is disarmed. Continue working on this now.",
-    ].join("\n")
+    ]
+      .filter(Boolean)
+      .join("\n")
   if (row.status === "timed_out")
     return [
       `⏰ Sleep trigger timed out: ${row.description}`,
       "",
+      check,
       (state
         ? "The predicate never judged the state document met within the timeout. Last check output shows how far the state got."
         : "The condition never became true within the timeout.") + detail,
       "",
       "The trigger is disarmed. Re-arm it, adjust the condition, or move on.",
-    ].join("\n")
+    ]
+      .filter(Boolean)
+      .join("\n")
   return [
     `⏰ Sleep trigger failed: ${row.description}`,
     "",
+    check,
     `The check was broken ${MAX_BROKEN_CHECKS} times since arming (bad exit code, command not found, timeout, or exit 1 with no output), so the trigger disarmed itself instead of spinning forever.` +
       detail,
     "",
-    (state
+    state
       ? "Inspect the last check output, fix the observe or predicate, and re-arm with sleep_until if needed."
-      : "Inspect the condition, fix it, and re-arm with sleep_until if needed."),
-  ].join("\n")
+      : "Inspect the condition, fix it, and re-arm with sleep_until if needed.",
+  ]
+    .filter(Boolean)
+    .join("\n")
 }
 
 export interface Interface {

@@ -1,6 +1,6 @@
 export * as SleepCheck from "./sleep-check"
 
-import { Schema } from "effect"
+import { Option, Schema } from "effect"
 import { PositiveInt } from "@opencode-ai/core/schema"
 
 /**
@@ -102,6 +102,37 @@ export interface Compiled {
 export type CompiledCheck =
   | { readonly ok: true; readonly compiled: Compiled }
   | { readonly ok: false; readonly reason: string }
+
+const fromJson = Schema.decodeUnknownOption(Schema.UnknownFromJsonString)
+const decodeCheck = Schema.decodeUnknownOption(Check)
+
+const compact = (text: string) => {
+  const one = text.replaceAll("\n", " ").trim()
+  return one.length > 160 ? `${one.slice(0, 157)}…` : one
+}
+
+/**
+ * Human-readable check description for status lines and wake messages.
+ * Prefers the armed variant (re-compiling it is pure and deterministic);
+ * falls back to the stored shell triple, then the legacy condition.
+ */
+export const describeTrigger = (trigger: {
+  readonly variant?: string
+  readonly observe?: string
+  readonly predicate?: string
+  readonly condition: string
+}): string => {
+  if (trigger.variant !== undefined) {
+    const decoded = Option.flatMap(fromJson(trigger.variant), decodeCheck)
+    if (Option.isSome(decoded)) {
+      const compiled = compileCheck(decoded.value)
+      if (compiled.ok) return compiled.compiled.human
+    }
+  }
+  if (trigger.observe !== undefined && trigger.predicate !== undefined)
+    return `${compact(trigger.observe)} | ${compact(trigger.predicate)}`
+  return compact(trigger.condition)
+}
 
 /**
  * POSIX single-quote escaping: every character is literal inside single

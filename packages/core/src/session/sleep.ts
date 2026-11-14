@@ -50,6 +50,8 @@ export interface Trigger {
   readonly observe?: string
   readonly predicate?: string
   readonly metExample?: string
+  /** The agent-authored check, JSON-encoded (a SleepCheck variant). Undefined for rows armed before typed checks. */
+  readonly variant?: string
   readonly description: string
   readonly intervalMs: number
   readonly checkTimeoutMs: number
@@ -78,6 +80,7 @@ const fromRow = (row: Row): Trigger => ({
   ...(row.observe === null || row.predicate === null || row.met_example === null
     ? {}
     : { observe: row.observe, predicate: row.predicate, metExample: row.met_example }),
+  ...(row.variant === null ? {} : { variant: row.variant }),
   description: row.description,
   intervalMs: row.interval_ms,
   checkTimeoutMs: row.check_timeout_ms,
@@ -109,6 +112,7 @@ export const arm = Effect.fn("SessionSleep.arm")(function* (
     readonly observe?: string
     readonly predicate?: string
     readonly metExample?: string
+    readonly variant?: string
     readonly description: string
     readonly intervalMs: number
     readonly checkTimeoutMs: number
@@ -136,6 +140,7 @@ export const arm = Effect.fn("SessionSleep.arm")(function* (
       ...(input.observe === undefined ? {} : { observe: input.observe }),
       ...(input.predicate === undefined ? {} : { predicate: input.predicate }),
       ...(input.metExample === undefined ? {} : { met_example: input.metExample }),
+      ...(input.variant === undefined ? {} : { variant: input.variant }),
       description: input.description,
       interval_ms: input.intervalMs,
       check_timeout_ms: input.checkTimeoutMs,

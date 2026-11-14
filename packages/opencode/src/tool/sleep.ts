@@ -348,6 +348,7 @@ export const SleepUntilTool = Tool.define<
           observe,
           predicate,
           metExample: met_example,
+          variant: JSON.stringify(params.check),
           description: params.description,
           intervalMs: intervalSeconds * 1000,
           timeoutMs: timeoutMinutes * 60 * 1000,
@@ -453,6 +454,7 @@ export const SleepStatusTool = Tool.define<
           const lines = [
             `Trigger ${trigger.id}: ${trigger.status}`,
             `Waiting for: ${trigger.description}`,
+            `Check: ${SleepCheck.describeTrigger(trigger)}`,
             `Checks every ${Math.round(trigger.intervalMs / 1000)}s; next check ${new Date(trigger.nextCheckAt).toISOString()}; timeout ${new Date(trigger.deadline).toISOString()} (${elapsedPct}% of budget elapsed)`,
             elapsedPct >= 75 && trigger.status === "pending"
               ? "Over 75% of the timeout budget has elapsed without firing — sanity-check that this wait still makes sense; sleep_cancel and re-evaluate if not."

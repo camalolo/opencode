@@ -52,5 +52,6 @@ export const migrations = (
     import("./migration/20261109120000_purge_orphan_session_rows"),
     import("./migration/20261110121500_task_run_reason"),
     import("./migration/20261110123000_session_unattended"),
+    import("./migration/20261114023209_sleep_variant"),
   ])
 ).map((module) => module.default) satisfies DatabaseMigration.Migration[]

@@ -195,6 +195,7 @@ export default {
           \`observe\` text,
           \`predicate\` text,
           \`met_example\` text,
+          \`variant\` text,
           \`description\` text NOT NULL,
           \`interval_ms\` integer NOT NULL,
           \`check_timeout_ms\` integer NOT NULL,

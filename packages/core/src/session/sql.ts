@@ -200,6 +200,11 @@ export const SessionSleepTable = sqliteTable(
     observe: text(),
     predicate: text(),
     met_example: text(),
+    // The agent-authored check the trigger was armed with, JSON-encoded (a
+    // SleepCheck variant: output_marker, file_contains, …). Null for rows
+    // armed before typed checks existed; rendered as a human-readable check
+    // description in sleep_status and wake messages.
+    variant: text(),
     description: text().notNull(),
     interval_ms: integer().notNull(),
     check_timeout_ms: integer().notNull(),
