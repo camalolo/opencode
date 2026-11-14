@@ -1055,7 +1055,7 @@ toolIt.instance(
           : `grep -q '15:29 done' || { echo waiting; exit 1; }`
       const refused = yield* untilDef
         .execute(
-          { observe: observeState, predicate, met_example: "at 15:29 it is done", description: "clock" },
+          { observe: observeState, predicate, met_example: "at 15:29 done", description: "clock" },
           ctx,
         )
         .pipe(Effect.exit)
@@ -1068,7 +1068,7 @@ toolIt.instance(
         {
           observe: observeState,
           predicate,
-          met_example: "at 15:29 it is done",
+          met_example: "at 15:29 done",
           allow_clock_predicate: true,
           description: "clock, allowed",
         },
