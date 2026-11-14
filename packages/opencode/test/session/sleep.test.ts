@@ -800,13 +800,18 @@ test("wake text announces the loop_forever auto re-arm and how to stop it", () =
   expect(fired).toContain("sleep_cancel")
 
   const timedOut = wakeText(row("timed_out", "", { loopForever: true }), "")
-  expect(timedOut).toContain("loop_forever is on")
+  expect(timedOut).toContain("no need to re-arm")
+  expect(timedOut).toContain("sleep_cancel")
+  expect(timedOut).not.toContain("Re-arm it, adjust the condition")
 
   const failed = wakeText(row("failed", "boom", { loopForever: true }), "boom")
   expect(failed).toContain("never re-arms a failed")
 
-  // Plain wakes stay unchanged.
+  // Plain wakes keep the manual guidance.
   expect(wakeText(row("fired", "hello"), "hello")).not.toContain("loop_forever")
+  const plainTimeout = wakeText(row("timed_out", ""), "")
+  expect(plainTimeout).toContain("Re-arm it, adjust the condition")
+  expect(plainTimeout).not.toContain("loop_forever")
 })
 
 // ---------------------------------------------------------------------------

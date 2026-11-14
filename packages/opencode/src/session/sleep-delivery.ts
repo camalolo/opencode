@@ -33,6 +33,11 @@ export const wakeText = (row: SessionSleep.Trigger, output: string) => {
       ? "loop_forever never re-arms a failed (broken-check) trigger — fix the check and re-arm manually if you want to keep watching."
       : "loop_forever is on: if this turn ends without a new sleep_until armed, this exact watcher re-arms itself automatically. Call sleep_cancel to stop the loop, or re-arm without loop_forever."
     : undefined
+  // On a timeout the disarmed guidance must not tell a loop_forever agent to
+  // re-arm — the loop does that itself; only the escape hatches matter.
+  const timedOutGuidance = row.loopForever
+    ? "The trigger is disarmed — no need to re-arm: loop_forever re-arms this exact watcher automatically when your turn ends. To stop the loop instead, call sleep_cancel, or re-arm without loop_forever."
+    : "The trigger is disarmed. Re-arm it, adjust the condition, or move on."
   if (row.status === "fired")
     return [
       `⏰ Sleep trigger fired: ${row.description}`,
@@ -56,8 +61,7 @@ export const wakeText = (row: SessionSleep.Trigger, output: string) => {
         ? "The predicate never judged the state document met within the timeout. Last check output shows how far the state got."
         : "The condition never became true within the timeout.") + detail,
       "",
-      "The trigger is disarmed. Re-arm it, adjust the condition, or move on.",
-      loop,
+      timedOutGuidance,
     ]
       .filter(Boolean)
       .join("\n")
