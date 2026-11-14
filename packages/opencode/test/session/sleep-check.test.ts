@@ -4,6 +4,8 @@ import path from "path"
 import { classifyCheck, observeProblem } from "@/session/sleep-scheduler"
 import { conditionClock, conditionSelfMatch } from "@/tool/sleep"
 import { SleepCheck } from "@/tool/sleep-check"
+import { SleepTool } from "@/tool/sleep"
+import { ToolJsonSchema } from "@/tool/json-schema"
 import { tmpdir } from "../fixture/fixture"
 
 // Typed checks compile to POSIX sh and are refused on win32, so every suite
@@ -262,4 +264,14 @@ POSIX("every compiled typed check passes the arm-time shell gates", () => {
     expect(conditionSelfMatch(compiled.observe)).toBeUndefined()
     expect(conditionSelfMatch(compiled.predicate)).toBeUndefined()
   }
+})
+
+test("the tool-facing JSON schema renders the union as a discriminated anyOf", () => {
+  const schema = ToolJsonSchema.fromTool({ parameters: SleepTool.SleepUntilParameters } as never)
+  const check = schema.properties?.check as { anyOf: Array<{ type: string; properties: Record<string, unknown> }> }
+  const kinds = check.anyOf.map((variant) => variant.properties.type)
+  expect(kinds).toHaveLength(6)
+  for (const kind of kinds) expect(kind).toBeDefined()
+  expect(schema.required).toContain("check")
+  expect(schema.required).toContain("description")
 })
