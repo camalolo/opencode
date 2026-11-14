@@ -723,6 +723,9 @@ export function createServerSyncContextInner(serverSDK: ServerSDK, queryClientOv
     mutationFn: (config: Config) => serverSDK.client.global.config.update({ config }),
     onSuccess: () => {
       bootstrap.refetch()
+      // Refetch the config itself so rows that read data.config (shell,
+      // compaction threshold, ...) show the saved value immediately.
+      queryClient.invalidateQueries({ queryKey: [serverSDK.scope, "config"] })
       // Invalidate all provider queries so newly configured custom providers
       // appear immediately in the available provider list across all directories.
       queryClient.invalidateQueries({ queryKey: [serverSDK.scope, null, "providers"] })

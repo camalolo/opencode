@@ -96,7 +96,7 @@ function RawMessage(props: {
 const emptyMessages: Message[] = []
 const emptyUserMessages: UserMessage[] = []
 
-const compactionThresholdOptions: number[] = [0.7, 0.75, 0.8, 0.85, 0.9, 0.95]
+const compactionThresholdOptions: number[] = [0.5, 0.6, 0.7, 0.8, 0.9]
 const compactionPercent = (value: number) => `${Math.round(value * 100)}%`
 
 export function SessionContextTab() {

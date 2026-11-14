@@ -76,7 +76,7 @@ export function createShellSettingsController() {
 // resets to the engine default (reserved-token buffer based). The generated
 // SDK flattens the nullable schema to `number`, but the wire contract accepts
 // null as an explicit reset (mergeDeep drops the key server-side).
-export const compactionThresholdOptions = [0.7, 0.75, 0.8, 0.85, 0.9, 0.95] as const
+export const compactionThresholdOptions: number[] = [0.5, 0.6, 0.7, 0.8, 0.9]
 
 export function createCompactionSettingsController() {
   const serverSync = useServerSync()
