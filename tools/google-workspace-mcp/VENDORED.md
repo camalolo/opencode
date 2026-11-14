@@ -25,7 +25,28 @@ eviction or any upstream version bump. This copy is tracked and deploys with the
   - Fixed stock bug: both draft paths used `.filter(Boolean)` on the header array,
     which swallowed the blank line separating RFC822 headers from the body — the body
     got glued onto the last header line and Gmail silently discarded it.
-- `build/index.js` — matching input schemas/descriptions for the above.
+- `build/tools/gmail.js` — image extraction (2026-11-14):
+  - New `extract_email_images` tool: walks the MIME tree for `image/*` parts
+    (inline `cid:` images and attached images alike), fetches large parts via
+    `attachments.get` when only an `attachmentId` is present, and writes them to
+    disk (optional `directory` arg, default `<tmpdir>/email-images/<messageId>`).
+    Filenames come from the part, the Content-ID, or `image-N.<ext>`; collisions
+    get `-N` suffixes. Returns local paths so the agent can open the files with
+    normal file tools (show_image, parse, ...).
+  - `embed` option (default true): the result carries a private `_embed_images`
+    key `[{mimeType, data(base64)}]` which the `call_tool` handler converts to
+    MCP `image` content blocks — multimodal clients (opencode `session/tools.ts`)
+    turn those into tool-result attachments, and `message-v2.ts` puts them in the
+    model context exactly like chat-uploaded images (inline for Anthropic/OpenAI/
+    Gemini-3, synthetic user message elsewhere; text-only models get an explicit
+    "does not support image input" text instead). svg and images over 3.5 MB
+    (keeps base64 under Anthropic's 5 MB per-image limit) stay disk-only, flagged
+    `embedded: false`.
+  - `read_email` now returns an `attachments` array (filename, mimeType, size,
+    attachmentId, inline flag) so the model can see images exist before extracting.
+- `build/index.js` — matching input schemas/descriptions for the above; the
+  `call_tool` handler strips `_embed_images` from the JSON text block and
+  re-emits it as MCP image content blocks.
 
 ## Wiring
 

@@ -29,11 +29,24 @@ const TOOL_DEFINITIONS = [
     },
     {
         name: 'read_email',
-        description: 'Read a specific email by its message ID',
+        description: 'Read a specific email by its message ID (headers, decoded body, attachment metadata)',
         inputSchema: {
             type: 'object',
             properties: {
                 messageId: { type: 'string', description: 'Gmail message ID' },
+            },
+            required: ['messageId'],
+        },
+    },
+    {
+        name: 'extract_email_images',
+        description: 'Extract image parts (inline and attached) from an email and save them to disk as files. Returns local file paths; embeds the images in the response by default so multimodal models can see them directly.',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                messageId: { type: 'string', description: 'Gmail message ID' },
+                directory: { type: 'string', description: 'Target directory for the saved images (optional; defaults to a per-message folder under the system temp dir)' },
+                embed: { type: 'boolean', description: 'Embed the images as image content in the response so multimodal models can see them directly (default true; svg and images over 3.5 MB stay disk-only)' },
             },
             required: ['messageId'],
         },
@@ -668,14 +681,22 @@ async function main() {
                 throw new Error(`Unknown tool: ${name}`);
             }
             const result = await tool(args || {});
-            return {
-                content: [
-                    {
-                        type: 'text',
-                        text: JSON.stringify(result, null, 2),
-                    },
-                ],
-            };
+            // Tools can request image embedding via a private `_embed_images` key:
+            // it is stripped from the JSON text block and re-emitted as MCP image
+            // content so multimodal clients (e.g. opencode) attach the images to the
+            // model context the same way as chat-uploaded images.
+            const embedded = Array.isArray(result?._embed_images) ? result._embed_images : [];
+            const payload = embedded.length ? { ...result, _embed_images: undefined } : result;
+            const content = [
+                {
+                    type: 'text',
+                    text: JSON.stringify(payload, null, 2),
+                },
+                ...embedded
+                    .filter(image => image?.data && image?.mimeType)
+                    .map(image => ({ type: 'image', data: image.data, mimeType: image.mimeType })),
+            ];
+            return { content };
         }
         catch (error) {
             return {

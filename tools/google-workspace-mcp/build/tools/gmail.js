@@ -1,5 +1,6 @@
 import { google } from 'googleapis';
 import { promises as fs } from 'fs';
+import os from 'os';
 import path from 'path';
 const MIME_BY_EXTENSION = {
     '.txt': 'text/plain',
@@ -15,6 +16,23 @@ const MIME_BY_EXTENSION = {
     '.webp': 'image/webp',
     '.zip': 'application/zip',
 };
+const IMAGE_EXT_BY_MIME = {
+    'image/png': '.png',
+    'image/jpeg': '.jpg',
+    'image/jpg': '.jpg',
+    'image/gif': '.gif',
+    'image/webp': '.webp',
+    'image/svg+xml': '.svg',
+    'image/bmp': '.bmp',
+    'image/tiff': '.tif',
+    'image/x-icon': '.ico',
+    'image/vnd.microsoft.icon': '.ico',
+    'image/avif': '.avif',
+    'image/heic': '.heic',
+    'image/heif': '.heif',
+};
+const safeFilename = (name) => path.basename((name || '').replace(/[/\\]/g, '_')).trim();
+const getPartHeader = (part, name) => part.headers?.find(h => h.name?.toLowerCase() === name.toLowerCase())?.value || '';
 const encodeBase64Url = (input) => Buffer.from(input)
     .toString('base64')
     .replace(/\+/g, '-')
@@ -212,6 +230,7 @@ export function registerGmailTools(auth) {
             };
             let body = '';
             let htmlBody = '';
+            const attachments = [];
             const walkParts = (part) => {
                 if (!part)
                     return;
@@ -222,6 +241,18 @@ export function registerGmailTools(auth) {
                     else if (part.mimeType === 'text/html' && !htmlBody) {
                         htmlBody = decodePart(part);
                     }
+                }
+                // Anything with a filename, a separately-fetchable body, or an image
+                // payload is worth listing (inline cid: images often carry none of the
+                // first two but still hold inline base64 data).
+                if (part.filename || part.body?.attachmentId || part.mimeType?.startsWith('image/')) {
+                    attachments.push({
+                        filename: part.filename || null,
+                        mimeType: part.mimeType || null,
+                        size: part.body?.size ?? null,
+                        attachmentId: part.body?.attachmentId || null,
+                        inline: !/attachment/i.test(getPartHeader(part, 'content-disposition')),
+                    });
                 }
                 for (const child of part.parts || []) walkParts(child);
             };
@@ -253,7 +284,103 @@ export function registerGmailTools(auth) {
                 subject: getHeader('subject'),
                 date: getHeader('date'),
                 body: body || message.data.snippet,
+                attachments,
                 labels: message.data.labelIds,
+            };
+        },
+        // Extract image parts (inline cid: images and attached images) to disk as files.
+        // When embed is set, the central call_tool handler turns the private
+        // `_embed_images` key into MCP image content blocks so multimodal clients
+        // (e.g. opencode) attach them to the model context like chat uploads.
+        extract_email_images: async (args) => {
+            const { messageId, directory, embed = true } = args;
+            const message = await gmail.users.messages.get({
+                userId: 'me',
+                id: messageId,
+                format: 'full',
+            });
+            const imageParts = [];
+            const walkParts = (part) => {
+                if (!part)
+                    return;
+                if (part.mimeType?.startsWith('image/'))
+                    imageParts.push(part);
+                for (const child of part.parts || []) walkParts(child);
+            };
+            walkParts(message.data.payload);
+            if (!imageParts.length) {
+                return {
+                    id: message.data.id,
+                    count: 0,
+                    directory: null,
+                    images: [],
+                };
+            }
+            const targetDir = path.resolve(directory || path.join(os.tmpdir(), 'email-images', message.data.id));
+            const usedNames = new Set();
+            const uniqueName = (name) => {
+                if (!usedNames.has(name)) {
+                    usedNames.add(name);
+                    return name;
+                }
+                const ext = path.extname(name);
+                const stem = name.slice(0, name.length - ext.length);
+                let n = 1;
+                while (usedNames.has(`${stem}-${n}${ext}`))
+                    n += 1;
+                const candidate = `${stem}-${n}${ext}`;
+                usedNames.add(candidate);
+                return candidate;
+            };
+            const images = [];
+            const embedded = [];
+            // Keep embedded base64 under provider per-image limits (Anthropic rejects
+            // base64 image parts over 5MB); svg is text-based and rejected as image
+            // content anyway. Larger files stay disk-only.
+            const EMBED_MAX_BYTES = 3.5 * 1024 * 1024;
+            const EMBED_EXCLUDED_MIMES = new Set(['image/svg+xml']);
+            for (const [index, part] of imageParts.entries()) {
+                let data = part.body?.data;
+                if (part.body?.attachmentId) {
+                    // Large parts only carry an attachmentId; the bytes live behind a
+                    // separate attachments.get call.
+                    const attachment = await gmail.users.messages.attachments.get({
+                        userId: 'me',
+                        messageId: message.data.id,
+                        id: part.body.attachmentId,
+                    });
+                    data = attachment.data.data;
+                }
+                if (!data)
+                    continue;
+                const buffer = Buffer.from(data, 'base64');
+                const contentId = getPartHeader(part, 'content-id').replace(/^<|>$/g, '').trim();
+                const filename = uniqueName(safeFilename(part.filename)
+                    || (contentId ? `${safeFilename(contentId)}${IMAGE_EXT_BY_MIME[part.mimeType] || '.bin'}` : '')
+                    || `image-${index + 1}${IMAGE_EXT_BY_MIME[part.mimeType] || '.bin'}`);
+                const filePath = path.join(targetDir, filename);
+                await fs.mkdir(targetDir, { recursive: true });
+                await fs.writeFile(filePath, buffer);
+                const embeddable = embed && !EMBED_EXCLUDED_MIMES.has(part.mimeType) && buffer.length <= EMBED_MAX_BYTES;
+                if (embeddable)
+                    embedded.push({ mimeType: part.mimeType, data: buffer.toString('base64') });
+                images.push({
+                    filename,
+                    path: filePath,
+                    mimeType: part.mimeType,
+                    size: buffer.length,
+                    contentId: contentId || null,
+                    inline: !/attachment/i.test(getPartHeader(part, 'content-disposition')),
+                    embedded: embeddable,
+                });
+            }
+            return {
+                id: message.data.id,
+                threadId: message.data.threadId,
+                count: images.length,
+                directory: images.length ? targetDir : null,
+                images,
+                ...(embedded.length ? { _embed_images: embedded } : {}),
             };
         },
         // Send email
