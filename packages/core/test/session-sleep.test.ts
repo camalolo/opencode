@@ -105,6 +105,25 @@ describe("SessionSleep", () => {
   )
 
   itDb(
+    "loop_forever persists on arm and stopLoop breaks the chain on a terminal row",
+    (db) =>
+      Effect.gen(function* () {
+        yield* insertSession(db, "ses_loop")
+        const plain = yield* SessionSleep.arm(db, armInput("ses_loop"))
+        expect(plain.loopForever).toBe(false)
+        const looping = yield* SessionSleep.arm(db, armInput("ses_loop", { loopForever: true }))
+        expect(looping.loopForever).toBe(true)
+
+        // stopLoop only acts on a terminal fired/timed_out loop row.
+        expect(yield* SessionSleep.stopLoop(db, SessionSchema.ID.make("ses_loop"))).toBe(false)
+        yield* SessionSleep.finish(db, looping.id, "fired", SessionSleep.wakeMessageID(looping))
+        expect(yield* SessionSleep.stopLoop(db, SessionSchema.ID.make("ses_loop"))).toBe(true)
+        expect((yield* SessionSleep.byID(db, looping.id))?.loopForever).toBe(false)
+        expect(yield* SessionSleep.stopLoop(db, SessionSchema.ID.make("ses_loop"))).toBe(false)
+      }),
+  )
+
+  itDb(
     "claimCheck arbitrates and advances the schedule by the interval",
     (db) =>
       Effect.gen(function* () {

@@ -1,9 +1,9 @@
 {
   "version": "7",
   "dialect": "sqlite",
-  "id": "30f133f4-b8d2-4659-ae0e-2297eab81f18",
+  "id": "e0bbf249-f702-4afd-a6b8-945e00dab39d",
   "prevIds": [
-    "2505cdea-8123-4cec-9efd-5848e3e768c7"
+    "30f133f4-b8d2-4659-ae0e-2297eab81f18"
   ],
   "ddl": [
     {
@@ -1255,6 +1255,16 @@
       "default": null,
       "generated": null,
       "name": "shell",
+      "entityType": "columns",
+      "table": "session_sleep"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": "false",
+      "generated": null,
+      "name": "loop_forever",
       "entityType": "columns",
       "table": "session_sleep"
     },

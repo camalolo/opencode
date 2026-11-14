@@ -59,6 +59,8 @@ export interface Trigger {
   readonly deadline: number
   readonly cwd: string
   readonly shell?: string
+  /** loop_forever arms: re-armed with the same check when a turn ends without a new sleep_until. */
+  readonly loopForever: boolean
   readonly nextCheckAt: number
   /** Broken checks since arming — not consecutive, despite the legacy column name. At MAX_BROKEN_CHECKS the trigger disarms. */
   readonly consecutiveFailures: number
@@ -87,6 +89,7 @@ const fromRow = (row: Row): Trigger => ({
   deadline: row.deadline,
   cwd: row.cwd,
   ...(row.shell === null ? {} : { shell: row.shell }),
+  loopForever: row.loop_forever,
   nextCheckAt: row.next_check_at,
   consecutiveFailures: row.consecutive_failures,
   ...(row.last_output === null ? {} : { lastOutput: row.last_output }),
@@ -119,6 +122,8 @@ export const arm = Effect.fn("SessionSleep.arm")(function* (
     readonly deadline: number
     readonly cwd: string
     readonly shell?: string
+    /** loop_forever arms: re-armed with the same check when a turn ends without a new sleep_until. */
+    readonly loopForever?: boolean
     readonly nextCheckAt: number
   },
 ) {
@@ -147,6 +152,7 @@ export const arm = Effect.fn("SessionSleep.arm")(function* (
       deadline: input.deadline,
       cwd: input.cwd,
       ...(input.shell === undefined ? {} : { shell: input.shell }),
+      loop_forever: input.loopForever === true,
       next_check_at: input.nextCheckAt,
       status: "pending",
       time_created: now,
@@ -278,6 +284,30 @@ export const cancel = Effect.fn("SessionSleep.cancel")(function* (db: DatabaseSe
     .get()
     .pipe(Effect.orDie)
   return claimed !== undefined
+})
+
+/**
+ * Breaks a loop_forever chain: clears the flag on the session's most recent
+ * fired/timed_out trigger so the end-of-turn auto re-arm stops. sleep_cancel
+ * uses this when no pending trigger exists — during a wake turn the agent's
+ * explicit "stop watching" must not be undone by the next settleIdle.
+ * Arming any new trigger without loop_forever breaks the chain the same way.
+ */
+export const stopLoop = Effect.fn("SessionSleep.stopLoop")(function* (
+  db: DatabaseService,
+  sessionID: SessionSchema.ID,
+) {
+  const latest = yield* get(db, sessionID)
+  if (!latest?.loopForever) return false
+  if (latest.status !== "fired" && latest.status !== "timed_out") return false
+  const now = Date.now()
+  yield* db
+    .update(SessionSleepTable)
+    .set({ loop_forever: false, time_updated: now })
+    .where(eq(SessionSleepTable.id, latest.id))
+    .run()
+    .pipe(Effect.orDie)
+  return true
 })
 
 /** Pending triggers whose check is due at or before `now`. */

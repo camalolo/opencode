@@ -216,6 +216,9 @@ export const SessionSleepTable = sqliteTable(
     // the same context even when no instance is open.
     cwd: text().notNull(),
     shell: text(),
+    // loop_forever arms: when a turn ends without a new sleep_until, the last
+    // delivered fired/timed_out trigger is re-armed with the same check.
+    loop_forever: integer({ mode: "boolean" }).notNull().default(false),
     next_check_at: integer().notNull(),
     // Broken checks since arming — not consecutive (legacy name). At
     // MAX_BROKEN_CHECKS the trigger disarms itself and reports.

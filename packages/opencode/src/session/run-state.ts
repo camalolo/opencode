@@ -1,5 +1,6 @@
 import { LayerNode } from "@opencode-ai/core/effect/layer-node"
 import { InstanceState } from "@/effect/instance-state"
+import { Config } from "@/config/config"
 import { SessionV1 } from "@opencode-ai/core/v1/session"
 import { Runner } from "@/effect/runner"
 import { BackgroundJob } from "@/background/job"
@@ -33,6 +34,7 @@ const layer = Layer.effect(
     const background = yield* BackgroundJob.Service
     const status = yield* SessionStatus.Service
     const scheduler = yield* SessionSleepScheduler.Service
+    const config = yield* Config.Service
 
     const state = yield* InstanceState.make(
       Effect.fn("SessionRunState.state")(function* () {
@@ -58,12 +60,18 @@ const layer = Layer.effect(
       const data = yield* InstanceState.get(state)
       const existing = data.runners.get(sessionID)
       if (existing) return existing
+      // Snapshot the loop_forever guard limit here, inside instance context:
+      // the onIdle effect below must not depend on Config (it can run outside
+      // any instance scope). One snapshot per prompt wave is fresh enough for
+      // a cost-guard knob.
+      const limits = yield* SessionSleepScheduler.sleepLimits(config)
       const next = Runner.make<SessionV1.WithParts>(data.scope, {
         onIdle: Effect.gen(function* () {
           data.runners.delete(sessionID)
           // Going idle must not erase an armed sleep_until trigger: re-seed the
-          // sleeping status from the durable row instead.
-          yield* SessionSleepScheduler.settleIdle(scheduler, status, sessionID)
+          // sleeping status from the durable row instead. A handled loop_forever
+          // wake re-arms the same watcher here.
+          yield* SessionSleepScheduler.settleIdle(scheduler, status, sessionID, limits)
         }),
         onBusy: status.set(sessionID, { type: "busy" }),
         onInterrupt,
@@ -83,7 +91,8 @@ const layer = Layer.effect(
       const data = yield* InstanceState.get(state)
       const existing = data.runners.get(sessionID)
       if (!existing) {
-        yield* SessionSleepScheduler.settleIdle(scheduler, status, sessionID)
+        const limits = yield* SessionSleepScheduler.sleepLimits(config)
+        yield* SessionSleepScheduler.settleIdle(scheduler, status, sessionID, limits)
         return
       }
       yield* existing.cancel
@@ -153,7 +162,7 @@ function busyError(sessionID: SessionID) {
 export const node = LayerNode.make({
   service: Service,
   layer: layer,
-  deps: [BackgroundJob.node, SessionSleepScheduler.node, SessionStatus.node],
+  deps: [BackgroundJob.node, SessionSleepScheduler.node, SessionStatus.node, Config.node],
 })
 
 export * as SessionRunState from "./run-state"

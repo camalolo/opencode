@@ -54,5 +54,6 @@ export const migrations = (
     import("./migration/20261110123000_session_unattended"),
     import("./migration/20261114023209_sleep_variant"),
     import("./migration/20261114053936_bizarre_toad_men"),
+    import("./migration/20261114112602_sleep_loop_forever"),
   ])
 ).map((module) => module.default) satisfies DatabaseMigration.Migration[]

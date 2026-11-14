@@ -26,6 +26,10 @@ export const SleepUntilParameters = Schema.Struct({
   timeout_minutes: PositiveInt.pipe(Schema.optional).annotate({
     description: "Minutes before the trigger gives up and wakes the session with a timeout notice. Default 360 (6h).",
   }),
+  loop_forever: Schema.Boolean.pipe(Schema.optional).annotate({
+    description:
+      "Keep the loop alive: when a turn ends without a new sleep_until armed, this exact watcher re-arms automatically (after a fired or timed-out wake; a failed trigger is never re-armed). The wake announces the auto re-arm each cycle — stop the loop with sleep_cancel, or by arming a new sleep_until without loop_forever.",
+  }),
 })
 
 export const SleepCancelParameters = Schema.Struct({})
@@ -35,6 +39,7 @@ type Metadata = {
   trigger_status: string
   interval_ms?: number
   deadline?: number
+  loop_forever?: boolean
   cancelled?: boolean
 }
 
@@ -354,6 +359,7 @@ export const SleepUntilTool = Tool.define<
           timeoutMs: timeoutMinutes * 60 * 1000,
           checkTimeoutMs: limits.checkTimeoutMs,
           cwd,
+          loopForever: params.loop_forever === true,
         })
         yield* status.set(ctx.sessionID, {
           type: "sleeping",
@@ -379,6 +385,9 @@ export const SleepUntilTool = Tool.define<
             `Checks run every ${intervalSeconds}s in the background; timeout at ${deadline}.`,
             `A broken check (bad exit code, command not found, timeout, or silent exit 1) counts toward a ${MAX_BROKEN_CHECKS}-strike breaker: reaching it disarms the trigger and wakes you.`,
             tail2k(observed.output) !== undefined ? `Live state now (unmet):\n${tail2k(observed.output)}` : undefined,
+            params.loop_forever === true
+              ? "loop_forever is on: when a turn ends without a new sleep_until armed, this exact watcher re-arms automatically (after fired or timed-out wakes; a failed trigger is never re-armed). Stop the loop with sleep_cancel, or by arming a new sleep_until without loop_forever."
+              : undefined,
             "IMPORTANT: do not busy-wait with bash sleep while this trigger is armed — end your turn, or do unrelated work.",
             "The wake arrives automatically (even mid-turn) with the final state document. Call sleep_status to peek at the latest state without waiting.",
             "Re-arming replaces this trigger; sleep_cancel disarms it.",
@@ -390,6 +399,7 @@ export const SleepUntilTool = Tool.define<
             trigger_status: trigger.status,
             interval_ms: trigger.intervalMs,
             deadline: trigger.deadline,
+            ...(params.loop_forever === true ? { loop_forever: true } : {}),
           },
         }
       })
@@ -405,6 +415,7 @@ export const SleepUntilTool = Tool.define<
         "The trigger survives server restarts. Arming again replaces the previous trigger; cancel with sleep_cancel.",
         `Broken checks accumulate while armed: ${MAX_BROKEN_CHECKS} of them disarm the trigger and wake you with the failure, so a misbehaving check can never spin silently until the timeout.`,
         "Re-arming the same wait (identical check) that already timed out or broke repeatedly is refused after a few attempts (sleep.max_consecutive_timeouts, default 3): change the approach, or report to the user instead. Waiting for something different always remains available.",
+        "loop_forever keeps a looping session alive: whenever a turn ends without a new sleep_until armed, this exact watcher re-arms itself (after fired or timed-out wakes; a failed trigger is never re-armed, and the same cost guard applies). Each wake announces the auto re-arm — stop the loop with sleep_cancel, or by re-arming without loop_forever.",
         "Use for external events: a forum reply appears, a payment lands, a long job finishes, a file changes.",
         "Do not use it as a short timer — to wait a few seconds inside a command, use sleep in bash instead.",
       ].join(" "),
@@ -456,6 +467,9 @@ export const SleepStatusTool = Tool.define<
             `Waiting for: ${trigger.description}`,
             `Check: ${SleepCheck.describeTrigger(trigger)}`,
             `Checks every ${Math.round(trigger.intervalMs / 1000)}s; next check ${new Date(trigger.nextCheckAt).toISOString()}; timeout ${new Date(trigger.deadline).toISOString()} (${elapsedPct}% of budget elapsed)`,
+            trigger.loopForever
+              ? "loop_forever is on: when a turn ends without a new sleep_until armed, this watcher re-arms itself automatically — sleep_cancel stops the loop."
+              : undefined,
             elapsedPct >= 75 && trigger.status === "pending"
               ? "Over 75% of the timeout budget has elapsed without firing — sanity-check that this wait still makes sense; sleep_cancel and re-evaluate if not."
               : undefined,
@@ -499,12 +513,22 @@ export const SleepCancelTool = Tool.define<
 
     return {
       description:
-        "Cancel this session's armed sleep_until trigger. Use when the wait is no longer needed. Arming a new trigger with sleep_until also replaces the old one.",
+        "Cancel this session's armed sleep_until trigger. Use when the wait is no longer needed. Arming a new trigger with sleep_until also replaces the old one. When the armed watcher already fired, this stops its loop_forever chain so it will not re-arm.",
       parameters: SleepCancelParameters,
       execute: (_params: Schema.Schema.Type<typeof SleepCancelParameters>, ctx: Tool.Context<Metadata>) =>
         Effect.gen(function* () {
           const cancelled = yield* scheduler.cancel(ctx.sessionID)
           if (!cancelled) {
+            // Nothing pending: during a wake turn the agent's explicit "stop
+            // watching" must also break the loop_forever chain, or the
+            // end-of-turn auto re-arm would undo the cancel.
+            if (yield* scheduler.stopLoop(ctx.sessionID))
+              return {
+                title: "loop_forever stopped",
+                output:
+                  "The armed watcher already fired, so there was nothing to cancel — but its loop_forever chain is broken now: it will not re-arm itself when this turn ends.",
+                metadata: { trigger_status: "fired", loop_forever: false },
+              }
             const latest = yield* scheduler.get(ctx.sessionID)
             return {
               title: "nothing to cancel",

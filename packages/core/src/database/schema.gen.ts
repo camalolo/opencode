@@ -202,6 +202,7 @@ export default {
           \`deadline\` integer NOT NULL,
           \`cwd\` text NOT NULL,
           \`shell\` text,
+          \`loop_forever\` integer DEFAULT false NOT NULL,
           \`next_check_at\` integer NOT NULL,
           \`consecutive_failures\` integer DEFAULT 0 NOT NULL,
           \`last_output\` text,

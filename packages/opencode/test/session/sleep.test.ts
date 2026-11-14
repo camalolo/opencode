@@ -341,6 +341,182 @@ schedulerIt.effect(
 )
 
 // ---------------------------------------------------------------------------
+// loop_forever settleIdle
+// ---------------------------------------------------------------------------
+
+const settleStatus = () => {
+  const recorded: Array<{ sessionID: SessionID; status: SessionStatus.Info }> = []
+  return {
+    recorded,
+    set: (sessionID: SessionID, status: SessionStatus.Info) =>
+      Effect.sync(() => {
+        recorded.push({ sessionID, status })
+      }),
+  }
+}
+
+// Arms a trigger and drives it to a terminal status, optionally marking its
+// wake delivered — the state a session is in when settleIdle runs after a
+// wake turn ends.
+const finishLoopTrigger = (
+  db: Database.Interface["db"],
+  sessionID: string,
+  overrides: Partial<Parameters<SessionSleepScheduler.Interface["arm"]>[0]> = {},
+  status: Exclude<SessionSleep.Status, "pending" | "cancelled"> = "fired",
+  delivered = true,
+) =>
+  Effect.gen(function* () {
+    const scheduler = yield* SessionSleepScheduler.Service
+    const trigger = yield* scheduler.arm({
+      sessionID: SessionID.make(sessionID),
+      condition: "exit 1",
+      description: "forum reply loop",
+      intervalMs: 60_000,
+      timeoutMs: 3_600_000,
+      checkTimeoutMs: 30_000,
+      cwd: process.cwd(),
+      loopForever: true,
+      ...overrides,
+    })
+    yield* SessionSleep.finish(db, trigger.id, status, SessionSleep.wakeMessageID(trigger))
+    if (delivered) yield* SessionSleep.confirmDelivery(db, trigger.id)
+    return trigger
+  })
+
+const loopCheck = { condition: undefined, observe: observeState, predicate: predicateDone, metExample: metExample }
+
+schedulerIt.effect(
+  "settleIdle re-arms a delivered loop_forever trigger and reseeds sleeping",
+  () =>
+    Effect.gen(function* () {
+      const sessionID = SessionID.make("ses_loop_rearm")
+      const db = (yield* Database.Service).db
+      yield* insertSession(db, "ses_loop_rearm")
+      const scheduler = yield* SessionSleepScheduler.Service
+      const status = settleStatus()
+      const original = yield* finishLoopTrigger(db, "ses_loop_rearm", {
+        ...loopCheck,
+        intervalMs: 120_000,
+      })
+
+      yield* SessionSleepScheduler.settleIdle(scheduler, status, sessionID, { maxConsecutiveFailures: 3 })
+
+      const rearmed = yield* scheduler.get(sessionID)
+      expect(rearmed?.id).not.toBe(original.id)
+      expect(rearmed?.status).toBe("pending")
+      expect(rearmed?.loopForever).toBe(true)
+      expect(rearmed?.description).toBe("forum reply loop")
+      expect(rearmed?.observe).toBe(observeState)
+      expect(rearmed?.predicate).toBe(predicateDone)
+      expect(rearmed?.metExample).toBe(metExample)
+      expect(rearmed?.intervalMs).toBe(120_000)
+      // The first re-check waits one full interval, so a still-met condition
+      // cannot refire seconds after the turn ended.
+      expect(rearmed!.nextCheckAt).toBeGreaterThan(Date.now())
+      expect(status.recorded.at(-1)?.status.type).toBe("sleeping")
+    }),
+  30_000,
+)
+
+schedulerIt.effect(
+  "settleIdle only re-arms loop_forever wakes that fired or timed out and were delivered",
+  () =>
+    Effect.gen(function* () {
+      const db = (yield* Database.Service).db
+      const scheduler = yield* SessionSleepScheduler.Service
+      const status = settleStatus()
+
+      // Without loop_forever a handled wake stays finished.
+      yield* insertSession(db, "ses_loop_plain")
+      yield* finishLoopTrigger(db, "ses_loop_plain", { loopForever: false })
+      yield* SessionSleepScheduler.settleIdle(scheduler, status, SessionID.make("ses_loop_plain"), {
+        maxConsecutiveFailures: 3,
+      })
+      expect((yield* scheduler.get(SessionID.make("ses_loop_plain")))?.status).toBe("fired")
+
+      // An undelivered wake was never handled: no turn ended, no re-arm.
+      yield* insertSession(db, "ses_loop_undelivered")
+      yield* finishLoopTrigger(db, "ses_loop_undelivered", {}, "fired", false)
+      yield* SessionSleepScheduler.settleIdle(scheduler, status, SessionID.make("ses_loop_undelivered"), {
+        maxConsecutiveFailures: 3,
+      })
+      expect((yield* scheduler.get(SessionID.make("ses_loop_undelivered")))?.status).toBe("fired")
+
+      // A failed (broken-check) trigger needs its check fixed first.
+      yield* insertSession(db, "ses_loop_failed")
+      yield* finishLoopTrigger(db, "ses_loop_failed", {}, "failed")
+      yield* SessionSleepScheduler.settleIdle(scheduler, status, SessionID.make("ses_loop_failed"), {
+        maxConsecutiveFailures: 3,
+      })
+      expect((yield* scheduler.get(SessionID.make("ses_loop_failed")))?.status).toBe("failed")
+
+      // A cancelled row ends the loop: it was explicitly stopped.
+      yield* insertSession(db, "ses_loop_cancelled")
+      yield* arm("ses_loop_cancelled", { loopForever: true })
+      yield* scheduler.cancel(SessionID.make("ses_loop_cancelled"))
+      yield* SessionSleepScheduler.settleIdle(scheduler, status, SessionID.make("ses_loop_cancelled"), {
+        maxConsecutiveFailures: 3,
+      })
+      expect(status.recorded.at(-1)?.status.type).toBe("idle")
+
+      for (const session of ["ses_loop_plain", "ses_loop_undelivered", "ses_loop_failed", "ses_loop_cancelled"]) {
+        expect(status.recorded.filter((entry) => entry.sessionID === SessionID.make(session)).at(-1)?.status.type).toBe(
+          "idle",
+        )
+      }
+    }),
+  30_000,
+)
+
+schedulerIt.effect(
+  "stopLoop breaks the chain so settleIdle goes idle",
+  () =>
+    Effect.gen(function* () {
+      const sessionID = SessionID.make("ses_loop_stop")
+      const db = (yield* Database.Service).db
+      yield* insertSession(db, "ses_loop_stop")
+      const scheduler = yield* SessionSleepScheduler.Service
+      const status = settleStatus()
+      yield* finishLoopTrigger(db, "ses_loop_stop")
+
+      expect(yield* scheduler.stopLoop(sessionID)).toBe(true)
+      expect((yield* scheduler.get(sessionID))?.loopForever).toBe(false)
+      expect(yield* scheduler.stopLoop(sessionID)).toBe(false)
+
+      yield* SessionSleepScheduler.settleIdle(scheduler, status, sessionID, { maxConsecutiveFailures: 3 })
+      expect((yield* scheduler.get(sessionID))?.status).toBe("fired")
+      expect(status.recorded.at(-1)?.status.type).toBe("idle")
+    }),
+  30_000,
+)
+
+schedulerIt.effect(
+  "the cost guard stops re-arming a wait that keeps timing out, a different wait still re-arms",
+  () =>
+    Effect.gen(function* () {
+      const sessionID = SessionID.make("ses_loop_budget")
+      const db = (yield* Database.Service).db
+      yield* insertSession(db, "ses_loop_budget")
+      const scheduler = yield* SessionSleepScheduler.Service
+      const status = settleStatus()
+      for (let i = 0; i < 3; i++) yield* finishLoopTrigger(db, "ses_loop_budget", loopCheck, "timed_out")
+
+      yield* SessionSleepScheduler.settleIdle(scheduler, status, sessionID, { maxConsecutiveFailures: 3 })
+      expect((yield* scheduler.get(sessionID))?.status).toBe("timed_out")
+      expect(status.recorded.at(-1)?.status.type).toBe("idle")
+
+      // A different wait is iteration, not a loop: it re-arms freely.
+      yield* finishLoopTrigger(db, "ses_loop_budget", { ...loopCheck, observe: "echo other-state" }, "timed_out")
+      yield* SessionSleepScheduler.settleIdle(scheduler, status, sessionID, { maxConsecutiveFailures: 3 })
+      const rearmed = yield* scheduler.get(sessionID)
+      expect(rearmed?.status).toBe("pending")
+      expect(rearmed?.loopForever).toBe(true)
+      expect(status.recorded.at(-1)?.status.type).toBe("sleeping")
+    }),
+  30_000,
+)
+
+// ---------------------------------------------------------------------------
 // Loop liveness
 // ---------------------------------------------------------------------------
 
@@ -607,6 +783,21 @@ test("wake text speaks state-check vocabulary for state triggers", () => {
   expect(failed).toContain("fix the observe or predicate")
 })
 
+test("wake text announces the loop_forever auto re-arm and how to stop it", () => {
+  const fired = wakeText(row("fired", "hello", { loopForever: true }), "hello")
+  expect(fired).toContain("loop_forever is on")
+  expect(fired).toContain("sleep_cancel")
+
+  const timedOut = wakeText(row("timed_out", "", { loopForever: true }), "")
+  expect(timedOut).toContain("loop_forever is on")
+
+  const failed = wakeText(row("failed", "boom", { loopForever: true }), "boom")
+  expect(failed).toContain("never re-arms a failed")
+
+  // Plain wakes stay unchanged.
+  expect(wakeText(row("fired", "hello"), "hello")).not.toContain("loop_forever")
+})
+
 // ---------------------------------------------------------------------------
 // Arm-time condition validation
 // ---------------------------------------------------------------------------
@@ -769,6 +960,58 @@ toolIt.instance(
       // Cancelling again reports nothing to cancel.
       const noop = yield* cancelDef.execute({}, ctx)
       expect(noop.output).toContain("No armed sleep trigger")
+    }),
+  30_000,
+)
+
+toolIt.instance(
+  "sleep_until loop_forever arms a self-rearming watcher that sleep_cancel stops",
+  () =>
+    Effect.gen(function* () {
+      yield* TestInstance
+      const sessionID = SessionID.make("ses_tool_loop")
+      const db = (yield* Database.Service).db
+      yield* insertSession(db, "ses_tool_loop")
+      const scheduler = yield* SessionSleepScheduler.Service
+      const ctx: Tool.Context = {
+        sessionID,
+        messageID: MessageID.make("msg_tool_loop"),
+        callID: "",
+        agent: "build",
+        abort: AbortSignal.any([]),
+        messages: [],
+        metadata: () => Effect.void,
+        ask: () => Effect.void,
+      }
+      const until = yield* SleepUntilTool
+      const untilDef = yield* until.init()
+
+      const armed = yield* untilDef.execute({ ...stateCheck, description: "loop watch", loop_forever: true }, ctx)
+      expect(armed.output).toContain("loop_forever is on")
+      expect(armed.metadata).toMatchObject({ loop_forever: true })
+      const trigger = yield* scheduler.get(sessionID)
+      expect(trigger?.loopForever).toBe(true)
+
+      const statusTool = yield* SleepStatusTool
+      const statusDef = yield* statusTool.init()
+      const peek = yield* statusDef.execute({}, ctx)
+      expect(peek.output).toContain("loop_forever is on")
+
+      // The wake fires and is delivered: no pending trigger remains, so the
+      // cancel must break the loop_forever chain instead of reporting nothing
+      // to cancel.
+      yield* SessionSleep.finish(db, trigger!.id, "fired", SessionSleep.wakeMessageID(trigger!))
+      yield* SessionSleep.confirmDelivery(db, trigger!.id)
+      const cancel = yield* SleepCancelTool
+      const cancelDef = yield* cancel.init()
+      const stopped = yield* cancelDef.execute({}, ctx)
+      expect(stopped.output).toContain("loop_forever")
+      expect((yield* scheduler.get(sessionID))?.loopForever).toBe(false)
+
+      // The broken chain settles idle instead of re-arming.
+      const status = settleStatus()
+      yield* SessionSleepScheduler.settleIdle(scheduler, status, sessionID, { maxConsecutiveFailures: 3 })
+      expect(status.recorded.at(-1)?.status.type).toBe("idle")
     }),
   30_000,
 )

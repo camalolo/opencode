@@ -26,6 +26,13 @@ export const wakeText = (row: SessionSleep.Trigger, output: string) => {
   // their original wake shape.
   const check = state || row.variant !== undefined ? `Check: ${SleepCheck.describeTrigger(row)}` : undefined
   const detail = output.trim().length > 0 ? `\n\nLast check output:\n${tail(output)}` : ""
+  // loop_forever wakes must tell the agent the loop continues on its own, and
+  // how to stop it — ending the turn without a new sleep_until is not enough.
+  const loop = row.loopForever
+    ? row.status === "failed"
+      ? "loop_forever never re-arms a failed (broken-check) trigger — fix the check and re-arm manually if you want to keep watching."
+      : "loop_forever is on: if this turn ends without a new sleep_until armed, this exact watcher re-arms itself automatically. Call sleep_cancel to stop the loop, or re-arm without loop_forever."
+    : undefined
   if (row.status === "fired")
     return [
       `⏰ Sleep trigger fired: ${row.description}`,
@@ -36,6 +43,7 @@ export const wakeText = (row: SessionSleep.Trigger, output: string) => {
         : "The condition check you armed with the sleep_until tool exited 0.") + detail,
       "",
       "The trigger is disarmed. Continue working on this now.",
+      loop,
     ]
       .filter(Boolean)
       .join("\n")
@@ -49,6 +57,7 @@ export const wakeText = (row: SessionSleep.Trigger, output: string) => {
         : "The condition never became true within the timeout.") + detail,
       "",
       "The trigger is disarmed. Re-arm it, adjust the condition, or move on.",
+      loop,
     ]
       .filter(Boolean)
       .join("\n")
@@ -62,6 +71,7 @@ export const wakeText = (row: SessionSleep.Trigger, output: string) => {
     state
       ? "Inspect the last check output, fix the observe or predicate, and re-arm with sleep_until if needed."
       : "Inspect the condition, fix it, and re-arm with sleep_until if needed.",
+    loop,
   ]
     .filter(Boolean)
     .join("\n")

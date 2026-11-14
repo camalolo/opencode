@@ -10,6 +10,7 @@ import { SessionStore } from "@opencode-ai/core/session/store"
 import { MAX_BROKEN_CHECKS, SessionSleep } from "@opencode-ai/core/session/sleep"
 import { Idle } from "@opencode-ai/core/idle"
 import { SupervisedLoop } from "@/effect/supervised"
+import type { Config } from "@/config/config"
 import { SessionStatus } from "./status"
 
 /** How often the scheduler scans for due checks. */
@@ -118,6 +119,8 @@ export interface ArmInput {
   readonly metExample?: string
   /** The agent-authored check, JSON-encoded, for human rendering in status and wakes. */
   readonly variant?: string
+  /** loop_forever arms: re-armed with the same check when a turn ends without a new sleep_until. */
+  readonly loopForever?: boolean
 }
 
 export interface Interface {
@@ -127,6 +130,17 @@ export interface Interface {
   readonly cancel: (sessionID: SessionSchema.ID) => Effect.Effect<boolean>
   /** Latest trigger for a session, regardless of status. */
   readonly get: (sessionID: SessionSchema.ID) => Effect.Effect<SessionSleep.Trigger | undefined>
+  /**
+   * loop_forever auto re-arm: when the session's latest delivered wake was a
+   * fired/timed_out loop_forever trigger, re-arm the same check. Undefined when
+   * no loop applies, a revert is staged, or the cost guard blocked it.
+   */
+  readonly rearmLoop: (input: {
+    readonly sessionID: SessionSchema.ID
+    readonly maxConsecutiveFailures: number
+  }) => Effect.Effect<SessionSleep.Trigger | undefined>
+  /** Breaks the session's loop_forever chain so end-of-turn auto re-arm stops. False when there was nothing to stop. */
+  readonly stopLoop: (sessionID: SessionSchema.ID) => Effect.Effect<boolean>
   /** Runs one condition check without arming anything. Used for the arm-time proof gate. */
   readonly probe: (input: {
     readonly condition: string
@@ -392,10 +406,71 @@ const layer = Layer.effect(
           deadline: Date.now() + input.timeoutMs,
           cwd: input.cwd,
           ...(input.shell === undefined ? {} : { shell: input.shell }),
+          ...(input.loopForever === undefined ? {} : { loopForever: input.loopForever }),
           nextCheckAt: Date.now(),
         }),
       cancel: (sessionID) => SessionSleep.cancel(db, sessionID),
       get: (sessionID) => SessionSleep.get(db, sessionID),
+      rearmLoop: (input) =>
+        Effect.gen(function* () {
+          const latest = yield* SessionSleep.get(db, input.sessionID)
+          if (!latest) return undefined
+          // Only a delivered fired/timed_out wake qualifies: the agent has seen
+          // it, and finished its turn without arming a new sleep_until. Failed
+          // (broken-check) triggers need the check fixed first — never re-armed.
+          if (latest.status !== "fired" && latest.status !== "timed_out") return undefined
+          if (!latest.loopForever) return undefined
+          if (latest.deliveredAt === undefined) return undefined
+          // A staged revert discarded the branch this watcher works on; the
+          // user's next prompt clears the revert and can restart the watch.
+          if (yield* SessionSleep.reverted(db, input.sessionID)) return undefined
+          // Same cost guard as the tool's arm gate: a wait that keeps timing
+          // out must not loop billed wake turns forever, with or without an
+          // agent in the loop. The compiled check identifies the wait.
+          const recent = yield* SessionSleep.history(db, input.sessionID)
+          let repeatedFailures = 0
+          for (const row of recent) {
+            if (row.status !== "timed_out" && row.status !== "failed") break
+            if (row.observe === latest.observe && row.predicate === latest.predicate) repeatedFailures += 1
+          }
+          if (repeatedFailures >= input.maxConsecutiveFailures) {
+            yield* Effect.logWarning("loop_forever re-arm refused: the same wait keeps timing out or failing", {
+              "session.id": input.sessionID,
+              trigger: latest.id,
+              repeatedFailures,
+              limit: input.maxConsecutiveFailures,
+            })
+            return undefined
+          }
+          // Preserve the armed timeout budget, and wait one full interval
+          // before the first re-check so a still-met condition cannot refire
+          // seconds after the turn ended.
+          const now = Date.now()
+          const trigger = yield* SessionSleep.arm(db, {
+            id: SessionSleep.ID.ascending(),
+            sessionID: input.sessionID,
+            ...(SessionSleep.isStateTrigger(latest)
+              ? { observe: latest.observe, predicate: latest.predicate, metExample: latest.metExample }
+              : { condition: latest.condition }),
+            ...(latest.variant === undefined ? {} : { variant: latest.variant }),
+            description: latest.description,
+            intervalMs: latest.intervalMs,
+            checkTimeoutMs: latest.checkTimeoutMs,
+            deadline: now + Math.max(latest.deadline - latest.timeCreated, 60_000),
+            cwd: latest.cwd,
+            ...(latest.shell === undefined ? {} : { shell: latest.shell }),
+            loopForever: true,
+            nextCheckAt: now + latest.intervalMs,
+          })
+          yield* Effect.logInfo("loop_forever re-armed the sleep trigger", {
+            "session.id": input.sessionID,
+            trigger: trigger.id,
+            previous: latest.id,
+            previous_status: latest.status,
+          })
+          return trigger
+        }),
+      stopLoop: (sessionID) => SessionSleep.stopLoop(db, sessionID),
       probe,
       flush: tick,
     })
@@ -404,27 +479,48 @@ const layer = Layer.effect(
 
 export { layer }
 
+/** The loop_forever re-arm cost-guard limit, from config (default 3). */
+export const sleepLimits = Effect.fn("SessionSleepScheduler.sleepLimits")(function* (config: Config.Interface) {
+  const sleep = (yield* config.get()).sleep
+  return { maxConsecutiveFailures: sleep?.max_consecutive_timeouts ?? 3 }
+})
+
 /**
  * The idle transition must not clobber an armed trigger: when a session stops
  * while a sleep_until trigger is pending, re-seed the sleeping status from the
- * durable row instead of going idle. Callers (run-state, processor) use this
- * wherever they would have published a plain idle status.
+ * durable row instead of going idle. With a loop_forever trigger whose wake
+ * was already delivered and handled, the same watcher re-arms so the loop
+ * survives an agent that ends its turn without arming a new sleep_until.
+ * Callers (run-state, processor) use this wherever they would have published a
+ * plain idle status.
  */
 export const settleIdle = Effect.fn("SessionSleepScheduler.settleIdle")(function* (
   scheduler: Interface,
   status: { set: (sessionID: SessionSchema.ID, status: SessionStatus.Info) => Effect.Effect<void> },
   sessionID: SessionSchema.ID,
+  limits: { maxConsecutiveFailures: number },
 ) {
-  const latest = yield* scheduler.get(sessionID)
-  if (latest?.status === "pending") {
-    yield* status.set(sessionID, {
+  const seedSleeping = (trigger: SessionSleep.Trigger) =>
+    status.set(sessionID, {
       type: "sleeping",
-      description: latest.description,
-      wake_at: latest.deadline,
-      next_check_at: latest.nextCheckAt,
-      interval_ms: latest.intervalMs,
+      description: trigger.description,
+      wake_at: trigger.deadline,
+      next_check_at: trigger.nextCheckAt,
+      interval_ms: trigger.intervalMs,
     })
-    return
+  const latest = yield* scheduler.get(sessionID)
+  if (latest?.status === "pending") return yield* seedSleeping(latest)
+  if (
+    latest &&
+    (latest.status === "fired" || latest.status === "timed_out") &&
+    latest.loopForever &&
+    latest.deliveredAt !== undefined
+  ) {
+    const rearmed = yield* scheduler.rearmLoop({
+      sessionID,
+      maxConsecutiveFailures: limits.maxConsecutiveFailures,
+    })
+    if (rearmed) return yield* seedSleeping(rearmed)
   }
   yield* status.set(sessionID, { type: "idle" })
 })

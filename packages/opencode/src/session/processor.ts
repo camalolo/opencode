@@ -635,12 +635,13 @@ const layer = Layer.effect(
           stack: e instanceof Error ? e.stack : undefined,
         })
         const error = parse(e)
+        const sleepLimits = yield* SessionSleepScheduler.sleepLimits(config)
         if (SessionV1.ContextOverflowError.isInstance(error)) {
           if ((yield* config.get()).compaction?.auto === false && !ctx.assistantMessage.summary) {
             ctx.assistantMessage.error = error
             ctx.assistantMessage.finish = "error"
             yield* events.publish(Session.Event.Error, { sessionID: ctx.sessionID, error })
-            yield* SessionSleepScheduler.settleIdle(sleepScheduler, status, ctx.sessionID)
+            yield* SessionSleepScheduler.settleIdle(sleepScheduler, status, ctx.sessionID, sleepLimits)
             return
           }
           ctx.needsCompaction = true
@@ -652,7 +653,7 @@ const layer = Layer.effect(
           sessionID: ctx.assistantMessage.sessionID,
           error: ctx.assistantMessage.error,
         })
-        yield* SessionSleepScheduler.settleIdle(sleepScheduler, status, ctx.sessionID)
+        yield* SessionSleepScheduler.settleIdle(sleepScheduler, status, ctx.sessionID, sleepLimits)
       })
 
       const process = Effect.fn("SessionProcessor.process")(function* (streamInput: LLM.StreamInput) {
