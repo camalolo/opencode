@@ -1387,6 +1387,9 @@ export function createServerSession(
       return Date.now() - (meta.at[sessionID] ?? 0) <= ttl
     },
     optimistic: {
+      has(sessionID: string, messageID: string) {
+        return optimistic.get(sessionID)?.has(messageID) ?? false
+      },
       add(input: { sessionID: string; message: Message; parts: Part[] }) {
         const parts = input.parts
           .filter((part) => !!part?.id && !SKIP_PARTS.has(part.type))

@@ -1952,10 +1952,18 @@ export default function Page() {
   const rolled = createMemo(() => {
     const id = revertMessageID()
     if (!id) return []
-    const index = userMessages().findIndex((item) => item.id === id)
+    const sessionID = params.id
+    if (!sessionID) return []
+    const messages = userMessages()
+    const index = messages.findIndex((item) => item.id === id)
     if (index < 0) return []
-    return userMessages()
+    // A resend while the boundary is staged lands as an optimistic message
+    // after it for a few ms, until the server's revert cleanup removes the
+    // branch; it is the new tip, not a rolled-back message, and must not
+    // flash into the dock as a duplicate of its own text.
+    return messages
       .slice(index)
+      .filter((item) => !sync().session.optimistic.has(sessionID, item.id))
       .map((item) => ({ id: item.id, text: line(item.id) }))
   })
 
