@@ -212,6 +212,9 @@ export const pendingAll = Effect.fn("SessionSleep.pendingAll")(function* (db: Da
       deadline: SessionSleepTable.deadline,
       next_check_at: SessionSleepTable.next_check_at,
       interval_ms: SessionSleepTable.interval_ms,
+      loop_forever: SessionSleepTable.loop_forever,
+      consecutive_failures: SessionSleepTable.consecutive_failures,
+      variant: SessionSleepTable.variant,
     })
     .from(SessionSleepTable)
     .where(eq(SessionSleepTable.status, "pending"))
@@ -223,6 +226,9 @@ export const pendingAll = Effect.fn("SessionSleep.pendingAll")(function* (db: Da
     wakeAt: row.deadline,
     nextCheckAt: row.next_check_at,
     intervalMs: row.interval_ms,
+    loopForever: row.loop_forever,
+    brokenChecks: row.consecutive_failures,
+    variant: row.variant ?? undefined,
   }))
 })
 

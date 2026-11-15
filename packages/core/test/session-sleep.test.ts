@@ -315,6 +315,33 @@ describe("SessionSleep", () => {
   )
 
   itDb(
+    "pendingAll carries loop, broken-check, and variant fields for the status overlay",
+    (db) =>
+      Effect.gen(function* () {
+        yield* insertSession(db, "ses_pending_rich")
+        const trigger = yield* SessionSleep.arm(
+          db,
+          armInput("ses_pending_rich", {
+            loopForever: true,
+            variant: JSON.stringify({ type: "url_status", url: "https://example.com", expect: 200 }),
+          }),
+        )
+        yield* db
+          .update(SessionSleepTable)
+          .set({ consecutive_failures: 2 })
+          .where(eq(SessionSleepTable.id, trigger.id))
+          .run()
+          .pipe(Effect.orDie)
+
+        const pending = yield* SessionSleep.pendingAll(db)
+        const row = pending.find((candidate) => candidate.sessionID === SessionSchema.ID.make("ses_pending_rich"))
+        expect(row?.loopForever).toBe(true)
+        expect(row?.brokenChecks).toBe(2)
+        expect(row?.variant).toContain("url_status")
+      }),
+  )
+
+  itDb(
     "deleting the session cascades its triggers away",
     (db) =>
       Effect.gen(function* () {

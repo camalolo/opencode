@@ -9,7 +9,7 @@ import { useLanguage } from "@/context/language"
 import { ServerConnection, serverName } from "@/context/server"
 import { displayName, projectForSession } from "@/pages/layout/helpers"
 import { SessionTabAvatar } from "@/pages/layout/session-tab-avatar"
-import { isSleepStalled, useNow, type SleepingStatus } from "@/utils/sleep-stall"
+import { sleepPhase, sleepTooltip, useNow, type SleepingStatus } from "@/utils/sleep-stall"
 import type { Session } from "@opencode-ai/sdk/v2"
 import { canOpenTabRename, forwardTabRef } from "./titlebar-tab-gesture"
 import { TabPreviewPopover } from "./titlebar-tab-popover"
@@ -245,14 +245,22 @@ export function TabNavItem(props: {
                 />
                 <Show when={sleepingStatus(serverCtx()?.sync.session.data.session_status[session.id])} keyed>
                   {(status) => {
-                    const stalled = isSleepStalled(status, useNow()())
+                    const now = useNow()
+                    const phase = createMemo(() => sleepPhase(status, now()))
+                    const language = useLanguage()
                     return (
                       <span
                         class={`absolute -bottom-0.5 -end-0.5 flex size-3 items-center justify-center rounded-full ring-1 ring-v2-background-background-base ${
-                          stalled ? "bg-surface-warning-strong animate-pulse" : "bg-text-diff-delete-base"
+                          phase() === "stalled"
+                            ? "bg-surface-warning-strong animate-pulse"
+                            : phase() === "near"
+                              ? "bg-surface-warning-strong"
+                              : "bg-text-diff-delete-base"
                         }`}
+                        title={sleepTooltip(status, now(), language.t)}
                         data-slot="tab-sleeping-indicator"
-                        data-stalled={stalled ? "true" : undefined}
+                        data-phase={phase()}
+                        data-stalled={phase() === "stalled" ? "true" : undefined}
                       >
                         <svg
                           viewBox="0 0 24 24"

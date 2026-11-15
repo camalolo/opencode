@@ -112,6 +112,17 @@ const compact = (text: string) => {
 }
 
 /**
+ * The armed check's `type` tag, decoded from the stored variant JSON.
+ * Undefined for legacy rows armed before typed checks (or corrupt variants) —
+ * clients treat absence as "unknown check kind".
+ */
+export const checkKind = (variant: string | undefined): string | undefined => {
+  if (variant === undefined) return undefined
+  const decoded = Option.flatMap(fromJson(variant), decodeCheck)
+  return Option.isSome(decoded) ? decoded.value.type : undefined
+}
+
+/**
  * Human-readable check description for status lines and wake messages.
  * Prefers the armed variant (re-compiling it is pure and deterministic);
  * falls back to the stored shell triple, then the legacy condition.

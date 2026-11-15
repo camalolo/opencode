@@ -723,6 +723,22 @@ export type SessionStatus =
        * Milliseconds between condition checks; clients derive heartbeat staleness from it
        */
       interval_ms?: number
+      /**
+       * loop_forever is armed: when a turn ends without a new sleep_until, this exact watcher re-arms itself
+       */
+      loop_forever?: boolean
+      /**
+       * Broken (crashed) checks so far; the trigger disarms itself when it reaches broken_check_limit
+       */
+      broken_checks?: number
+      /**
+       * Broken-check budget; reaching it disarms the trigger and wakes the session
+       */
+      broken_check_limit?: number
+      /**
+       * The armed check type (output_marker, file_contains, process_exited, url_status, file_quiet, custom); absent for legacy triggers armed before typed checks
+       */
+      check_kind?: string
     }
 
 export type QuestionOption = {

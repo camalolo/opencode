@@ -43,6 +43,28 @@ export const Info = Schema.Union([
         description: "Milliseconds between condition checks; clients derive heartbeat staleness from it",
       }),
     ),
+    loop_forever: optional(
+      Schema.Boolean.annotate({
+        description:
+          "loop_forever is armed: when a turn ends without a new sleep_until, this exact watcher re-arms itself",
+      }),
+    ),
+    broken_checks: optional(
+      NonNegativeInt.annotate({
+        description: "Broken (crashed) checks so far; the trigger disarms itself when it reaches broken_check_limit",
+      }),
+    ),
+    broken_check_limit: optional(
+      NonNegativeInt.annotate({
+        description: "Broken-check budget; reaching it disarms the trigger and wakes the session",
+      }),
+    ),
+    check_kind: optional(
+      Schema.String.annotate({
+        description:
+          "The armed check type (output_marker, file_contains, process_exited, url_status, file_quiet, custom); absent for legacy triggers armed before typed checks",
+      }),
+    ),
   }),
 ]).annotate({ identifier: "SessionStatus" })
 export type Info = Schema.Schema.Type<typeof Info>

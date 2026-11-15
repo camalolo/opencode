@@ -264,6 +264,12 @@ export const dict = {
   "session.child.promptDisabled": "Subagent sessions cannot be prompted.",
   "session.child.backToParent": "Back to main session.",
 
+  "session.sleeping.tooltip.waiting": "Waiting for {{description}}. Times out in {{time}}.",
+  "session.sleeping.tooltip.waiting.loop":
+    "Waiting for {{description}}. Times out in {{time}}, then re-arms itself until cancelled.",
+  "session.sleeping.tooltip.stalled": "Waiting for {{description}}. Watcher heartbeat overdue — the wait may be stuck.",
+  "session.sleeping.tooltip.broken": "{{count}} of {{limit}} checks failed; reaching {{limit}} disarms the watcher.",
+
   "prompt.example.1": "Fix a TODO in the codebase",
   "prompt.example.2": "What is the tech stack of this project?",
   "prompt.example.3": "Fix broken tests",

@@ -11,6 +11,7 @@ import { MAX_BROKEN_CHECKS, SessionSleep } from "@opencode-ai/core/session/sleep
 import { Idle } from "@opencode-ai/core/idle"
 import { SupervisedLoop } from "@/effect/supervised"
 import type { Config } from "@/config/config"
+import { SleepCheck } from "@/tool/sleep-check"
 import { SessionStatus } from "./status"
 
 /** How often the scheduler scans for due checks. */
@@ -509,6 +510,10 @@ export const settleIdle = Effect.fn("SessionSleepScheduler.settleIdle")(function
       wake_at: trigger.deadline,
       next_check_at: trigger.nextCheckAt,
       interval_ms: trigger.intervalMs,
+      loop_forever: trigger.loopForever,
+      broken_checks: trigger.consecutiveFailures,
+      broken_check_limit: MAX_BROKEN_CHECKS,
+      check_kind: SleepCheck.checkKind(trigger.variant),
     })
   const latest = yield* scheduler.get(sessionID)
   if (latest?.status === "pending") return yield* seedSleeping(latest)

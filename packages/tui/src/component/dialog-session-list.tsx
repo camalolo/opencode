@@ -18,6 +18,8 @@ import { errorMessage } from "../util/error"
 import { DialogSessionDeleteFailed } from "./dialog-session-delete-failed"
 import { useCommandShortcut } from "../keymap"
 import { useEvent } from "../context/event"
+import type { SessionStatus } from "@opencode-ai/sdk/v2"
+import type { Theme } from "../theme"
 
 type SessionListFilter = { scope?: "project"; path?: string }
 
@@ -42,6 +44,45 @@ export function loadDialogSessionList<T>(input: {
   )
 }
 
+type SleepingStatus = Extract<SessionStatus, { type: "sleeping" }>
+
+/** Compact time left until the trigger times out: `45s`, `42m`, `2h05`. */
+function sleepCountdown(wakeAt: number | undefined, now: number) {
+  if (wakeAt === undefined) return ""
+  const left = wakeAt - now
+  if (left <= 0) return "0s"
+  if (left < 60_000) return `${Math.ceil(left / 1000)}s`
+  const minutes = Math.ceil(left / 60_000)
+  if (minutes < 60) return `${minutes}m`
+  return `${Math.floor(minutes / 60)}h${String(minutes % 60).padStart(2, "0")}`
+}
+
+/**
+ * Watcher health: a heartbeat (next background check) long past due means the
+ * scheduler looks wedged and neither the wake nor the timeout can be trusted;
+ * a deadline close enough that the remaining window is a handful of checks
+ * means the wait is about to resolve either way.
+ */
+function sleepPhase(status: SleepingStatus, now: number) {
+  const interval = status.interval_ms ?? 60_000
+  if (status.next_check_at !== undefined && now > status.next_check_at + Math.max(interval * 2, 60_000))
+    return "stalled"
+  if (status.wake_at !== undefined && status.wake_at - now <= Math.max(interval * 5, 60_000)) return "near"
+  return "normal"
+}
+
+function sleepGutter(status: SleepingStatus, now: number, theme: Theme) {
+  const phase = sleepPhase(status, now)
+  const strikes = status.broken_checks ?? 0
+  const label = phase === "stalled" ? "!" : `${status.loop_forever === true ? "∞" : ""}${sleepCountdown(status.wake_at, now)}`
+  return (
+    <text fg={phase === "stalled" ? theme.error : phase === "near" ? theme.warning : theme.secondary}>
+      {`⏰ ${label}`}
+      {strikes > 0 ? <span style={{ fg: theme.error }}>{` ⚠${strikes}`}</span> : undefined}
+    </text>
+  )
+}
+
 export function DialogSessionList() {
   const dialog = useDialog()
   const route = useRoute()
@@ -55,6 +96,7 @@ export function DialogSessionList() {
   const [toDelete, setToDelete] = createSignal<string>()
   const [deleted, setDeleted] = createSignal(new Set<string>())
   const [search, setSearch] = createDebouncedSignal("", 150)
+  const [now, setNow] = createSignal(Date.now())
   const deleteHint = useCommandShortcut("session.delete")
   const quickSwitch1 = useCommandShortcut("session.quick_switch.1")
   const quickSwitch9 = useCommandShortcut("session.quick_switch.9")
@@ -206,6 +248,8 @@ export function DialogSessionList() {
   })
 
   const options = createMemo(() => {
+    // Reading the ticker here keeps sleeping countdowns re-rendering.
+    const tick = now()
     const today = new Date().toDateString()
     const sessionMap = new Map(
       sessions()
@@ -236,12 +280,12 @@ export function DialogSessionList() {
       const isDeleting = toDelete() === x.id
       const status = sync.data.session_status?.[x.id]
       const isWorking = status?.type === "busy" || status?.type === "retry"
-      const isSleeping = status?.type === "sleeping"
+      const sleeping = status?.type === "sleeping" ? status : undefined
       const slot = slotByID.get(x.id)
       const gutter = isWorking
         ? () => <Spinner />
-        : isSleeping
-          ? () => <text fg={theme.secondary}>⏰</text>
+        : sleeping
+          ? () => sleepGutter(sleeping, tick, theme)
           : slot !== undefined
             ? () => <text fg={theme.accent}>{slot}</text>
             : undefined
@@ -270,6 +314,9 @@ export function DialogSessionList() {
 
   onMount(() => {
     dialog.setSize("large")
+    // Keeps sleeping countdowns in the gutter ticking while the dialog is open.
+    const timer = setInterval(() => setNow(Date.now()), 1000)
+    onCleanup(() => clearInterval(timer))
   })
 
   return (

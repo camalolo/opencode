@@ -1,7 +1,8 @@
 import { PermissionV1 } from "@opencode-ai/core/v1/permission"
 import { Database } from "@opencode-ai/core/database/database"
-import { SessionSleep } from "@opencode-ai/core/session/sleep"
+import { MAX_BROKEN_CHECKS, SessionSleep } from "@opencode-ai/core/session/sleep"
 import { Agent } from "@/agent/agent"
+import { SleepCheck } from "@/tool/sleep-check"
 import { SessionV1 } from "@opencode-ai/core/v1/session"
 import { EventV2Bridge } from "@/event-v2-bridge"
 import { Command } from "@/command"
@@ -108,6 +109,10 @@ export const sessionHandlers = HttpApiBuilder.group(InstanceHttpApi, "session", 
           wake_at: row.wakeAt,
           next_check_at: row.nextCheckAt,
           interval_ms: row.intervalMs,
+          loop_forever: row.loopForever,
+          broken_checks: row.brokenChecks,
+          broken_check_limit: MAX_BROKEN_CHECKS,
+          check_kind: SleepCheck.checkKind(row.variant),
         })
       }
       return Object.fromEntries(merged)

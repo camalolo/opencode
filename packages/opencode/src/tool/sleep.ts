@@ -367,6 +367,10 @@ export const SleepUntilTool = Tool.define<
           wake_at: trigger.deadline,
           next_check_at: trigger.nextCheckAt,
           interval_ms: trigger.intervalMs,
+          loop_forever: params.loop_forever === true,
+          broken_checks: 0,
+          broken_check_limit: MAX_BROKEN_CHECKS,
+          check_kind: params.check.type,
         })
         const deadline = new Date(trigger.deadline).toISOString()
         yield* Effect.logInfo("sleep trigger armed", {

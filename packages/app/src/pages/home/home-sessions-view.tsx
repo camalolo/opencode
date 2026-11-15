@@ -11,7 +11,7 @@ import { useGlobal } from "@/context/global"
 import { ServerConnection } from "@/context/server"
 import { SessionTabAvatarView } from "@/pages/layout/session-tab-avatar"
 import { sessionTitle } from "@/utils/session-title"
-import { isSleepStalled, useNow } from "@/utils/sleep-stall"
+import { sleepPhase, sleepTooltip, useNow } from "@/utils/sleep-stall"
 import { shouldOpenSessionInBackground } from "../home-session-open"
 import {
   HomeSessionStatusController,
@@ -184,7 +184,12 @@ function HomeSessionLeading(props: {
 }) {
   const sleeping = homeSessionSleeping(props.server, props.record.session.id)
   const now = useNow()
-  const stalled = createMemo(() => isSleepStalled(sleeping(), now()))
+  const language = useLanguage()
+  const phase = createMemo(() => sleepPhase(sleeping(), now()))
+  const sleepTitle = createMemo(() => {
+    const status = sleeping()
+    return status ? sleepTooltip(status, now(), language.t) : undefined
+  })
   return (
     <div class="relative shrink-0">
       <Show when={props.open}>
@@ -207,10 +212,16 @@ function HomeSessionLeading(props: {
       <Show when={sleeping()}>
         <span
           class={`absolute -bottom-0.5 -end-0.5 flex size-3 items-center justify-center rounded-full ring-1 ring-v2-background-bg-base ${
-            stalled() ? "bg-surface-warning-strong animate-pulse" : "bg-text-diff-delete-base"
+            phase() === "stalled"
+              ? "bg-surface-warning-strong animate-pulse"
+              : phase() === "near"
+                ? "bg-surface-warning-strong"
+                : "bg-text-diff-delete-base"
           }`}
+          title={sleepTitle()}
           data-slot="home-session-sleeping-indicator"
-          data-stalled={stalled() ? "true" : undefined}
+          data-phase={phase()}
+          data-stalled={phase() === "stalled" ? "true" : undefined}
         >
           <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" class="size-2" aria-hidden="true">
             <circle cx="12" cy="12" r="9" />
