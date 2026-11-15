@@ -194,6 +194,21 @@ export namespace Timeline {
       assistantGroupIndex += 1
     })
 
+    const diffs = uniqueSummaryDiffs(userMessage.summary?.diffs)
+    // Sleeping sessions finished their turn (an armed sleep_until trigger only
+    // defers the next wake), so the changed-files summary must render for the
+    // active turn there too — only busy/retry work keeps it hidden. The
+    // summary belongs with the turn's content and must stay above the
+    // liveness row: the composing shim is read as the last line of the chat.
+    if (diffs.length > 0 && (!isActive || !sessionWorking(status))) {
+      rows.push(
+        new TimelineRow.DiffSummary({
+          userMessageID: userMessage.id,
+          diffs,
+        }),
+      )
+    }
+
     // Composing placeholder: keeps a liveness signal in every phase where the
     // session has work or an armed trigger. Labels name the specific wait (a
     // tool running in any turn, an input queued behind the active turn, the
@@ -238,19 +253,6 @@ export namespace Timeline {
     }
 
     if (isActive && status === "retry") rows.push(new TimelineRow.Retry({ userMessageID: userMessage.id }))
-
-    const diffs = uniqueSummaryDiffs(userMessage.summary?.diffs)
-    // Sleeping sessions finished their turn (an armed sleep_until trigger only
-    // defers the next wake), so the changed-files summary must render for the
-    // active turn there too — only busy/retry work keeps it hidden.
-    if (diffs.length > 0 && (!isActive || !sessionWorking(status))) {
-      rows.push(
-        new TimelineRow.DiffSummary({
-          userMessageID: userMessage.id,
-          diffs,
-        }),
-      )
-    }
 
     if (error) {
       const data = error.data?.message
