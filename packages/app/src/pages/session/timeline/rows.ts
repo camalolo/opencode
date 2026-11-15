@@ -226,14 +226,19 @@ export namespace Timeline {
       const ownStreaming = assistantMessages.some(
         (message) => !message.error && typeof message.time.completed !== "number",
       )
-      const phase = status === "sleeping"
-        ? ({ phase: "sleeping" as const })
-        : inFlight?.tool
-          ? ({ phase: "tool" as const, tool: inFlight.tool })
-          : assistantPartRefs.length === 0 && streaming && !ownStreaming
-            ? ({ phase: "queued" as const })
-            : assistantPartRefs.length === 0 || streaming
-              ? ({ phase: undefined })
+      // The label follows the actual work, never the status alone: a watcher
+      // session reports sleeping while its trigger is armed, but between
+      // wakes it still runs tools and streams output like any other turn.
+      // The wake label is only the settled state - the turn is done and the
+      // trigger is what remains.
+      const phase = inFlight?.tool
+        ? ({ phase: "tool" as const, tool: inFlight.tool })
+        : assistantPartRefs.length === 0 && streaming && !ownStreaming
+          ? ({ phase: "queued" as const })
+          : assistantPartRefs.length === 0 || streaming
+            ? ({ phase: undefined })
+            : status === "sleeping"
+              ? ({ phase: "sleeping" as const })
               : ({ phase: "between" as const })
       if (phase) {
         const heading = assistantMessages

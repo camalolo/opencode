@@ -115,6 +115,12 @@ test("keeps a liveness row for sleeping watcher sessions", async ({ page }) => {
   await expect(page.locator('[data-timeline-row="Thinking"]')).toContainText("Waiting for the next wake")
   // Diff summaries stay visible for a sleeping session: its turn is finished.
   await expect(page.locator('[data-timeline-row="DiffSummary"]')).toHaveCount(0)
+  // A watcher still runs tools and streams between its own wakes: the label
+  // follows the work, not the sleeping status.
+  await timeline.send(partUpdated(shell("prt_sleep_shell", "running")), 160)
+  await expect(page.locator('[data-timeline-row="Thinking"]')).toContainText("Waiting for Shell to finish")
+  await timeline.send(partUpdated(shell("prt_sleep_shell", "completed", "ok")), 160)
+  await expect(page.locator('[data-timeline-row="Thinking"]')).toContainText("Waiting for the next wake")
   await timeline.send(status("busy"), 160)
   await expect(page.locator('[data-timeline-row="Thinking"]')).not.toContainText("Waiting for the next wake")
   await expect(page.locator('[data-timeline-row="Thinking"]')).toBeVisible()
