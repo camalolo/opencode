@@ -60,12 +60,16 @@ export function TabNavItem(props: {
     if (!session) return
     return projectForSession(session, serverCtx()?.projects.list() ?? [])
   })
-  const title = createMemo(() => props.session()?.title ?? props.fallbackTitle)
-
   const projectName = createMemo(() => {
     const session = props.session()
     if (!session) return
     return displayName(project() ?? { worktree: session.directory })
+  })
+  const title = createMemo(() => {
+    const value = props.session()?.title ?? props.fallbackTitle
+    if (!value) return
+    const name = projectName()
+    return name ? `[${name}] ${value}` : value
   })
   const previewPath = createMemo(() => {
     const session = props.session()
