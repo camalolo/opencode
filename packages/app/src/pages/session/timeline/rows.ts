@@ -194,18 +194,16 @@ export namespace Timeline {
       assistantGroupIndex += 1
     })
 
-    // Composing placeholder: keeps a liveness signal in every busy phase that
-    // does not already have a glowing tool row. Labels name the specific wait
-    // (a tool running in any turn, an input queued behind the active turn,
-    // the silent gap between provider steps); composing - including while
-    // output streams - reads "Thinking". The shim must never disappear while
-    // the turn works: the end of the chat is where liveness is read from, and
-    // a paused stream (model thinking between chunks, missed completion event
-    // on a resynced client) looks exactly like a dead chat when it is hidden.
-    const ownToolInFlight = assistantPartRefs.some(
-      ({ part }) => part.type === "tool" && (part.state.status === "pending" || part.state.status === "running"),
-    )
-    if (isActive && status === "busy" && !error && !ownToolInFlight) {
+    // Composing placeholder: keeps a liveness signal in every busy phase.
+    // Labels name the specific wait (a tool running in any turn, an input
+    // queued behind the active turn, the silent gap between provider steps);
+    // composing - including while output streams - reads "Thinking". The shim
+    // is unconditional while the turn works, even when a tool row above it is
+    // already glowing: the end of the chat is where liveness is read from,
+    // and a paused stream (model thinking between chunks, missed completion
+    // event on a resynced client) looks exactly like a dead chat when nothing
+    // glows.
+    if (isActive && status === "busy" && !error) {
       const streaming = inFlight?.streaming ?? false
       // The active turn's own unfinished message is this turn composing, not
       // something it is queued behind.
