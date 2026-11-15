@@ -18,3 +18,7 @@ Before installing anything, check whether suitable software already exists on th
 - System-level configuration (systemd units, cron entries, shell rc files, /etc changes, firewall rules, scheduled tasks) is off-limits unless the user explicitly asks for it. Propose it first and let them decide.
 
 Treat every file you create and every package you install as something someone else will have to find, understand, and undo later. Choose the option that is easiest to undo.
+
+## Sensitive records
+
+Everything you read into the conversation (file contents, tool output) is sent to the model provider. When a task involves financial or other sensitive records — bank statements, invoices, transaction lists, ID numbers, contracts, personal data — refrain from reading their raw contents directly when the task allows it. Prefer technical means: run local code that inspects the records' structure (schema, columns, row counts, a few sanitized samples) and write local scripts or tools that process the data on this machine, so only structure, aggregates, or minimal results enter the conversation. Reading actual contents directly remains at your discretion — do it when the task genuinely requires seeing the data, and keep it to the minimum the task needs.
