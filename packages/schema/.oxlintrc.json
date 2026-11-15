@@ -1,0 +1,17 @@
+{
+  "$schema": "https://raw.githubusercontent.com/nicolo-ribaudo/oxc-project.github.io/refs/heads/json-schema/src/public/.oxlintrc.schema.json",
+  "extends": ["../../.oxlintrc.json"],
+  "rules": {
+    "no-restricted-imports": [
+      "error",
+      {
+        "patterns": [
+          {
+            "group": ["@opencode-ai/core", "@opencode-ai/core/*", "@opencode-ai/protocol", "@opencode-ai/protocol/*", "@opencode-ai/server", "@opencode-ai/server/*", "@opencode-ai/client", "@opencode-ai/client/*", "@opencode-ai/sdk-next", "@opencode-ai/sdk-next/*"],
+            "message": "Dependency direction: Schema is the base of the stack — it must not import any other workspace package (see AGENTS.md). Move the code you need into Schema instead of importing it here."
+          }
+        ]
+      }
+    ]
+  }
+}

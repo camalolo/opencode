@@ -117,7 +117,7 @@ function summarizeReviewPane(results: Record<"closed" | "open", Record<"cold" | 
   return Object.fromEntries(
     Object.entries(results).map(([reviewPane, values]) => [
       reviewPane,
-      summarize(values as Record<"cold" | "hot", Result[]>),
+      summarize(values),
     ]),
   )
 }

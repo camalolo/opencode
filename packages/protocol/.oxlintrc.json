@@ -1,0 +1,17 @@
+{
+  "$schema": "https://raw.githubusercontent.com/nicolo-ribaudo/oxc-project.github.io/refs/heads/json-schema/src/public/.oxlintrc.schema.json",
+  "extends": ["../../.oxlintrc.json"],
+  "rules": {
+    "no-restricted-imports": [
+      "error",
+      {
+        "patterns": [
+          {
+            "group": ["@opencode-ai/core", "@opencode-ai/core/*", "@opencode-ai/server", "@opencode-ai/server/*", "@opencode-ai/client", "@opencode-ai/client/*", "@opencode-ai/sdk-next", "@opencode-ai/sdk-next/*"],
+            "message": "Dependency direction: Protocol depends on Schema only — never Core, Server, or Client (see AGENTS.md). Move the code you need down-stack instead of importing it here."
+          }
+        ]
+      }
+    ]
+  }
+}
