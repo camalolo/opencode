@@ -234,49 +234,54 @@ export const Oxlint: Info = {
   ]),
   extensions: [".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".mts", ".cts", ".vue", ".astro", ".svelte"],
   async spawn(root, ctx) {
-    const ext = process.platform === "win32" ? ".cmd" : ""
+    const suffixes = process.platform === "win32" ? [".exe", ".cmd", ""] : [""]
 
-    const serverTarget = path.join("node_modules", ".bin", "oxc_language_server" + ext)
-    const lintTarget = path.join("node_modules", ".bin", "oxlint" + ext)
+    const resolveBin = async (names: string[]) => {
+      for (const name of names) {
+        const target = path.join("node_modules", ".bin", name)
+        const localBin = path.join(root, target)
+        if (await Filesystem.exists(localBin)) return localBin
 
-    const resolveBin = async (target: string) => {
-      const localBin = path.join(root, target)
-      if (await Filesystem.exists(localBin)) return localBin
-
-      const candidates = Filesystem.up({
-        targets: [target],
-        start: root,
-        stop: ctx.worktree,
-      })
-      const first = await candidates.next()
-      await candidates.return()
-      if (first.value) return first.value
-
+        const candidates = Filesystem.up({
+          targets: [target],
+          start: root,
+          stop: ctx.worktree,
+        })
+        const first = await candidates.next()
+        await candidates.return()
+        if (first.value) return first.value
+      }
       return undefined
     }
 
-    let lintBin = await resolveBin(lintTarget)
+    // bun-installed .bin entries on posix are node-shebang JS wrappers; servers may have no
+    // `node` in PATH, so run script entries with the runtime opencode itself is running on
+    const launch = async (bin: string, args: string[]) => {
+      const head = await Bun.file(bin).slice(0, 2).text()
+      if (head === "#!") return spawn(process.execPath, [bin, ...args], { cwd: root })
+      return spawn(bin, args, { cwd: root })
+    }
+
+    let lintBin = await resolveBin(suffixes.map((suffix) => "oxlint" + suffix))
     if (!lintBin) {
       const found = which("oxlint")
       if (found) lintBin = found
     }
 
     if (lintBin) {
-      const proc = spawn(lintBin, ["--help"])
+      const proc = await launch(lintBin, ["--help"])
       await proc.exited
       if (proc.stdout) {
         const help = await text(proc.stdout)
         if (help.includes("--lsp")) {
           return {
-            process: spawn(lintBin, ["--lsp"], {
-              cwd: root,
-            }),
+            process: await launch(lintBin, ["--lsp"]),
           }
         }
       }
     }
 
-    let serverBin = await resolveBin(serverTarget)
+    let serverBin = await resolveBin(suffixes.map((suffix) => "oxc_language_server" + suffix))
     if (!serverBin) {
       const found = which("oxc_language_server")
       if (found) serverBin = found
