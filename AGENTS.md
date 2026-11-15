@@ -18,6 +18,13 @@ Valid types are `feat`, `fix`, `docs`, `chore`, `refactor`, and `test`. Scopes a
 
 Examples: `fix(tui): simplify thinking toggle styling`, `docs: update contributing guide`, `chore(sdk): regenerate types`.
 
+## Principles
+
+- Prefer making the right thing the only thing: a type constraint, lint rule, schema, or test beats a written rule. These prose instructions are the last layer, not the first.
+- Fix the root cause, not the symptom. No retry loops, fallbacks, error-swallowing, or sleeps that paper over a failure or an architecture mismatch; if the design makes correct behavior hard, change the design.
+- Agents copy what they see. Never replicate workarounds, anti-patterns, or style-guide violations found in existing code, even when asked to "follow the pattern". Fix violations in code you are already editing; don't do drive-by refactors elsewhere, but flag the spread instead of propagating it.
+- Treat corrections as scoped. A fix for one case is not a ban on the pattern everywhere, and a one-off correction does not become a new rule in this file. If the same mistake recurs, eliminate it deterministically (lint rule, type, test) instead of restating it in prose.
+
 ## Style Guide
 
 ### General Principles
@@ -116,7 +123,7 @@ function requireConfig(input: unknown) {
 - Do not over-abstract simple expressions into many single-use helpers; extract only when it names a real concept like `requireConfig` or `readMetadata`.
 - Do not return `Effect` from helpers unless they actually perform effectful work. Synchronous parsing, validation, and option building should stay synchronous.
 - Prefer Effect schema helpers such as `Schema.UnknownFromJsonString` and `Schema.decodeUnknownOption` over manual `JSON.parse` wrapped in `Effect.try` when parsing untrusted JSON strings.
-- Add comments for non-obvious constraints and surprising behavior, not for obvious assignments or control flow.
+- Add comments only for non-obvious constraints and surprising behavior. Never write a comment justifying a workaround or a deviation from these rules; if a change needs a justification, fix the root cause instead.
 
 ### Schema Definitions (Drizzle)
 
@@ -147,6 +154,12 @@ const table = sqliteTable("session", {
 ## Type Checking
 
 - Always run `bun typecheck` from package directories (e.g., `packages/opencode`), never `tsc` directly.
+
+## Verification
+
+- Done means verified: run `bun run lint`, `bun typecheck` from each changed package dir, and the tests covering your change (from the package dir), and report what passed.
+- For UI changes, verify in the built-in browser and attach a screenshot as evidence. Never claim a visual fix you have not seen render.
+- If a check fails for reasons outside your change, say so explicitly. Never skip, weaken, or delete a check to make it green.
 
 ## V2 Session Core
 
