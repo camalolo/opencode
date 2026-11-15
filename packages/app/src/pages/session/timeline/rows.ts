@@ -27,7 +27,7 @@ export type TimelineRowMap = {
     group: PartGroup
     previousAssistantPart: boolean
   }
-  Thinking: { userMessageID: string; reasoningHeading?: string }
+  Thinking: { userMessageID: string; reasoningHeading?: string; phase?: "tool" | "queued" | "between" | "sleeping"; tool?: string }
   Retry: { userMessageID: string }
   DiffSummary: { userMessageID: string; diffs: SummaryDiff[] }
   Error: { userMessageID: string; text: string }
@@ -194,29 +194,32 @@ export namespace Timeline {
       assistantGroupIndex += 1
     })
 
-    // Composing placeholder: keeps a liveness signal in every busy phase.
-    // Labels name the specific wait (a tool running in any turn, an input
-    // queued behind the active turn, the silent gap between provider steps);
-    // composing - including while output streams - reads "Thinking". The shim
-    // is unconditional while the turn works, even when a tool row above it is
-    // already glowing: the end of the chat is where liveness is read from,
-    // and a paused stream (model thinking between chunks, missed completion
-    // event on a resynced client) looks exactly like a dead chat when nothing
-    // glows.
-    if (isActive && status === "busy" && !error) {
+    // Composing placeholder: keeps a liveness signal in every phase where the
+    // session has work or an armed trigger. Labels name the specific wait (a
+    // tool running in any turn, an input queued behind the active turn, the
+    // silent gap between provider steps, a sleeping watcher between its own
+    // wake-ups); composing - including while output streams - reads
+    // "Thinking". The shim is unconditional while the turn works, even when a
+    // tool row above it is already glowing: the end of the chat is where
+    // liveness is read from, and a paused stream (model thinking between
+    // chunks, missed completion event on a resynced client) looks exactly
+    // like a dead chat when nothing glows.
+    if (isActive && (status === "busy" || status === "sleeping") && !error) {
       const streaming = inFlight?.streaming ?? false
       // The active turn's own unfinished message is this turn composing, not
       // something it is queued behind.
       const ownStreaming = assistantMessages.some(
         (message) => !message.error && typeof message.time.completed !== "number",
       )
-      const phase = inFlight?.tool
-        ? ({ phase: "tool" as const, tool: inFlight.tool })
-        : assistantPartRefs.length === 0 && streaming && !ownStreaming
-          ? ({ phase: "queued" as const })
-          : assistantPartRefs.length === 0 || streaming
-            ? ({ phase: undefined })
-            : ({ phase: "between" as const })
+      const phase = status === "sleeping"
+        ? ({ phase: "sleeping" as const })
+        : inFlight?.tool
+          ? ({ phase: "tool" as const, tool: inFlight.tool })
+          : assistantPartRefs.length === 0 && streaming && !ownStreaming
+            ? ({ phase: "queued" as const })
+            : assistantPartRefs.length === 0 || streaming
+              ? ({ phase: undefined })
+              : ({ phase: "between" as const })
       if (phase) {
         const heading = assistantMessages
           .flatMap((message) => getMessageParts(message.id))

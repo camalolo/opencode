@@ -142,7 +142,7 @@ const markBoundaryGesture = (input: {
 function TimelineThinkingRow(props: {
   reasoningHeading?: string
   showReasoningSummaries: boolean
-  phase?: "tool" | "queued" | "between"
+  phase?: "tool" | "queued" | "between" | "sleeping"
   tool?: string
 }) {
   const language = useLanguage()
@@ -151,6 +151,7 @@ function TimelineThinkingRow(props: {
     if (props.phase === "tool" && props.tool) {
       return language.t("ui.sessionTurn.status.waitingForTool", { tool: getToolInfo(props.tool).title })
     }
+    if (props.phase === "sleeping") return language.t("ui.sessionTurn.status.waitingForWake")
     if (props.phase === "queued") return language.t("ui.sessionTurn.status.queued")
     if (props.phase === "between") return language.t("ui.sessionTurn.status.consideringNextSteps")
     return language.t("ui.sessionTurn.status.thinking")

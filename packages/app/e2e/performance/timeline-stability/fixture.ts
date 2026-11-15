@@ -345,7 +345,12 @@ export function messageUpdated(info: Message) {
 export function status(type: SessionStatus["type"], attempt = 1) {
   return event("session.status", {
     sessionID,
-    status: type === "retry" ? { type, attempt, message: "Rate limited", next: 1700000010000 } : { type },
+    status:
+      type === "retry"
+        ? { type, attempt, message: "Rate limited", next: 1700000010000 }
+        : type === "sleeping"
+          ? { type, description: "Watcher: wake on the next trigger", wake_at: 1700000010000 }
+          : { type },
   })
 }
 

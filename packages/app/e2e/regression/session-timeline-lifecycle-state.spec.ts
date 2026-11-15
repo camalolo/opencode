@@ -106,6 +106,22 @@ test("moves busy through retry and recovery to final idle content", async ({ pag
   await expect(page.locator('[data-timeline-row="DiffSummary"]')).toBeVisible()
 })
 
+test("keeps a liveness row for sleeping watcher sessions", async ({ page }) => {
+  const timeline = await setupTimeline(page, {
+    messages: [userMessage(), assistantMessage([textPart("prt_sleep_text", "Watch cycle complete")])],
+  })
+  await timeline.send(status("sleeping"), 200)
+  await expect(page.locator('[data-timeline-row="Thinking"]')).toBeVisible()
+  await expect(page.locator('[data-timeline-row="Thinking"]')).toContainText("Waiting for the next wake")
+  // Diff summaries stay visible for a sleeping session: its turn is finished.
+  await expect(page.locator('[data-timeline-row="DiffSummary"]')).toHaveCount(0)
+  await timeline.send(status("busy"), 160)
+  await expect(page.locator('[data-timeline-row="Thinking"]')).not.toContainText("Waiting for the next wake")
+  await expect(page.locator('[data-timeline-row="Thinking"]')).toBeVisible()
+  await timeline.send(status("idle"), 200)
+  await expect(page.locator('[data-timeline-row="Thinking"]')).toHaveCount(0)
+})
+
 function lines(count: number) {
   return Array.from({ length: count }, (_, index) => `line ${index + 1}`).join("\n")
 }

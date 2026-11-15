@@ -29,8 +29,9 @@ export namespace TimelineRow {
     reasoningHeading?: string
     // What the wait actually is; absent = composing the turn's first output.
     // tool: a tool from any turn is still running; queued: this input is
-    // waiting for the active turn to finish; between: silent inter-step gap.
-    phase?: "tool" | "queued" | "between"
+    // waiting for the active turn to finish; between: silent inter-step gap;
+    // sleeping: an armed sleep_until trigger between the session's own wakes.
+    phase?: "tool" | "queued" | "between" | "sleeping"
     tool?: string
   }> {}
   export class DiffSummary extends Data.TaggedClass("DiffSummary")<{
