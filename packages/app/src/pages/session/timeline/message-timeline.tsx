@@ -169,81 +169,104 @@ function TimelineThinkingRow(props: {
 function TimelineDiffSummaryRow(props: { diffs: SummaryDiff[] }) {
   const language = useLanguage()
   const maxFiles = 10
+  // Three states, collapsed is the default: a one-line changes summary, the
+  // top-10 file list on the first click, the full list behind the overflow
+  // toggle. Clicking the header line moves between collapsed and the list.
   const [state, setState] = createStore({
+    open: false,
     showAll: false,
     expanded: [] as string[],
   })
   const showAll = () => state.showAll
   const expanded = () => state.expanded
   const overflow = createMemo(() => Math.max(0, props.diffs.length - maxFiles))
-  const visible = createMemo(() => (showAll() ? props.diffs : props.diffs.slice(0, maxFiles)))
+  const visible = createMemo(() => (state.open && showAll() ? props.diffs : props.diffs.slice(0, maxFiles)))
+  const toggleOpen = () => setState("open", !state.open)
 
   return (
     <div
       data-slot="session-turn-diffs"
       data-component="session-turn-diffs-group"
-      data-show-all={showAll() || undefined}
+      data-show-all={(state.open && showAll()) || undefined}
     >
-      <div data-slot="session-turn-diffs-header">
+      <div
+        data-slot="session-turn-diffs-header"
+        data-collapsed={!state.open || undefined}
+        onClick={toggleOpen}
+      >
+        <span data-slot="session-turn-diffs-chevron">
+          <Icon name="chevron-down" size="small" />
+        </span>
         <span data-slot="session-turn-diffs-label">
           {language.plural("ui.sessionTurn.diffs.changed", props.diffs.length)}
         </span>
         <DiffChanges changes={props.diffs} />
-        <Show when={overflow() > 0}>
-          <span data-slot="session-turn-diffs-toggle" onClick={() => setState("showAll", !showAll())}>
+        <Show when={state.open && overflow() > 0}>
+          <span
+            data-slot="session-turn-diffs-toggle"
+            onClick={(event) => {
+              event.stopPropagation()
+              setState("showAll", !showAll())
+            }}
+          >
             {showAll() ? language.t("ui.sessionTurn.diffs.showLess") : language.t("ui.sessionTurn.diffs.showAll")}
           </span>
         </Show>
       </div>
-      <div data-component="session-turn-diffs-content">
-        <Accordion
-          multiple
-          style={{ "--sticky-accordion-offset": "44px" }}
-          value={expanded()}
-          onChange={(value) => setState("expanded", Array.isArray(value) ? value : value ? [value] : [])}
-        >
-          <For each={visible()}>
-            {(diff) => {
-              const opened = createMemo(() => expanded().includes(diff.file))
+      <Show when={state.open}>
+        <div data-component="session-turn-diffs-content">
+          <Accordion
+            multiple
+            style={{ "--sticky-accordion-offset": "44px" }}
+            value={expanded()}
+            onChange={(value) => setState("expanded", Array.isArray(value) ? value : value ? [value] : [])}
+          >
+            <For each={visible()}>
+              {(diff) => {
+                const opened = createMemo(() => expanded().includes(diff.file))
 
-              return (
-                <Accordion.Item value={diff.file}>
-                  <StickyAccordionHeader>
-                    <Accordion.Trigger>
-                      <div data-slot="session-turn-diff-trigger">
-                        <span data-slot="session-turn-diff-path">
-                          <Show when={diff.file.includes("/")}>
-                            <span data-slot="session-turn-diff-directory">{`\u202A${getDirectory(diff.file)}\u202C`}</span>
-                          </Show>
-                          <span data-slot="session-turn-diff-filename">{getFilename(diff.file)}</span>
-                        </span>
-                        <div data-slot="session-turn-diff-meta">
-                          <span data-slot="session-turn-diff-changes">
-                            <DiffChanges changes={diff} />
+                return (
+                  <Accordion.Item value={diff.file}>
+                    <StickyAccordionHeader>
+                      <Accordion.Trigger>
+                        <div data-slot="session-turn-diff-trigger">
+                          <span data-slot="session-turn-diff-path">
+                            <Show when={diff.file.includes("/")}>
+                              <span data-slot="session-turn-diff-directory">{`\u202A${getDirectory(diff.file)}\u202C`}</span>
+                            </Show>
+                            <span data-slot="session-turn-diff-filename">{getFilename(diff.file)}</span>
                           </span>
-                          <span data-slot="session-turn-diff-chevron">
-                            <Icon name="chevron-down" size="small" />
-                          </span>
+                          <div data-slot="session-turn-diff-meta">
+                            <span data-slot="session-turn-diff-changes">
+                              <DiffChanges changes={diff} />
+                            </span>
+                            <span data-slot="session-turn-diff-chevron">
+                              <Icon name="chevron-down" size="small" />
+                            </span>
+                          </div>
                         </div>
-                      </div>
-                    </Accordion.Trigger>
-                  </StickyAccordionHeader>
-                  <Accordion.Content>
-                    <Show when={opened()}>
-                      <TimelineDiffView diff={diff} />
-                    </Show>
-                  </Accordion.Content>
-                </Accordion.Item>
-              )
-            }}
-          </For>
-        </Accordion>
-        <Show when={!showAll() && overflow() > 0}>
-          <div data-slot="session-turn-diffs-more" onClick={() => setState("showAll", true)}>
-            {language.t("ui.sessionTurn.diffs.more", { count: String(overflow()) })}
-          </div>
-        </Show>
-      </div>
+                      </Accordion.Trigger>
+                    </StickyAccordionHeader>
+                    <Accordion.Content>
+                      <Show when={opened()}>
+                        <TimelineDiffView diff={diff} />
+                      </Show>
+                    </Accordion.Content>
+                  </Accordion.Item>
+                )
+              }}
+            </For>
+          </Accordion>
+          <Show when={!showAll() && overflow() > 0}>
+            <div
+              data-slot="session-turn-diffs-more"
+              onClick={() => setState("showAll", true)}
+            >
+              {language.t("ui.sessionTurn.diffs.more", { count: String(overflow()) })}
+            </div>
+          </Show>
+        </div>
+      </Show>
     </div>
   )
 }

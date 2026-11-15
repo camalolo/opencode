@@ -161,7 +161,12 @@ test.describe("session timeline projection", () => {
 
     await expect(page.locator('[data-timeline-row="CommentStrip"]')).toBeVisible()
     await expect(page.getByText("Keep this stable", { exact: true })).toBeVisible()
+    const diffHeader = page.locator('[data-timeline-row="DiffSummary"] [data-slot="session-turn-diffs-header"]')
     await expect(page.locator('[data-timeline-row="DiffSummary"]')).toBeVisible()
+    // Collapsed by default: one summary line; the file list opens on click.
+    await expect(diffHeader).toHaveAttribute("data-collapsed", "")
+    await expect(page.locator('[data-timeline-row="DiffSummary"] [data-slot="session-turn-diff-trigger"]')).toHaveCount(0)
+    await diffHeader.click()
     await expect(page.getByText(/show all/i)).toBeVisible()
   })
 

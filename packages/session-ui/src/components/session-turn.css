@@ -104,6 +104,19 @@
     z-index: 20;
     background-color: var(--v2-background-bg-base);
     height: 44px;
+    cursor: pointer;
+    user-select: none;
+  }
+
+  [data-slot="session-turn-diffs-chevron"] {
+    display: inline-flex;
+    align-items: center;
+    color: var(--text-weak);
+    transition: transform 0.15s ease;
+  }
+
+  [data-slot="session-turn-diffs-header"][data-collapsed] [data-slot="session-turn-diffs-chevron"] {
+    transform: rotate(-90deg);
   }
 
   [data-slot="session-turn-diffs-label"] {

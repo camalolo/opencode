@@ -203,6 +203,12 @@ test("shows all and expands historical diff summary without overlap", async ({ p
   const diff = page.locator('[data-timeline-row="DiffSummary"]')
   const following = page.locator(`[data-message-id="${nextUserID}"]`).first()
   await expect(diff).toBeVisible()
+  // The summary is collapsed by default; open the top-10 list before the
+  // measured window so the probe only covers the show-all + diff expansions.
+  const diffHeader = diff.locator('[data-slot="session-turn-diffs-header"]')
+  await expect(diffHeader).toHaveAttribute("data-collapsed", "")
+  await diffHeader.click()
+  await expect(page.getByText(/show all/i)).toBeVisible()
   const regions = defineVisualRegions({
     diff: { selector: '[data-timeline-row="DiffSummary"]' },
     following: { selector: `[data-message-id="${nextUserID}"]` },

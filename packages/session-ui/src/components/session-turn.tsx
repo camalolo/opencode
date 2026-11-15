@@ -257,14 +257,22 @@ export function SessionTurn(
   })
   const MAX_FILES = 10
   const edited = createMemo(() => diffs().length)
+  // Three states, collapsed is the default: a one-line changes summary, the
+  // top-10 file list on the first click, the full list behind the overflow
+  // toggle. Clicking the header line moves between collapsed and the list.
   const [state, setState] = createStore({
+    open: false,
     showAll: false,
     expanded: [] as string[],
   })
   const showAll = () => state.showAll
   const expanded = () => state.expanded
   const overflow = createMemo(() => Math.max(0, edited() - MAX_FILES))
-  const visible = createMemo(() => (showAll() ? diffs() : diffs().slice(0, MAX_FILES)))
+  const visible = createMemo(() => (state.open && showAll() ? diffs() : diffs().slice(0, MAX_FILES)))
+  const toggleOpen = () => {
+    autoScroll.pause()
+    setState("open", !state.open)
+  }
   const toggleAll = () => {
     autoScroll.pause()
     setState("showAll", !showAll())
@@ -438,20 +446,34 @@ export function SessionTurn(
                 <div
                   data-slot="session-turn-diffs"
                   data-component="session-turn-diffs-group"
-                  data-show-all={showAll() || undefined}
+                  data-show-all={(state.open && showAll()) || undefined}
                 >
-                  <div data-slot="session-turn-diffs-header">
+                  <div
+                    data-slot="session-turn-diffs-header"
+                    data-collapsed={!state.open || undefined}
+                    onClick={toggleOpen}
+                  >
+                    <span data-slot="session-turn-diffs-chevron">
+                      <Icon name="chevron-down" size="small" />
+                    </span>
                     <span data-slot="session-turn-diffs-label">
                       {i18n.plural("ui.sessionTurn.diffs.changed", edited())}
                     </span>
                     <DiffChanges changes={diffs()} />
-                    <Show when={overflow() > 0}>
-                      <span data-slot="session-turn-diffs-toggle" onClick={toggleAll}>
+                    <Show when={state.open && overflow() > 0}>
+                      <span
+                        data-slot="session-turn-diffs-toggle"
+                        onClick={(event) => {
+                          event.stopPropagation()
+                          toggleAll()
+                        }}
+                      >
                         {showAll() ? i18n.t("ui.sessionTurn.diffs.showLess") : i18n.t("ui.sessionTurn.diffs.showAll")}
                       </span>
                     </Show>
                   </div>
-                  <div data-component="session-turn-diffs-content">
+                  <Show when={state.open}>
+                    <div data-component="session-turn-diffs-content">
                     <Accordion
                       multiple
                       style={{ "--sticky-accordion-offset": "44px" }}
@@ -523,7 +545,8 @@ export function SessionTurn(
                         {i18n.t("ui.sessionTurn.diffs.more", { count: String(overflow()) })}
                       </div>
                     </Show>
-                  </div>
+                    </div>
+                  </Show>
                 </div>
               </Show>
               <Show when={error()}>
