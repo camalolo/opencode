@@ -232,10 +232,15 @@ const layer = Layer.effect(
       yield* Effect.logInfo("fromDirectory", { directory })
 
       const data = yield* projectV2.resolve(AbsolutePath.make(directory))
-      const worktree = data.id === ProjectV2.ID.make("global") && !data.vcs ? "/" : data.directory
+      const projectID = ProjectV2.ID.make(data.id)
+      // The global project is the catch-all identity for directories that do
+      // not resolve to their own project (non-git directories, git repos
+      // without commits, a remote, or a cached id). It must never claim a real
+      // worktree: its sessions live in arbitrary directories, and adopting the
+      // last opened one mislabels every global session in the UI.
+      const worktree = projectID === ProjectV2.ID.global ? "/" : data.directory
 
       // Phase 2: upsert
-      const projectID = ProjectV2.ID.make(data.id)
       yield* migrateProjectId(data.previous ? ProjectV2.ID.make(data.previous) : undefined, projectID)
       const row = yield* db.select().from(ProjectTable).where(eq(ProjectTable.id, projectID)).get().pipe(Effect.orDie)
       const existing = row

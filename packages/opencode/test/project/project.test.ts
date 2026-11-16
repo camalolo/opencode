@@ -15,6 +15,7 @@ import { WorkspaceV2 } from "@opencode-ai/core/workspace"
 import { Cause, Effect, Exit, Layer, Stream } from "effect"
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process"
 import { ProjectV2 } from "@opencode-ai/core/project"
+import { AbsolutePath } from "@opencode-ai/core/schema"
 import { CrossSpawnSpawner } from "@opencode-ai/core/cross-spawn-spawner"
 import { testEffect } from "../lib/effect"
 import { RuntimeFlags } from "@/effect/runtime-flags"
@@ -118,7 +119,10 @@ describe("Project.fromDirectory", () => {
       expect(result.project).toBeDefined()
       expect(result.project.id).toBe(ProjectV2.ID.global)
       expect(result.project.vcs).toBe("git")
-      expect(result.project.worktree).toBe(tmp)
+      expect(result.project.worktree).toBe("/")
+
+      const stored = yield* project.get(ProjectV2.ID.global)
+      expect(stored?.worktree).toBe("/")
 
       const opencodeFile = path.join(tmp, ".git", "opencode")
       expect(yield* Effect.promise(() => Bun.file(opencodeFile).exists())).toBe(false)
@@ -145,6 +149,26 @@ describe("Project.fromDirectory", () => {
       const tmp = yield* tmpdirScoped()
       const result = yield* project.fromDirectory(tmp)
       expect(result.project.id).toBe(ProjectV2.ID.global)
+    }),
+  )
+
+  it.live("repairs a global row that previously adopted a real worktree", () =>
+    Effect.gen(function* () {
+      const { db } = yield* Database.Service
+      const project = yield* Project.Service
+      const tmp = yield* tmpdirScoped()
+      const stale = AbsolutePath.make("/stale/Record #1")
+      yield* db
+        .insert(ProjectTable)
+        .values({ id: ProjectV2.ID.global, worktree: stale, sandboxes: [] })
+        .onConflictDoUpdate({ target: ProjectTable.id, set: { worktree: stale } })
+        .run()
+        .pipe(Effect.orDie)
+
+      yield* project.fromDirectory(tmp)
+
+      const stored = yield* project.get(ProjectV2.ID.global)
+      expect(stored?.worktree).toBe("/")
     }),
   )
 
@@ -247,7 +271,7 @@ describe("Project.fromDirectory git failure paths", () => {
       const result = yield* project.fromDirectory(tmp)
       expect(result.project.vcs).toBe("git")
       expect(result.project.id).toBe(ProjectV2.ID.global)
-      expect(result.project.worktree).toBe(tmp)
+      expect(result.project.worktree).toBe("/")
     }),
   )
 
@@ -257,7 +281,9 @@ describe("Project.fromDirectory git failure paths", () => {
       const tmp = yield* tmpdirScoped({ git: true })
 
       const result = yield* project.fromDirectory(tmp)
-      expect(result.project.worktree).toBe(tmp)
+      // The mocked resolve falls back to the global project, which never
+      // claims a worktree even when vcs is present.
+      expect(result.project.worktree).toBe("/")
       expect(result.sandbox).toBe(tmp)
     }),
   )
@@ -268,7 +294,7 @@ describe("Project.fromDirectory git failure paths", () => {
       const tmp = yield* tmpdirScoped({ git: true })
 
       const result = yield* project.fromDirectory(tmp)
-      expect(result.project.worktree).toBe(tmp)
+      expect(result.project.worktree).toBe("/")
       expect(result.sandbox).toBe(tmp)
     }),
   )
