@@ -11,22 +11,21 @@ import { EffectBridge } from "@/effect/bridge"
 import { DeployResume } from "./resume"
 import { DeployShutdown } from "./shutdown"
 
-// Self-deploy: pull, build, drain in-flight sessions, then hand the process to
-// the platform restart command. Intended for fleet servers that run from a
-// source checkout (see AGENTS.md "Deploying").
+// Self-deploy: pull, build, then restart immediately. Intended for fleet
+// servers that run from a source checkout (see AGENTS.md "Deploying").
 //
-// Sessions still mid-turn when the restart happens are captured through
-// DeployResume and resumed at the next boot, so a forced drain (or a session
-// that turned busy again late) does not silently drop the turn.
+// There is no drain: sessions mid-turn are interrupted by the restart,
+// captured through DeployResume, resumed at the next boot, and each captured
+// session gets a deploy notice so the resumed model re-checks its last
+// operation instead of assuming it completed. Sleeping sessions stay parked
+// on their durable triggers and are never woken by a deploy.
 
-const STABILITY_WINDOW_MS = 5_000
-const POLL_INTERVAL_MS = 2_000
 const STEP_TIMEOUT = "10 minutes"
 const MAX_STEP_OUTPUT_BYTES = 4 * 1024 * 1024
 
-/** Statuses that mean a provider turn or retry loop is in flight. Sleeping
- * sessions are parked on a durable trigger and survive restarts untouched, so
- * they neither block the drain nor need resuming. */
+/** Statuses that mean a provider turn or retry loop is in flight — these are
+ * the sessions the restart interrupts and captures for resume. Sleeping
+ * sessions are parked on a durable trigger and survive restarts untouched. */
 const blocksDeploy = (info: SessionStatus.Info) => info.type === "busy" || info.type === "retry"
 
 export type Phase = "idle" | "pull" | "install" | "build" | "manifest" | "drain" | "restart"
@@ -112,38 +111,7 @@ const layer = Layer.effect(
       return [...sessions.entries()].filter(([, info]) => blocksDeploy(info)).map(([id]) => id)
     })
 
-    const drain = Effect.fn("Deploy.drain")(function* (timeoutSeconds: number) {
-      // Ask mid-turn sessions to wrap up at the next provider-call boundary
-      // instead of waiting out whole (possibly hours-long) turns. The timeout
-      // then only bounds steps that are genuinely stuck.
-      DeployShutdown.request()
-      state.phase = "drain"
-      announce()
-      yield* Effect.logInfo("deploy drain", { timeoutSeconds })
-      const deadline = Date.now() + timeoutSeconds * 1000
-      let idleSince: number | undefined = undefined
-      let announcedSessions: number | undefined = undefined
-      while (Date.now() < deadline) {
-        const active = yield* activeSessions()
-        state.activeSessions = active.length > 0 ? active : undefined
-        if (active.length !== announcedSessions) {
-          announcedSessions = active.length
-          announce()
-        }
-        if (active.length === 0) {
-          if (idleSince === undefined) idleSince = Date.now()
-          if (Date.now() - idleSince >= STABILITY_WINDOW_MS) return
-        } else {
-          idleSince = undefined
-        }
-        yield* Effect.sleep(POLL_INTERVAL_MS)
-      }
-      yield* Effect.logWarning("deploy drain timeout reached, forcing restart", {
-        activeSessions: state.activeSessions,
-      })
-    })
-
-    const runDeploy = Effect.fn("Deploy.run")(function* (timeoutSeconds: number) {
+    const runDeploy = Effect.fn("Deploy.run")(function* () {
       const steps: Array<[Phase, string]> = [
         ["pull", flags.deployPullCommand || "git pull --ff-only origin laurent-dev"],
         ["install", flags.deployInstallCommand || "bun install"],
@@ -159,11 +127,10 @@ const layer = Layer.effect(
           return
         }
       }
-      yield* drain(timeoutSeconds)
       state.phase = "restart"
       announce()
-      // Last capture before the kill: sessions that went busy again during the
-      // drain (or never went idle) are about to be interrupted mid-turn.
+      // Last capture before the kill: these sessions are about to be
+      // interrupted mid-turn; the next boot resumes them with a deploy notice.
       const interrupted = yield* activeSessions()
       state.activeSessions = interrupted.length > 0 ? interrupted : undefined
       yield* DeployResume.capture(interrupted)
@@ -235,7 +202,7 @@ const layer = Layer.effect(
       state.activeSessions = undefined
       announce()
       yield* Effect.logInfo("deploy started", { timeoutSeconds: input.timeoutSeconds })
-      bridge.fork(runDeploy(input.timeoutSeconds))
+      bridge.fork(runDeploy())
       return { started: true }
     })
 

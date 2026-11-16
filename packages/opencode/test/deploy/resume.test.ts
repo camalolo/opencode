@@ -210,6 +210,61 @@ describe("deploy resume", () => {
     }),
   )
 
+  const notice = makeResume()
+
+  notice.it.effect(
+    "captured sessions get the deploy notice; scanned sessions resume silently",
+    () =>
+      Effect.gen(function* () {
+        const db = (yield* Database.Service).db
+        const sessions = yield* SessionNs.Service
+
+        // captured (busy at restart): has prompting history, gets the notice
+        yield* insertSession(db, "ses_notice_captured")
+        const capturedID = SessionID.make("ses_notice_captured")
+        const capturedUser = userMessage(capturedID)
+        yield* sessions.updateMessage(capturedUser)
+        yield* sessions.updateMessage(assistantMessage(capturedID, capturedUser.id))
+
+        // scanned (idle-unfinished): same history shape, no notice
+        yield* insertSession(db, "ses_notice_scanned")
+        const scannedID = SessionID.make("ses_notice_scanned")
+        const scannedUser = userMessage(scannedID)
+        yield* sessions.updateMessage(scannedUser)
+        yield* sessions.updateMessage(assistantMessage(scannedID, scannedUser.id))
+
+        yield* writeCapture(Date.now(), [capturedID])
+        const svc = yield* DeployResume.Service
+
+        // message events persist asynchronously
+        yield* pollWithTimeout(
+          Effect.gen(function* () {
+            const rows = yield* Effect.tryPromise(() =>
+              db.select().from(MessageTable).all().pipe(Effect.runPromise),
+            ).pipe(Effect.orDie)
+            return rows.length >= 4 ? (true as const) : undefined
+          }),
+          "messages never persisted",
+        )
+
+        yield* svc.consume()
+
+        expect(notice.calls).toEqual([capturedID, scannedID])
+
+        const noticeIn = (sessionID: SessionID) =>
+          Effect.gen(function* () {
+            const messages = yield* sessions.messages({ sessionID })
+            return messages.some((message) =>
+              message.parts.some((part) => part.type === "text" && part.synthetic === true && part.text === DeployResume.DEPLOY_NOTICE),
+            )
+          })
+        expect(yield* noticeIn(capturedID)).toBe(true)
+        expect(yield* noticeIn(scannedID)).toBe(false)
+        expect(yield* fileExists).toBe(false)
+      }),
+    30_000,
+  )
+
   const subtask = makeResume()
 
   subtask.it.effect(

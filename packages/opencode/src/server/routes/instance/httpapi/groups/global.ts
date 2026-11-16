@@ -156,7 +156,7 @@ export const GlobalApi = HttpApi.make("global").add(
         OpenApi.annotations({
           identifier: "global.deploy.status",
           summary: "Get deploy status",
-          description: "Get the current phase of a self-deploy (pull, build, drain, restart).",
+          description: "Get the current phase of a self-deploy (pull, build, restart).",
         }),
       ),
       HttpApiEndpoint.post("deployStart", GlobalPaths.deploy, {
@@ -167,7 +167,7 @@ export const GlobalApi = HttpApi.make("global").add(
           identifier: "global.deploy.start",
           summary: "Start self-deploy",
           description:
-            "Pull, rebuild the web UI, wait for in-flight sessions to go idle, then restart the server via the configured restart command.",
+            "Pull, rebuild the web UI, then restart the server via the configured restart command. Sessions mid-turn are interrupted immediately and resumed after the restart with a deploy notice; the timeout query parameter is accepted for compatibility but no longer used.",
         }),
       ),
     )

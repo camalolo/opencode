@@ -1,5 +1,5 @@
 import { and, desc, eq, sql } from "drizzle-orm"
-import { Cause, Context, Duration, Effect, Layer, Schema, Semaphore } from "effect"
+import { Cause, Context, Duration, Effect, Layer, Option, Schema, Semaphore } from "effect"
 import * as Fsp from "fs/promises"
 import * as path from "path"
 import { Database, Database as DatabaseNode } from "@opencode-ai/core/database/database"
@@ -12,12 +12,13 @@ import { SessionV1 } from "@opencode-ai/core/v1/session"
 import { InstanceStore } from "@/project/instance-store"
 import { Session } from "@/session/session"
 import { SessionPrompt } from "@/session/prompt"
-import { SessionID } from "@/session/schema"
+import { MessageID, PartID, SessionID } from "@/session/schema"
 import { renderOutput } from "@/tool/task"
 
 // Mirror of the Deploy restart flow: Deploy captures the sessions that were
 // mid-turn right before it restarts the process, and this module resumes them
-// at the next boot, so a deploy looks like a pause instead of an interrupt.
+// at the next boot, so a deploy looks like a pause (plus a deploy notice)
+// instead of a silent interrupt.
 //
 // The V1 session loop already resumes an unfinished turn when driven again
 // (runLoop continues while the last assistant message never settled), and the
@@ -30,8 +31,17 @@ import { renderOutput } from "@/tool/task"
 // The busy capture cannot see everything: a turn that wrapped up cleanly at a
 // shutdown boundary went idle before the capture ran. Consume therefore also
 // scans recent sessions for unfinished (non-aborted) turns and re-drives them.
+// Only the captured set — the sessions actually interrupted mid-turn — gets
+// the DEPLOY_NOTICE; scanned sessions resume silently.
 
 const FILE = "deploy-resume.json"
+
+/** Appended as a synthetic user turn into every session the deploy actually
+ * interrupted mid-turn, before its resume loop runs: the model sees it as the
+ * latest context and re-checks the last operation instead of assuming it
+ * completed. Scanned (idle-unfinished) sessions resume without it. */
+export const DEPLOY_NOTICE =
+  "[Server was deployed, last operation might have failed, check if you need to perform last operation again]"
 
 /** Captured sessions older than this are stale; the file is dropped instead of resumed. */
 const MAX_AGE_MS = 30 * 60 * 1000
@@ -230,15 +240,51 @@ const layer = Layer.effect(
       }
     })
 
-    const resumeInInstance = Effect.fn("DeployResume.resumeInInstance")(function* (sessionID: SessionID) {
+    /** Writes the deploy notice as a synthetic user turn. Model context comes
+     * from the session's own latest user message, so the projection treats it
+     * like any other user turn; sessions without prompting history (nothing to
+     * copy) skip the notice — they cannot be mid-turn anyway. */
+    const appendDeployNotice = Effect.fn("DeployResume.appendDeployNotice")(function* (sessionID: SessionID) {
+      const last = yield* sessions
+        .findMessage(sessionID, (m) => m.info.role === "user" && !!m.info.model)
+        .pipe(Effect.orDie)
+      if (Option.isNone(last)) {
+        yield* Effect.logWarning("deploy notice skipped: no user model context", { sessionID })
+        return
+      }
+      const source = last.value
+      if (source.info.role !== "user") return
+      const info: SessionV1.User = {
+        id: MessageID.ascending(),
+        role: "user",
+        sessionID,
+        time: { created: Date.now() },
+        agent: source.info.agent,
+        model: source.info.model,
+      }
+      yield* sessions.updateMessage(info)
+      yield* sessions.updatePart({
+        id: PartID.ascending(),
+        messageID: info.id,
+        sessionID,
+        type: "text",
+        synthetic: true,
+        text: DEPLOY_NOTICE,
+      })
+      yield* sessions.touch(sessionID)
+      yield* Effect.logInfo("deploy notice appended", { sessionID })
+    })
+
+    const resumeInInstance = Effect.fn("DeployResume.resumeInInstance")(function* (sessionID: SessionID, notify: boolean) {
       const session = yield* sessions.get(sessionID).pipe(Effect.orDie)
       // Subagent sessions resume like any other turn; their parent settles them.
       if (session.parentID) return yield* prompt.loop({ sessionID })
       yield* settleSubtasks(sessionID)
+      if (notify) yield* appendDeployNotice(sessionID)
       return yield* prompt.loop({ sessionID })
     })
 
-    const resumeOne = Effect.fn("DeployResume.resumeOne")(function* (id: string, at: number | undefined) {
+    const resumeOne = Effect.fn("DeployResume.resumeOne")(function* (id: string, at: number | undefined, notify: boolean) {
       const sessionID = SessionID.make(id)
       const session = yield* store.get(sessionID)
       if (!session) {
@@ -247,7 +293,7 @@ const layer = Layer.effect(
         return
       }
       const exit = yield* instances
-        .provide({ directory: session.location.directory }, resumeInInstance(sessionID))
+        .provide({ directory: session.location.directory }, resumeInInstance(sessionID, notify))
         .pipe(Effect.exit)
       // An interrupted resume keeps its entry (a scan re-finds it next boot;
       // the file keeps captured ones), so the next boot retries; any other
@@ -287,14 +333,20 @@ const layer = Layer.effect(
       }
       // Scan part: turns that wrapped up at a shutdown boundary (or were cut
       // mid-stream) and are idle-unfinished — invisible to the busy capture.
+      // They resume silently: only the captured set (actively interrupted)
+      // gets the deploy notice.
       const scanned = yield* scanUnfinished()
       const ids = [...new Set([...remaining, ...scanned])]
       if (ids.length === 0) return
       yield* Effect.logInfo("resuming sessions with unfinished work", { sessions: ids })
-      yield* Effect.forEach(ids, (id) => slots.withPermit(resumeOne(id, capturedAt)), {
-        concurrency: CONCURRENCY,
-        discard: true,
-      })
+      yield* Effect.forEach(
+        ids,
+        (id) => slots.withPermit(resumeOne(id, capturedAt, remaining.includes(id))),
+        {
+          concurrency: CONCURRENCY,
+          discard: true,
+        },
+      )
     })
 
     yield* Effect.forkScoped(consume().pipe(Effect.delay(START_DELAY)))
