@@ -65,6 +65,14 @@ function stringArg(value: unknown): string | undefined {
   return typeof value === "string" ? value : undefined
 }
 
+// Absent chromeArgs leaves the stored launch config alone; an empty array
+// clears it (the daemon relaunches without flags on the next launch).
+function launchArgsArg(value: unknown): string[] | null | undefined {
+  if (!Array.isArray(value)) return undefined
+  const args = value.filter((arg): arg is string => typeof arg === "string").map((arg) => arg.trim()).filter((arg) => arg.length > 0)
+  return args.length > 0 ? args : []
+}
+
 async function withTab(tabId: unknown, action: () => Promise<{ content: string | object }>): Promise<{ content: string | object }> {
   const index = numberArg(tabId)
   if (index === null) return await action()
@@ -411,6 +419,8 @@ export async function run(tool: string, args: any, sessionID: string): Promise<{
     case "list_downloads":
       return { content: JSON.stringify({ downloads }, null, 2) }
     case "open_tab": {
+      const launchArgs = launchArgsArg(args.chromeArgs)
+      if (launchArgs !== undefined) BrowserDaemon.setLaunchArgs(launchArgs)
       const active = args.active
       let previousActive: number | null = null
       if (active === false) {
@@ -430,12 +440,15 @@ export async function run(tool: string, args: any, sessionID: string): Promise<{
       const closed = Number.isFinite(result?.closed) ? Number(result.closed) : args.tabId
       return { content: { tabId: closed, remaining: result?.remaining } }
     }
-    case "navigate":
+    case "navigate": {
+      const launchArgs = launchArgsArg(args.chromeArgs)
+      if (launchArgs !== undefined) BrowserDaemon.setLaunchArgs(launchArgs)
       return await withTab(args.tabId, async () => {
         if (!args.url) throw new Error("URL is required")
         await BrowserDaemon.command("navigate", { url: args.url })
         return { content: `Navigated to ${args.url}` }
       })
+    }
     case "download":
       return await download(args)
     case "click":

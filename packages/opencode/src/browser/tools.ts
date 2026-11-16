@@ -18,6 +18,14 @@ const OptionalBoolean = Schema.Boolean.pipe(Schema.optional)
 const tab = Schema.String.annotate({
   description: "Tab id from browser_get_tabs or browser_open_tab. Omit to act on the active tab.",
 })
+const chromeArgs = {
+  chromeArgs: Schema.Array(Schema.String).pipe(Schema.optional).annotate({
+    description:
+      "Extra Chrome launch flags (e.g. --host-resolver-rules=MAP host 127.0.0.1:4443, --ignore-certificate-errors). " +
+      "They only take effect at Chrome spawn: if the running browser was launched with different flags, it relaunches automatically (tabs reset). " +
+      "Flags persist across browser relaunches until an empty array relaunches without them.",
+  }),
+}
 const wait = {
   timeoutMs: OptionalNumber.annotate({
     description: "Wait until the selector matches before acting (ms). 0 disables waiting.",
@@ -30,7 +38,7 @@ const target = {
   ...wait,
 }
 
-export const NavigateParameters = Schema.Struct({ url: Schema.String, tabId: tab })
+export const NavigateParameters = Schema.Struct({ url: Schema.String, tabId: tab, ...chromeArgs })
 export const ClickParameters = Schema.Struct({ selector: Schema.String, ...target })
 export const TypeParameters = Schema.Struct({
   selector: Schema.String,
@@ -117,6 +125,7 @@ export const ReleaseTabParameters = Schema.Struct({ tabId: Schema.Number })
 export const OpenTabParameters = Schema.Struct({
   url: OptionalString,
   active: OptionalBoolean,
+  ...chromeArgs,
 })
 export const CloseTabParameters = Schema.Struct({ tabId: OptionalNumber })
 export const EmptyParameters = Schema.Struct({})
@@ -137,7 +146,7 @@ export const NavigateTool = Tool.define(
     parameters: NavigateParameters,
     execute: (params: Schema.Schema.Type<typeof NavigateParameters>, ctx: Tool.Context): Effect.Effect<Result> =>
       run(async () => {
-        const data = await BrowserAgent.run("navigate", { url: params.url, tabId: params.tabId }, ctx.sessionID)
+        const data = await BrowserAgent.run("navigate", { url: params.url, tabId: params.tabId, chromeArgs: params.chromeArgs }, ctx.sessionID)
         return { title: `navigate ${params.url}`, output: text(data, `Navigated to ${params.url}`), metadata: {} }
       }),
   }),
@@ -360,7 +369,7 @@ export const OpenTabTool = Tool.define(
     parameters: OpenTabParameters,
     execute: (params: Schema.Schema.Type<typeof OpenTabParameters>, ctx: Tool.Context): Effect.Effect<Result> =>
       run(async () => {
-        const data = await BrowserAgent.run("open_tab", { url: params.url, active: params.active }, ctx.sessionID)
+        const data = await BrowserAgent.run("open_tab", { url: params.url, active: params.active, chromeArgs: params.chromeArgs }, ctx.sessionID)
         return { title: "open tab", output: text(data, "Opened new tab"), metadata: {} }
       }),
   }),

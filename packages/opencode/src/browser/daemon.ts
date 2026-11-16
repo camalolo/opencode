@@ -38,6 +38,24 @@ let startedAt = 0
 let lastUse = 0
 let supervisor: NodeJS.Timeout | null = null
 
+// Chrome launch flags requested through the tools (null = launch without extra
+// args, untouched = never force a launch at all). Flags only take effect at
+// Chrome spawn, so after every (re)connect the daemon is asked to launch with
+// them: its own hash check keeps an already-matching browser running and
+// relaunches a mismatching one. That is what makes the flags survive daemon
+// recycles without any daemon-side state.
+let launchArgs: string[] | null = null
+let launchTouched = false
+let launchPending = false
+let launchChain: Promise<void> = Promise.resolve()
+
+export function setLaunchArgs(args: string[] | null): void {
+  const normalized = args?.map((arg) => arg.trim()).filter((arg) => arg.length > 0) ?? []
+  launchArgs = normalized.length > 0 ? normalized : null
+  launchTouched = true
+  launchPending = true
+}
+
 export function session(): string {
   const override = process.env.OPENCODE_BROWSER_AGENT_SESSION?.trim()
   return override || `opencode-${instanceId}`
@@ -271,6 +289,7 @@ async function doConnect(): Promise<net.Socket> {
   })
   active.on("error", () => {})
   startSupervisor()
+  if (launchTouched) launchPending = true
   return active
 }
 
@@ -278,9 +297,7 @@ function tryConnect(): Promise<net.Socket | null> {
   return connect().catch(() => null)
 }
 
-// Low-level request used by both the public API and the supervisor itself.
-async function command(action: string, payload: Record<string, unknown> = {}): Promise<any> {
-  const active = await ensureConnection()
+async function sendRequest(active: net.Socket, body: Record<string, unknown>): Promise<any> {
   const id = `a${++reqId}`
   lastUse = Date.now()
   return await new Promise((resolve, reject) => {
@@ -290,8 +307,29 @@ async function command(action: string, payload: Record<string, unknown> = {}): P
       reject(new Error("Timed out waiting for agent-browser response"))
     }, REQUEST_TIMEOUT_MS)
     pending.set(id, { resolve, reject, timer })
-    active.write(JSON.stringify({ id, action, ...payload }) + "\n")
+    active.write(JSON.stringify({ id, ...body }) + "\n")
   })
+}
+
+// Sends the pending launch config before the first command of a daemon
+// generation. Serialized through launchChain so concurrent commands send it
+// exactly once; on failure the next command retries.
+function ensureLaunched(active: net.Socket): Promise<void> {
+  if (!launchTouched || !launchPending) return Promise.resolve()
+  const run = launchChain.then(async () => {
+    if (!launchTouched || !launchPending) return
+    await sendRequest(active, { action: "launch", args: launchArgs ?? [] })
+    launchPending = false
+  })
+  launchChain = run.catch(() => {})
+  return run
+}
+
+// Low-level request used by both the public API and the supervisor itself.
+async function command(action: string, payload: Record<string, unknown> = {}): Promise<any> {
+  const active = await ensureConnection()
+  await ensureLaunched(active)
+  return await sendRequest(active, { action, ...payload })
 }
 
 function startSupervisor() {
@@ -498,8 +536,14 @@ async function sweepTabs(): Promise<void> {
   }
 }
 
-export function status(): { session: string; connection: Connection; version: string | null; started: boolean } {
-  return { session: session(), connection: connectionInfo(), version: daemonVersion(), started: startedAt > 0 }
+export function status(): {
+  session: string
+  connection: Connection
+  version: string | null
+  started: boolean
+  launchArgs: string[] | null
+} {
+  return { session: session(), connection: connectionInfo(), version: daemonVersion(), started: startedAt > 0, launchArgs }
 }
 
 export async function healthy(): Promise<{ connected: boolean; error?: string }> {

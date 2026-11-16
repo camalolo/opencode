@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test"
-import { readFileSync } from "node:fs"
+import { readFileSync, readdirSync } from "node:fs"
 import { BrowserAgent } from "../../src/browser/agent"
 import { BrowserDaemon } from "../../src/browser/daemon"
 
@@ -131,5 +131,123 @@ describe("browser daemon integration", () => {
       expect(String(tabs.content)).toContain("[")
     },
     120_000,
+  )
+})
+
+// Chrome processes of this test's daemon only: ancestry must reach the daemon
+// pid, so the box's other agent-browser browsers are never matched.
+function procTable(): Map<number, { ppid: number; cmdline: string }> {
+  const table = new Map<number, { ppid: number; cmdline: string }>()
+  let entries: string[] = []
+  try {
+    entries = readdirSync("/proc")
+  } catch {
+    return table
+  }
+  for (const entry of entries) {
+    if (!/^\d+$/.test(entry)) continue
+    try {
+      const cmdline = readFileSync(`/proc/${entry}/cmdline`, "utf8")
+      const stat = readFileSync(`/proc/${entry}/stat`, "utf8")
+      const ppid = Number(stat.slice(stat.lastIndexOf(")") + 2).split(" ")[1])
+      table.set(Number(entry), { ppid, cmdline })
+    } catch {}
+  }
+  return table
+}
+
+function descendsFrom(table: Map<number, { ppid: number; cmdline: string }>, pid: number, ancestor: number): boolean {
+  let current = pid
+  for (let i = 0; i < 20 && current > 1; i++) {
+    if (current === ancestor) return true
+    current = table.get(current)?.ppid ?? 0
+  }
+  return false
+}
+
+function browserProcs(daemonPid: number): { pid: number; cmdline: string }[] {
+  const table = procTable()
+  return [...table]
+    .filter(([pid, proc]) => proc.cmdline.includes("agent-browser-chrome-") && descendsFrom(table, pid, daemonPid))
+    .map(([pid, proc]) => ({ pid, cmdline: proc.cmdline }))
+}
+
+function daemonPid(): number {
+  return Number(readFileSync(BrowserDaemon.pidfile(), "utf8").trim())
+}
+
+describe("chrome launch args", () => {
+  // The port in the MAP replacement is the syntax the fleet relies on to keep
+  // a TLS wrapper on an unprivileged port.
+  const flags = () => [`--host-resolver-rules=MAP browser-args-test.invalid 127.0.0.1:${server.port}`, "--ignore-certificate-errors"]
+
+  test(
+    "default spawn has no custom flags",
+    async () => {
+      await BrowserAgent.run("get_tabs", {}, session)
+      const procs = browserProcs(daemonPid())
+      expect(procs.length).toBeGreaterThan(0)
+      expect(procs.some((proc) => proc.cmdline.includes("host-resolver-rules"))).toBe(false)
+    },
+    60_000,
+  )
+
+  test(
+    "chromeArgs relaunch chrome with the flags and map host:port",
+    async () => {
+      const before = browserProcs(daemonPid()).map((proc) => proc.pid)
+      // Only a chrome launched with the resolver rule can resolve the fake
+      // host to the local test server.
+      const navigated = await BrowserAgent.run("navigate", { url: "http://browser-args-test.invalid/", chromeArgs: flags() }, session)
+      expect(String(navigated.content)).toContain("browser-args-test.invalid")
+      const title = await BrowserAgent.run("query", { selector: "#title", mode: "text" }, session)
+      expect(title.content).toBe("Hello Browser")
+
+      const procs = browserProcs(daemonPid())
+      expect(procs.some((proc) => proc.cmdline.includes("host-resolver-rules=MAP browser-args-test.invalid"))).toBe(true)
+      expect(procs.some((proc) => proc.cmdline.includes("ignore-certificate-errors"))).toBe(true)
+      const after = procs.map((proc) => proc.pid)
+      expect(after.some((pid) => before.includes(pid))).toBe(false)
+    },
+    120_000,
+  )
+
+  test(
+    "the same flags reuse the running browser",
+    async () => {
+      const before = browserProcs(daemonPid()).map((proc) => proc.pid)
+      await BrowserAgent.run("navigate", { url, chromeArgs: flags() }, session)
+      const after = browserProcs(daemonPid()).map((proc) => proc.pid)
+      expect(after.some((pid) => before.includes(pid))).toBe(true)
+    },
+    60_000,
+  )
+
+  test(
+    "flags survive a daemon respawn and empty chromeArgs clears them",
+    async () => {
+      // The daemon drops the socket without answering on close.
+      BrowserDaemon.command("close").catch(() => {})
+      const pid = Number(readFileSync(BrowserDaemon.pidfile(), "utf8").trim())
+      let alive = true
+      for (let i = 0; i < 100 && alive; i++) {
+        await Bun.sleep(100)
+        try {
+          process.kill(pid, 0)
+        } catch {
+          alive = false
+        }
+      }
+      expect(alive).toBe(false)
+
+      const navigated = await BrowserAgent.run("navigate", { url, chromeArgs: flags() }, session)
+      expect(String(navigated.content)).toContain(url)
+      expect(browserProcs(daemonPid()).some((proc) => proc.cmdline.includes("host-resolver-rules"))).toBe(true)
+
+      const cleared = await BrowserAgent.run("navigate", { url, chromeArgs: [] }, session)
+      expect(String(cleared.content)).toContain(url)
+      expect(browserProcs(daemonPid()).some((proc) => proc.cmdline.includes("host-resolver-rules"))).toBe(false)
+    },
+    180_000,
   )
 })
