@@ -46,15 +46,57 @@ function asNumber(v: unknown): number | undefined {
   return typeof v === "number" && Number.isFinite(v) ? v : undefined
 }
 
+// Prices arrive as JSON numbers or as strings ("0.00000157" — OpenRouter style).
+function asPrice(v: unknown): number | undefined {
+  return asNumber(typeof v === "string" ? Number(v) : v)
+}
+
 function asStrings(v: unknown): string[] | undefined {
   return Array.isArray(v) ? v.filter((s): s is string => typeof s === "string") : undefined
 }
 
-function discoveredCost(entry: DiscoveredEntry): { input: number; output: number } {
+// Cost mapping for discovered models. Sources, in order:
+// 1. top-level `pricing` — per-1M keys (camalolo-proxy shape:
+//    input_per_1m/output_per_1m/cached_input_per_1m/cache_write_per_1m) or
+//    OpenRouter per-token keys (prompt/completion/input_cache_read/
+//    input_cache_write, scaled to per-million)
+// 2. xAI-style properties[] price list ("per M input tokens" units)
+function discoveredCost(entry: DiscoveredEntry): {
+  input: number
+  output: number
+  cache_read: number
+  cache_write: number
+} {
+  const empty = { input: 0, output: 0, cache_read: 0, cache_write: 0 }
+  const pricing = entry.pricing
+  if (isRecord(pricing)) {
+    const perMillion = iife(() => {
+      const input = asPrice(pricing.input_per_1m)
+      const output = asPrice(pricing.output_per_1m)
+      if (input === undefined && output === undefined) return undefined
+      return {
+        input: input ?? 0,
+        output: output ?? 0,
+        cache_read: asPrice(pricing.cached_input_per_1m) ?? asPrice(pricing.cache_read_per_1m) ?? 0,
+        cache_write: asPrice(pricing.cache_write_per_1m) ?? 0,
+      }
+    })
+    if (perMillion) return perMillion
+    const prompt = asPrice(pricing.prompt)
+    const completion = asPrice(pricing.completion)
+    if (prompt !== undefined || completion !== undefined) {
+      return {
+        input: (prompt ?? 0) * 1_000_000,
+        output: (completion ?? 0) * 1_000_000,
+        cache_read: (asPrice(pricing.input_cache_read) ?? 0) * 1_000_000,
+        cache_write: (asPrice(pricing.input_cache_write) ?? 0) * 1_000_000,
+      }
+    }
+  }
   let input = 0
   let output = 0
   const properties = entry.properties
-  if (!Array.isArray(properties)) return { input, output }
+  if (!Array.isArray(properties)) return empty
   for (const prop of properties) {
     const id = (prop as { property_id?: unknown } | null)?.property_id
     const value = (prop as { value?: unknown } | null)?.value
@@ -67,7 +109,7 @@ function discoveredCost(entry: DiscoveredEntry): { input: number; output: number
       if (unit === "per M output tokens") output = price
     }
   }
-  return { input, output }
+  return { input, output, cache_read: 0, cache_write: 0 }
 }
 
 function discoveredModel(input: {
@@ -81,8 +123,10 @@ function discoveredModel(input: {
   const reasoningLevels = asStrings(input.entry.reasoning_levels) ?? []
   const reasoning = input.entry.can_reason === true || reasoningLevels.length > 0
   const cost = discoveredCost(input.entry)
-  const variants: Record<string, { reasoningEffort: string }> = {}
-  for (const level of reasoningLevels) variants[level] = { reasoningEffort: level }
+  // Explicit reasoning levels from the endpoint win over the transform's
+  // per-family heuristics; those stay the fallback when none are reported.
+  const levels: Record<string, { reasoningEffort: string }> = {}
+  for (const level of reasoningLevels) levels[level] = { reasoningEffort: level }
   const name = typeof input.entry.name === "string" && input.entry.name.trim() ? input.entry.name : input.modelID
   const model: Model = {
     id: ModelV2.ID.make(input.modelID),
@@ -97,7 +141,7 @@ function discoveredModel(input: {
     status: "active",
     headers: {},
     options: {},
-    cost: { input: cost.input, output: cost.output, cache: { read: 0, write: 0 } },
+    cost: { input: cost.input, output: cost.output, cache: { read: cost.cache_read, write: cost.cache_write } },
     limit: {
       context: asNumber(input.entry.context_length) ?? asNumber(input.entry.context_window) ?? 0,
       output:
@@ -109,7 +153,7 @@ function discoveredModel(input: {
     capabilities: {
       temperature: false,
       reasoning,
-      attachment: false,
+      attachment: has("image") || has("pdf"),
       toolcall: true,
       input: {
         text: true,
@@ -122,9 +166,10 @@ function discoveredModel(input: {
       interleaved: false,
     },
     release_date: "",
-    variants,
+    variants: levels,
   }
-  return { ...model, variants: mapValues(ProviderTransform.variants(model), (v) => v) }
+  if (reasoningLevels.length > 0) return model
+  return { ...model, variants: ProviderTransform.variants(model) }
 }
 
 // Normalized view of one /models entry: the fields discovery consumes, used
@@ -147,6 +192,8 @@ function normalizeDiscoveredEntry(entry: DiscoveredEntry) {
     levels: asStrings(entry.reasoning_levels) ?? [],
     costInput: cost.input,
     costOutput: cost.output,
+    costCacheRead: cost.cache_read,
+    costCacheWrite: cost.cache_write,
   }
 }
 
@@ -186,7 +233,7 @@ export function applyDiscoveredModels(input: {
   return { models, changed }
 }
 
-function discoverModelsFromEndpoint(input: {
+export function discoverModelsFromEndpoint(input: {
   http: HttpClient.HttpClient
   providerID: ProviderV2.ID
   baseURL: string
@@ -197,8 +244,15 @@ function discoverModelsFromEndpoint(input: {
   if (input.apiKey) request = HttpClientRequest.setHeader("Authorization", `Bearer ${input.apiKey}`)(request)
   return input.http.execute(request).pipe(
     Effect.flatMap((res) => res.text),
-    Effect.map((text) => {
-      const json = JSON.parse(text) as { data?: Array<DiscoveredEntry> } | Array<DiscoveredEntry>
+    // A non-JSON error body (plain-text 401/500) must degrade to "no result",
+    // not die — a sync throw here would become an uncaught defect.
+    Effect.flatMap((text) =>
+      Effect.try({
+        try: () => JSON.parse(text) as { data?: Array<DiscoveredEntry> } | Array<DiscoveredEntry>,
+        catch: (cause) => cause,
+      }),
+    ),
+    Effect.map((json) => {
       const list = Array.isArray(json) ? json : (json.data ?? [])
       const models: Record<string, Model> = {}
       const normalized: Array<ReturnType<typeof normalizeDiscoveredEntry> & { id: string }> = []
@@ -1817,7 +1871,7 @@ const layer = Layer.effect(
             if (!provider) continue
             const npm = providerCfg.npm ?? modelsDev[providerID]?.npm ?? "@ai-sdk/openai-compatible"
             if (npm !== "@ai-sdk/openai-compatible") continue
-            const baseURL = providerCfg.options?.baseURL
+            const baseURL = providerCfg.options?.baseURL ?? providerCfg.api
             if (typeof baseURL !== "string" || !baseURL) continue
             const apiKey = providerCfg.options?.apiKey
             const whitelist = providerCfg.whitelist
@@ -1832,10 +1886,28 @@ const layer = Layer.effect(
             const stored = yield* auth.get(providerID).pipe(Effect.catch(() => Effect.succeed(undefined)))
             const storedKey = stored && stored.type === "api" && typeof stored.key === "string" ? stored.key : undefined
             let signature: string | undefined
+            // Boot may have dropped the provider (initial fetch failed and no
+            // declared model survived the filter loop); re-materialize it from
+            // the config-parsed database entry, re-applying those filters, so
+            // a later refresh can bring it back once discovery succeeds.
+            function rematerialize(): Info | undefined {
+              const dbProvider = database[providerID]
+              if (!dbProvider) return undefined
+              return {
+                ...dbProvider,
+                models: pickBy(dbProvider.models, (model, modelID) => {
+                  if (model.status === "deprecated") return false
+                  if (model.status === "alpha" && !runtimeFlags.enableExperimentalModels) return false
+                  if (blacklist?.includes(modelID)) return false
+                  if (whitelist && !whitelist.includes(modelID)) return false
+                  return true
+                }),
+              }
+            }
             discoveries.push({
               providerID,
               refresh: Effect.gen(function* () {
-                const current = providers[providerID]
+                const current = providers[providerID] ?? rematerialize()
                 if (!current) return false
                 const result = yield* discoverModelsFromEndpoint({
                   http,

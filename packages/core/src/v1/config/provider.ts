@@ -90,8 +90,9 @@ export const Info = Schema.Struct({
   discover: Schema.optional(Schema.Boolean).annotate({
     description:
       "Discover models from this provider's /models endpoint (OpenAI-compatible providers only). " +
-      "Config-declared models always take precedence; discovered models get conservative capabilities " +
-      "(no attachments, no reasoning). Requires at least one config-declared model so the provider loads.",
+      "Config-declared models always take precedence. Discovered models map the metadata the endpoint " +
+      "reports (input modalities, reasoning levels, context/output limits, per-million pricing) and stay " +
+      "conservative otherwise; they are re-fetched every 10 minutes and pruned when they vanish upstream.",
   }),
   options: Schema.optional(
     Schema.StructWithRest(
