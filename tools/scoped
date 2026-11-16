@@ -1,0 +1,67 @@
+#!/usr/bin/env bash
+# tools/scoped — run a command inside a transient systemd user scope so heavy
+# work (typecheck, test sweeps, analysis) cannot starve the live opencode
+# server on the Linux fleet boxes.
+#
+# Why: bash-tool commands execute inside opencode.service's cgroup
+# (MemoryMax=9G/MemoryHigh=6G on home). A bare minutes-long, multi-GB run
+# (e.g. `bunx tsgo --noEmit` in packages/opencode) drags the whole cgroup —
+# server included — through reclaim and CPU starvation (2026-11-16 incident:
+# load 17 on the 4-core N200, tsgo-based LSP starved, server irresponsive).
+# A systemd scope is a sibling cgroup with its own caps, so the server keeps
+# its headroom even while the scoped run saturates itself.
+#
+# Usage:
+#   tools/scoped [--mem MAX] [--high HIGH] [--cpu QUOTA] [--no-scope] [--] cmd [args...]
+#
+# Defaults are the verified values from the incident fix:
+#   MemoryMax=4G MemoryHigh=3G CPUQuota=150%  (leaves >2 cores for the server)
+# Examples (from a package dir, e.g. packages/opencode):
+#   ../../tools/scoped bunx tsgo --noEmit
+#   ../../tools/scoped --mem 3G bun test test/foo.test.ts
+#
+# Non-Linux (desktop/Windows, macOS) and --no-scope exec the command directly.
+# On Linux with no usable user systemd the wrapper refuses (fail closed);
+# override explicitly with --no-scope when you are genuinely off the fleet.
+set -euo pipefail
+
+mem_max=4G
+mem_high=3G
+cpu_quota=150%
+scoped=auto
+
+while [ $# -gt 0 ]; do
+  case $1 in
+    --mem) mem_max=${2?--mem needs a value}; shift 2 ;;
+    --high) mem_high=${2?--high needs a value}; shift 2 ;;
+    --cpu) cpu_quota=${2?--cpu needs a value}; shift 2 ;;
+    --no-scope) scoped=never; shift ;;
+    --) shift; break ;;
+    -*) echo "tools/scoped: unknown option: $1" >&2; exit 2 ;;
+    *) break ;;
+  esac
+done
+if [ $# -eq 0 ]; then
+  echo "usage: tools/scoped [--mem MAX] [--high HIGH] [--cpu QUOTA] [--no-scope] [--] cmd [args...]" >&2
+  exit 2
+fi
+
+if [ "$scoped" = never ] || [ "$(uname -s)" != Linux ]; then
+  exec "$@"
+fi
+
+if ! command -v systemd-run >/dev/null 2>&1; then
+  echo "tools/scoped: systemd-run not found; refusing to run uncapped on a fleet box (use --no-scope only off the fleet)" >&2
+  exit 1
+fi
+if ! systemd-run --user --quiet --scope true 2>/dev/null; then
+  echo "tools/scoped: no usable systemd user session; refusing to run uncapped on a fleet box (use --no-scope only off the fleet)" >&2
+  exit 1
+fi
+
+echo "scoped: MemoryMax=$mem_max MemoryHigh=$mem_high CPUQuota=$cpu_quota" >&2
+exec systemd-run --user --quiet --scope \
+  -p MemoryMax="$mem_max" \
+  -p MemoryHigh="$mem_high" \
+  -p CPUQuota="$cpu_quota" \
+  -- "$@"
