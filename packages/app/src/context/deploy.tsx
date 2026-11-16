@@ -54,11 +54,13 @@ export const { use: useDeploy, provider: DeployProvider } = createSimpleContext(
     const applyStatus = (key: ServerConnection.Key, status: GlobalDeployStatus) => {
       const previous = store.servers[key]
       if (previous?.reloading) return
-      // A deploy was running and the server now answers with no deploy state:
-      // this is the next boot after a successful restart. Reload once; the
-      // fresh document picks up the new build and restores the session tabs.
       if (status.phase === "idle" && !status.error) {
-        if (previous && previous.phase !== "idle") {
+        // Nothing left to show. The boot-change reload in server-sdk covers
+        // the normal restart path; this reload is only a retry net for when
+        // the server actually stopped answering. Graceful shutdown keeps
+        // answering polls with a fresh idle state before the process exits,
+        // and reloading on that would flash the app mid-deploy.
+        if (previous && previous.phase !== "idle" && previous.down) {
           setStore("servers", key, { ...previous, phase: "restart", down: true, reloading: true })
           setTimeout(() => location.reload(), RELOAD_DELAY_MS)
         }
