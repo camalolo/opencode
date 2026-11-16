@@ -390,3 +390,30 @@ it.live("InstanceState survives deferred resume outside ALS when InstanceRef is 
     }).pipe(Effect.provide(Test.layer))
   }),
 )
+
+it.live("InstanceState rebuilds after an interrupted build instead of caching the interrupt", () =>
+  Effect.gen(function* () {
+    const dir = yield* tmpdirScoped()
+    const started = yield* Deferred.make<void>()
+    const gate = yield* Deferred.make<void>()
+    let n = 0
+    const state = yield* InstanceState.make(() =>
+      Effect.gen(function* () {
+        n++
+        yield* Deferred.succeed(started, undefined)
+        // First build blocks until the test interrupts it, simulating a client
+        // disconnect in the middle of an in-flight InstanceState build.
+        if (n === 1) yield* Deferred.await(gate)
+        return { n }
+      }),
+    )
+
+    const build = yield* access(state, dir).pipe(Effect.forkScoped)
+    yield* Deferred.await(started)
+    yield* Fiber.interrupt(build)
+
+    const value = yield* access(state, dir)
+    expect(n).toBe(2)
+    expect(value.n).toBe(2)
+  }),
+)

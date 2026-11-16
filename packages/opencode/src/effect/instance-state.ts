@@ -46,7 +46,15 @@ export const make = <A, E = never, R = never>(
 
 export const get = <A, E, R>(self: InstanceState<A, E, R>) =>
   Effect.gen(function* () {
-    return yield* ScopedCache.get(self.cache, yield* directory)
+    const key = yield* directory
+    return yield* ScopedCache.get(self.cache, key).pipe(
+      // A client disconnect can interrupt an in-flight build; ScopedCache then
+      // stores the interrupt in the entry's deferred and keeps the entry cached,
+      // so every later request for this directory inherits the interrupt
+      // (surfaced as HTTP 499). Drop the entry on interrupt so the next request
+      // rebuilds instead of failing forever.
+      Effect.onInterrupt(() => ScopedCache.invalidate(self.cache, key)),
+    )
   })
 
 export const use = <A, E, R, B>(self: InstanceState<A, E, R>, select: (value: A) => B) => Effect.map(get(self), select)
