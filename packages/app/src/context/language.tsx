@@ -30,6 +30,7 @@ type RawDictionary = typeof en & typeof uiEn
 type Dictionary = i18n.Flatten<RawDictionary>
 type PluralKey =
   | UiI18nPluralKey
+  | "deploy.ongoing.drain.active"
   | "session.question.pending"
   | "session.followupDock.summary"
   | "session.revertDock.summary"

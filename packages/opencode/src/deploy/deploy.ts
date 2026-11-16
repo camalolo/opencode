@@ -4,6 +4,7 @@ import { ChildProcess } from "effect/unstable/process"
 import { Context, Effect, Layer } from "effect"
 import * as path from "path"
 import { existsSync } from "fs"
+import { GlobalBus } from "@/bus/global"
 import { RuntimeFlags } from "@/effect/runtime-flags"
 import { SessionStatus } from "@/session/status"
 import { EffectBridge } from "@/effect/bridge"
@@ -68,8 +69,19 @@ const layer = Layer.effect(
     const root = sourceRoot()
     const state: State = { phase: "idle" as const }
 
+    // Broadcast every state change on the global bus so connected web UIs can
+    // show a deploy progress page instead of silently losing their event
+    // stream when the restart lands.
+    const announce = () => {
+      GlobalBus.emit("event", {
+        directory: "global",
+        payload: { type: "server.deploy", properties: { ...state } },
+      })
+    }
+
     const runStep = Effect.fn("Deploy.step")(function* (phase: Phase, command: string) {
       state.phase = phase
+      announce()
       yield* Effect.logInfo("deploy step", { phase, command })
       const shell = process.platform === "win32" ? "cmd" : "sh"
       const args = process.platform === "win32" ? ["/c", command] : ["-c", command]
@@ -106,12 +118,18 @@ const layer = Layer.effect(
       // then only bounds steps that are genuinely stuck.
       DeployShutdown.request()
       state.phase = "drain"
+      announce()
       yield* Effect.logInfo("deploy drain", { timeoutSeconds })
       const deadline = Date.now() + timeoutSeconds * 1000
       let idleSince: number | undefined = undefined
+      let announcedSessions: number | undefined = undefined
       while (Date.now() < deadline) {
         const active = yield* activeSessions()
         state.activeSessions = active.length > 0 ? active : undefined
+        if (active.length !== announcedSessions) {
+          announcedSessions = active.length
+          announce()
+        }
         if (active.length === 0) {
           if (idleSince === undefined) idleSince = Date.now()
           if (Date.now() - idleSince >= STABILITY_WINDOW_MS) return
@@ -137,11 +155,13 @@ const layer = Layer.effect(
         if (!step.ok) {
           state.error = step.error
           state.phase = "idle"
+          announce()
           return
         }
       }
       yield* drain(timeoutSeconds)
       state.phase = "restart"
+      announce()
       // Last capture before the kill: sessions that went busy again during the
       // drain (or never went idle) are about to be interrupted mid-turn.
       const interrupted = yield* activeSessions()
@@ -174,6 +194,7 @@ const layer = Layer.effect(
         yield* Effect.logError("deploy restart spawn failed", { error: String(error) })
         state.error = `restart command failed to spawn: ${String(error)}`
         state.phase = "idle"
+        announce()
         DeployShutdown.clear()
         yield* DeployResume.discard()
         return
@@ -195,6 +216,7 @@ const layer = Layer.effect(
       yield* Effect.logError("deploy restart command exited without killing the server", outcome)
       state.error = `restart command exited with code ${outcome.code}: ${outcome.stderr || outcome.stdout}`
       state.phase = "idle"
+      announce()
       DeployShutdown.clear()
       yield* DeployResume.discard()
     })
@@ -211,6 +233,7 @@ const layer = Layer.effect(
       state.startedAt = Date.now()
       state.error = undefined
       state.activeSessions = undefined
+      announce()
       yield* Effect.logInfo("deploy started", { timeoutSeconds: input.timeoutSeconds })
       bridge.fork(runDeploy(input.timeoutSeconds))
       return { started: true }
