@@ -163,7 +163,12 @@ function discoveredModel(input: {
         pdf: has("pdf"),
       },
       output: { text: true, audio: false, image: false, video: false, pdf: false },
-      interleaved: false,
+      // Same dialect rule the config path applies: GLM/DeepSeek over
+      // openai-compatible stream reasoning in a `reasoning_content` field.
+      interleaved:
+        input.modelID.includes("deepseek") || input.modelID.includes("glm")
+          ? { field: "reasoning_content" }
+          : false,
     },
     release_date: "",
     variants: levels,

@@ -165,12 +165,14 @@ describe("discoverModelsFromEndpoint", () => {
     expect(glm.capabilities.reasoning).toBe(true)
     expect(Object.keys(glm.variants ?? {})).toEqual(expect.arrayContaining(["low", "medium", "high"]))
     expect(glm.name).toBe("GLM 5.3 Flash 1017 (opencode-go)")
+    expect(glm.capabilities.interleaved).toEqual({ field: "reasoning_content" })
 
     const textOnly = result!.models["text-only"]
     expect(textOnly).toBeDefined()
     expect(textOnly.capabilities.attachment).toBe(false)
     expect(textOnly.capabilities.reasoning).toBe(false)
     expect(textOnly.cost.input).toBe(0)
+    expect(textOnly.capabilities.interleaved).toBe(false)
 
     expect(result!.models["retired"]).toBeUndefined()
     expect(result!.models["voice"]).toBeUndefined()
