@@ -56,11 +56,13 @@ function asStrings(v: unknown): string[] | undefined {
 }
 
 // Cost mapping for discovered models. Sources, in order:
-// 1. top-level `pricing` — per-1M keys (camalolo-proxy shape:
+// 1. models.dev flat shape — cost: {input, output, cache_read?, cache_write?},
+//    per-1M numbers, unknown fields omitted by the endpoint
+// 2. top-level `pricing` — per-1M keys (camalolo-proxy shape:
 //    input_per_1m/output_per_1m/cached_input_per_1m/cache_write_per_1m) or
 //    OpenRouter per-token keys (prompt/completion/input_cache_read/
 //    input_cache_write, scaled to per-million)
-// 2. xAI-style properties[] price list ("per M input tokens" units)
+// 3. xAI-style properties[] price list ("per M input tokens" units)
 function discoveredCost(entry: DiscoveredEntry): {
   input: number
   output: number
@@ -68,6 +70,19 @@ function discoveredCost(entry: DiscoveredEntry): {
   cache_write: number
 } {
   const empty = { input: 0, output: 0, cache_read: 0, cache_write: 0 }
+  const cost = entry.cost
+  if (isRecord(cost)) {
+    const input = asPrice(cost.input)
+    const output = asPrice(cost.output)
+    if (input !== undefined || output !== undefined) {
+      return {
+        input: input ?? 0,
+        output: output ?? 0,
+        cache_read: asPrice(cost.cache_read) ?? 0,
+        cache_write: asPrice(cost.cache_write) ?? 0,
+      }
+    }
+  }
   const pricing = entry.pricing
   if (isRecord(pricing)) {
     const perMillion = iife(() => {
@@ -112,17 +127,69 @@ function discoveredCost(entry: DiscoveredEntry): {
   return { input, output, cache_read: 0, cache_write: 0 }
 }
 
+// Context/output limits. Flat fields win, models.dev `limit` object is the
+// fallback (its context/output match the catalog's own units).
+function discoveredLimits(entry: DiscoveredEntry): { context: number; output: number } {
+  const limit = isRecord(entry.limit) ? entry.limit : undefined
+  return {
+    context:
+      asNumber(entry.context_length) ?? asNumber(entry.context_window) ?? asNumber(limit?.context) ?? 0,
+    output:
+      asNumber(entry.max_completion_tokens) ??
+      asNumber(entry.max_output_length) ??
+      asNumber(entry.default_max_tokens) ??
+      asNumber(limit?.output) ??
+      0,
+  }
+}
+
+// Reasoning dialect for openai-compatible streaming: the endpoint may declare
+// the field its upstreams stream reasoning into (GLM/DeepSeek use
+// `reasoning_content`); the family-id heuristic stays the fallback.
+function discoveredReasoningField(entry: DiscoveredEntry): string | undefined {
+  const api = isRecord(entry.api) ? entry.api : undefined
+  const chat = api?.["chat-completions"]
+  const compatibility = isRecord(chat) && isRecord(chat.compatibility) ? chat.compatibility : undefined
+  const field = compatibility?.reasoning_field
+  return typeof field === "string" && field.trim() ? field : undefined
+}
+
+function discoveredCapabilities(entry: DiscoveredEntry): Record<string, unknown> | undefined {
+  return isRecord(entry.capabilities) ? entry.capabilities : undefined
+}
+
+// Input modalities: flat `input_modalities` wins; models.dev `modalities.input`
+// is the fallback and may be mime-typed ("image/jpeg", "application/pdf").
+function discoveredInputs(entry: DiscoveredEntry): string[] {
+  const flat = asStrings(entry.input_modalities)
+  if (flat) return flat
+  const modalities = isRecord(entry.modalities) ? entry.modalities : undefined
+  return asStrings(modalities?.input) ?? ["text"]
+}
+
 function discoveredModel(input: {
   providerID: ProviderV2.ID
   modelID: string
   baseURL: string
   entry: DiscoveredEntry
 }): Model {
-  const inputs = asStrings(input.entry.input_modalities) ?? ["text"]
-  const has = (modality: string) => inputs.includes(modality)
-  const reasoningLevels = asStrings(input.entry.reasoning_levels) ?? []
-  const reasoning = input.entry.can_reason === true || reasoningLevels.length > 0
+  const inputs = discoveredInputs(input.entry)
+  const has = (modality: string) =>
+    inputs.some((item) =>
+      modality === "pdf"
+        ? item === "pdf" || item === "application/pdf"
+        : item === modality || item.startsWith(`${modality}/`),
+    )
+  const caps = discoveredCapabilities(input.entry)
+  const rawReasoning = caps?.reasoning
+  const capsReasoning = isRecord(rawReasoning) ? rawReasoning : undefined
+  const reasoningLevels =
+    asStrings(input.entry.reasoning_levels) ?? asStrings(capsReasoning?.effort) ?? []
+  const reasoning =
+    input.entry.can_reason === true || reasoningLevels.length > 0 || capsReasoning?.supported === true
+  const reasoningField = discoveredReasoningField(input.entry)
   const cost = discoveredCost(input.entry)
+  const limits = discoveredLimits(input.entry)
   // Explicit reasoning levels from the endpoint win over the transform's
   // per-family heuristics; those stay the fallback when none are reported.
   const levels: Record<string, { reasoningEffort: string }> = {}
@@ -142,16 +209,9 @@ function discoveredModel(input: {
     headers: {},
     options: {},
     cost: { input: cost.input, output: cost.output, cache: { read: cost.cache_read, write: cost.cache_write } },
-    limit: {
-      context: asNumber(input.entry.context_length) ?? asNumber(input.entry.context_window) ?? 0,
-      output:
-        asNumber(input.entry.max_completion_tokens) ??
-        asNumber(input.entry.max_output_length) ??
-        asNumber(input.entry.default_max_tokens) ??
-        0,
-    },
+    limit: limits,
     capabilities: {
-      temperature: false,
+      temperature: caps?.temperature === true,
       reasoning,
       attachment: has("image") || has("pdf"),
       toolcall: true,
@@ -163,10 +223,12 @@ function discoveredModel(input: {
         pdf: has("pdf"),
       },
       output: { text: true, audio: false, image: false, video: false, pdf: false },
-      // Same dialect rule the config path applies: GLM/DeepSeek over
-      // openai-compatible stream reasoning in a `reasoning_content` field.
-      interleaved:
-        input.modelID.includes("deepseek") || input.modelID.includes("glm")
+      // Declared reasoning field wins; same dialect rule the config path
+      // applies as fallback: GLM/DeepSeek over openai-compatible stream
+      // reasoning in a `reasoning_content` field.
+      interleaved: reasoningField
+        ? { field: reasoningField }
+        : input.modelID.includes("deepseek") || input.modelID.includes("glm")
           ? { field: "reasoning_content" }
           : false,
     },
@@ -181,24 +243,30 @@ function discoveredModel(input: {
 // both for model construction and as the change-detection signature (so a
 // metadata edit on the proxy counts as a change even when ids do not).
 function normalizeDiscoveredEntry(entry: DiscoveredEntry) {
-  const inputs = asStrings(entry.input_modalities) ?? ["text"]
+  const inputs = discoveredInputs(entry)
   const cost = discoveredCost(entry)
+  const limits = discoveredLimits(entry)
+  const caps = discoveredCapabilities(entry)
+  const rawReasoning = caps?.reasoning
+  const capsReasoning = isRecord(rawReasoning) ? rawReasoning : undefined
   return {
     id: typeof entry.id === "string" ? entry.id : undefined,
     name: typeof entry.name === "string" && entry.name.trim() ? entry.name : undefined,
-    context: asNumber(entry.context_length) ?? asNumber(entry.context_window) ?? 0,
-    output:
-      asNumber(entry.max_completion_tokens) ??
-      asNumber(entry.max_output_length) ??
-      asNumber(entry.default_max_tokens) ??
-      0,
+    context: limits.context,
+    output: limits.output,
     inputs: [...inputs].sort(),
-    reasoning: entry.can_reason === true || (asStrings(entry.reasoning_levels)?.length ?? 0) > 0,
-    levels: asStrings(entry.reasoning_levels) ?? [],
+    reasoning:
+      entry.can_reason === true ||
+      capsReasoning?.supported === true ||
+      (asStrings(entry.reasoning_levels)?.length ?? 0) > 0 ||
+      (asStrings(capsReasoning?.effort)?.length ?? 0) > 0,
+    levels: asStrings(entry.reasoning_levels) ?? asStrings(capsReasoning?.effort) ?? [],
     costInput: cost.input,
     costOutput: cost.output,
     costCacheRead: cost.cache_read,
     costCacheWrite: cost.cache_write,
+    temperature: caps?.temperature === true,
+    reasoningField: discoveredReasoningField(entry),
   }
 }
 

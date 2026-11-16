@@ -209,6 +209,49 @@ describe("discoverModelsFromEndpoint", () => {
     })
   })
 
+  test("maps the models.dev-shaped card: cost, limit, temperature, dialect, effort fallbacks", async () => {
+    endpointPayload.data = [
+      {
+        id: "card-model",
+        name: "Card Model",
+        context_length: 1048576,
+        cost: { input: 0.15, output: 0.6, cache_read: 0.003, cache_write: 0 },
+        limit: { context: 1000000, output: 384000 },
+        capabilities: {
+          temperature: true,
+          tools: { supported: true },
+          reasoning: { supported: true, effort: ["low", "high", "max"] },
+        },
+        api: { "chat-completions": { compatibility: { reasoning_field: "reasoning_content" } } },
+      },
+    ]
+    const result = await parseEndpoint("ik-test")
+    const model = result!.models["card-model"]
+    expect(model.cost).toEqual({ input: 0.15, output: 0.6, cache: { read: 0.003, write: 0 } })
+    expect(model.limit).toEqual({ context: 1048576, output: 384000 })
+    expect(model.capabilities.temperature).toBe(true)
+    expect(model.capabilities.reasoning).toBe(true)
+    expect(model.capabilities.interleaved).toEqual({ field: "reasoning_content" })
+    // flat reasoning_levels absent: the card's effort list feeds the variants
+    expect(Object.keys(model.variants ?? {})).toEqual(["low", "high", "max"])
+  })
+
+  test("accepts mime-typed modalities from the models.dev modalities object", async () => {
+    endpointPayload.data = [
+      {
+        id: "mime-model",
+        name: "Mime Model",
+        modalities: { input: ["text", "image/jpeg", "application/pdf"], output: ["text"] },
+      },
+    ]
+    const result = await parseEndpoint("ik-test")
+    const model = result!.models["mime-model"]
+    expect(model.capabilities.attachment).toBe(true)
+    expect(model.capabilities.input.image).toBe(true)
+    expect(model.capabilities.input.pdf).toBe(true)
+    expect(model.capabilities.input.audio).toBe(false)
+  })
+
   test("keeps xAI properties[] pricing as a fallback source", async () => {
     endpointPayload.data = [
       {
