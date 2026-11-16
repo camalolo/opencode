@@ -1,4 +1,4 @@
-import { FinishReason, LLMEvent, ProviderMetadata, ToolResultValue } from "@opencode-ai/llm"
+import { FinishReason, LLMEvent, mapFinishReason, ProviderMetadata, ToolResultValue } from "@opencode-ai/llm"
 import { Effect, Schema } from "effect"
 import { type streamText } from "ai"
 import { errorMessage } from "@/util/error"
@@ -18,7 +18,16 @@ export function adapterState() {
   }
 }
 
-function finishReason(value: string | undefined): FinishReason {
+// The AI SDK collapses unrecognized provider finish reasons to "other" before
+// they reach this adapter, so the raw provider string (Z.AI's `repeat`,
+// `sensitive`, `network_error`, ...) is the only place the real cut reason
+// survives. Prefer it, then fall back to the unified value when it is already
+// canonical.
+function finishReason(value: string | undefined, raw: string | undefined): FinishReason {
+  if (raw) {
+    const mapped = mapFinishReason(raw)
+    if (mapped !== "unknown") return mapped
+  }
   return Schema.is(FinishReason)(value) ? value : "unknown"
 }
 
@@ -101,7 +110,7 @@ export function toLLMEvents(
         return [
           LLMEvent.stepFinish({
             index: state.step++,
-            reason: finishReason(event.finishReason),
+            reason: finishReason(event.finishReason, event.rawFinishReason),
             usage: usage(event.usage),
             providerMetadata: metadata,
           }),
@@ -112,7 +121,7 @@ export function toLLMEvents(
       return Effect.sync(() => {
         const events = [
           LLMEvent.finish({
-            reason: finishReason(event.finishReason),
+            reason: finishReason(event.finishReason, event.rawFinishReason),
             usage: usage(event.totalUsage),
             providerMetadata: "providerMetadata" in event ? providerMetadata(event.providerMetadata) : undefined,
           }),

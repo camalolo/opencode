@@ -1116,6 +1116,7 @@ const layer = Layer.effect(
         const ctx = yield* InstanceState.context
         let structured: unknown
         let step = 0
+        let cutSteps = 0
         const session = yield* sessions.get(sessionID).pipe(Effect.orDie)
 
         while (true) {
@@ -1141,13 +1142,17 @@ const layer = Layer.effect(
               (part) => part.type === "tool" && !part.metadata?.providerExecuted && !isOrphanedInterruptedTool(part),
             ) ?? false
 
-          // "unknown" means the provider stream was cut before sending a
-          // finish reason (mid-turn connection drop): not a real answer, so
-          // keep the loop running and let the next step resume the work -
-          // unless a tool was mid-run when the stream died, which needs
-          // tool-result synthesis first.
+          // A provider-cut step is not a real answer: the stream ended before
+          // the model finished (connection drop, Z.AI `repeat` guard, gateway
+          // error frame) and the step holds no tool calls to feed back. Unlike
+          // stop/length/content-filter, keep the loop running so the next step
+          // resumes the work - bounded, so a provider that cuts every turn
+          // cannot spin the loop forever.
+          const providerCut =
+            lastAssistant?.finish === "unknown" || lastAssistant?.finish === "repetition"
           if (
             lastAssistant?.finish &&
+            !providerCut &&
             !["tool-calls"].includes(lastAssistant.finish) &&
             !hasToolCalls &&
             lastAssistant.parentID === lastUser.id
@@ -1168,7 +1173,7 @@ const layer = Layer.effect(
           }
 
           if (
-            lastAssistant?.finish === "unknown" &&
+            providerCut &&
             !hasToolCalls &&
             lastAssistant.parentID === lastUser.id
           ) {
@@ -1185,10 +1190,24 @@ const layer = Layer.effect(
               yield* Effect.logInfo("exiting loop", { "session.id": sessionID })
               break
             }
-            yield* Effect.logWarning("continuing after provider stream cut without finish", {
+            const maxCutSteps = 2
+            if (cutSteps >= maxCutSteps) {
+              yield* Effect.logWarning("provider keeps cutting the stream; ending the turn", {
+                "session.id": sessionID,
+                messageID: lastAssistant.id,
+                finish: lastAssistant.finish,
+                cutSteps,
+              })
+              break
+            }
+            cutSteps++
+            yield* Effect.logWarning("continuing after provider stream cut", {
               "session.id": sessionID,
               messageID: lastAssistant.id,
+              finish: lastAssistant.finish,
             })
+          } else {
+            cutSteps = 0
           }
 
           // A pending shutdown wraps up at the provider-call boundary: the
@@ -1359,7 +1378,8 @@ const layer = Layer.effect(
               return "break" as const
             }
 
-            const finished = handle.message.finish && !["tool-calls", "unknown"].includes(handle.message.finish)
+            const finished =
+              handle.message.finish && !["tool-calls", "unknown", "repetition"].includes(handle.message.finish)
             if (finished && !handle.message.error) {
               // Surface any content-filter finish (e.g. Anthropic stop_reason:
               // refusal) as an error. These turns may have produced no visible

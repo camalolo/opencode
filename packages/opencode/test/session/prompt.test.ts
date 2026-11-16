@@ -461,6 +461,58 @@ noLLMServer.instance(
   { config: cfg },
 )
 
+it.instance("loop continues after a provider repetition cutoff and recovers", () =>
+  Effect.gen(function* () {
+    const { llm } = yield* useServerConfig(providerCfg)
+    const prompt = yield* SessionPrompt.Service
+    const sessions = yield* Session.Service
+    const chat = yield* sessions.create({ title: "Pinned" })
+    // A previous provider turn was cut by the Z.AI repetition guard.
+    yield* seed(chat.id, { finish: "repetition" })
+    yield* llm.push(reply().text("recovered").stop())
+
+    const result = yield* prompt.loop({ sessionID: chat.id })
+
+    expect(yield* llm.hits).toHaveLength(1)
+    if (result.info.role === "assistant") expect(result.info.finish).toBe("stop")
+  }),
+)
+
+it.instance("loop continues after a stream cut without a finish reason", () =>
+  Effect.gen(function* () {
+    const { llm } = yield* useServerConfig(providerCfg)
+    const prompt = yield* SessionPrompt.Service
+    const sessions = yield* Session.Service
+    const chat = yield* sessions.create({ title: "Pinned" })
+    yield* seed(chat.id, { finish: "unknown" })
+    yield* llm.push(reply().text("recovered").stop())
+
+    const result = yield* prompt.loop({ sessionID: chat.id })
+
+    expect(yield* llm.hits).toHaveLength(1)
+    if (result.info.role === "assistant") expect(result.info.finish).toBe("stop")
+  }),
+)
+
+it.instance("loop stops continuing after consecutive provider cuts", () =>
+  Effect.gen(function* () {
+    const { llm } = yield* useServerConfig(providerCfg)
+    const prompt = yield* SessionPrompt.Service
+    const sessions = yield* Session.Service
+    const chat = yield* sessions.create({ title: "Pinned" })
+    yield* seed(chat.id, { finish: "repetition" })
+    // The provider keeps cutting: bounded continuation runs out and ends the
+    // turn instead of spinning on the same degenerate context.
+    yield* llm.push(reply().reason("the = the = the").finishReason("repeat"))
+    yield* llm.push(reply().reason("the = the = the").finishReason("repeat"))
+
+    const result = yield* prompt.loop({ sessionID: chat.id })
+
+    expect(yield* llm.hits).toHaveLength(2)
+    if (result.info.role === "assistant") expect(result.info.finish).toBe("repetition")
+  }),
+)
+
 noLLMServer.instance(
   "loop exits for a completed parent turn with nonmonotonic message IDs",
   () =>

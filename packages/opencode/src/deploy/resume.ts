@@ -171,9 +171,15 @@ const layer = Layer.effect(
         const assistant = row ? asAssistant(row.data) : undefined
         if (!assistant) continue
         if (assistant.error !== undefined) continue
-        if (assistant.finish === undefined || assistant.finish === "tool-calls" || assistant.finish === "unknown")
-          found.push(session.id)
-      }
+        // Provider-cut turns (stream died / Z.AI repetition cutoff) are
+        // unfinished: re-drive them after the reboot like the tool-calls case.
+        if (
+          assistant.finish === undefined ||
+          assistant.finish === "tool-calls" ||
+          assistant.finish === "unknown" ||
+          assistant.finish === "repetition"
+        )
+          found.push(session.id)      }
       return found
     })
 

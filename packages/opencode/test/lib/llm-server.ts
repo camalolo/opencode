@@ -516,6 +516,16 @@ export class Reply {
     return this
   }
 
+  // Provider-native finish reasons (e.g. Z.AI's `repeat` repetition guard) the
+  // way they arrive on the wire: unrecognized by the OpenAI standard set.
+  finishReason(value: string) {
+    this.#finish = value
+    this.#hang = false
+    this.#error = undefined
+    this.#reset = false
+    return this
+  }
+
   tool(name: string, input: unknown) {
     const id = this.#id()
     const args = JSON.stringify(input)

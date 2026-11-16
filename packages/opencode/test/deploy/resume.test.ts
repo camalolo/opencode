@@ -293,6 +293,13 @@ describe("deploy resume", () => {
         yield* sessions.updateMessage(unfinishedUser)
         yield* sessions.updateMessage(assistantMessage(unfinishedID, unfinishedUser.id))
 
+        // provider repetition cutoff: unfinished, re-drive it
+        yield* insertSession(db, "ses_scan_repeat")
+        const repeatID = SessionID.make("ses_scan_repeat")
+        const repeatUser = userMessage(repeatID)
+        yield* sessions.updateMessage(repeatUser)
+        yield* sessions.updateMessage(assistantMessage(repeatID, repeatUser.id, { finish: "repetition" }))
+
         // user-aborted turn: stays put
         yield* insertSession(db, "ses_scan_aborted")
         const abortedID = SessionID.make("ses_scan_aborted")
@@ -324,14 +331,14 @@ describe("deploy resume", () => {
             const rows = yield* Effect.tryPromise(() =>
               db.select().from(MessageTable).all().pipe(Effect.runPromise),
             ).pipe(Effect.orDie)
-            return rows.length >= 8 ? (true as const) : undefined
+            return rows.length >= 10 ? (true as const) : undefined
           }),
           "messages never persisted",
         )
 
         yield* svc.consume()
 
-        expect(scan.calls).toEqual([unfinishedID])
+        expect(scan.calls).toEqual([unfinishedID, repeatID])
         expect(yield* fileExists).toBe(false)
       }),
     30_000,

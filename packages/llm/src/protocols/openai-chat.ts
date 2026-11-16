@@ -7,6 +7,7 @@ import { Protocol } from "../route/protocol"
 import {
   LLMEvent,
   Usage,
+  mapFinishReason,
   type FinishReason,
   type JsonSchema,
   type LLMRequest,
@@ -375,13 +376,6 @@ const fromRequest = Effect.fn("OpenAIChat.fromRequest")(function* (request: LLMR
 // Streaming parsers are small state machines: every event returns a new state
 // plus the common `LLMEvent`s produced by that event. Tool calls are accumulated
 // because OpenAI streams JSON arguments across multiple deltas.
-const mapFinishReason = (reason: string | null | undefined): FinishReason => {
-  if (reason === "stop") return "stop"
-  if (reason === "length") return "length"
-  if (reason === "content_filter") return "content-filter"
-  if (reason === "function_call" || reason === "tool_calls") return "tool-calls"
-  return "unknown"
-}
 
 // OpenAI Chat reports `prompt_tokens` (inclusive total) with a
 // `cached_tokens` subset, and `completion_tokens` (inclusive total) with
