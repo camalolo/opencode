@@ -74,7 +74,9 @@ const GlobalDeployStartResult = Schema.Struct({
 }).annotate({ identifier: "GlobalDeployStartResult" })
 
 const GlobalDeployStatus = Schema.Struct({
-  phase: Schema.Literals(["idle", "pull", "install", "build", "manifest", "drain", "restart"]),
+  // "resume" is the post-restart boot phase: the new server process is up but
+  // still restoring sessions the deploy interrupted; announced by DeployResume.
+  phase: Schema.Literals(["idle", "resume", "pull", "install", "build", "manifest", "drain", "restart"]),
   startedAt: Schema.optional(Schema.Finite),
   error: Schema.optional(Schema.String),
   activeSessions: Schema.optional(Schema.Array(Schema.String)),

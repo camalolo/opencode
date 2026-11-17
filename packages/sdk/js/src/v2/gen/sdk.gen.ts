@@ -1369,7 +1369,7 @@ export class Deploy extends HeyApiClient {
   /**
    * Get deploy status
    *
-   * Get the current phase of a self-deploy (pull, build, drain, restart).
+   * Get the current phase of a self-deploy (pull, build, restart).
    */
   public status<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
     return (options?.client ?? this.client).get<GlobalDeployStatusResponses, GlobalDeployStatusErrors, ThrowOnError>({
@@ -1381,7 +1381,7 @@ export class Deploy extends HeyApiClient {
   /**
    * Start self-deploy
    *
-   * Pull, rebuild the web UI, wait for in-flight sessions to go idle, then restart the server via the configured restart command.
+   * Pull, rebuild the web UI, then restart the server via the configured restart command. Sessions mid-turn are interrupted immediately and resumed after the restart with a deploy notice; the timeout query parameter is accepted for compatibility but no longer used.
    */
   public start<ThrowOnError extends boolean = false>(
     parameters?: {

@@ -4,8 +4,9 @@ import { createEffect, onCleanup } from "solid-js"
 import { createStore } from "solid-js/store"
 import { useGlobal } from "./global"
 import { ServerConnection, useServer } from "./server"
+import { deployHold } from "./deploy-hold"
 
-export const DEPLOY_PHASES = ["pull", "install", "build", "manifest", "drain", "restart"] as const
+export const DEPLOY_PHASES = ["pull", "install", "build", "manifest", "drain", "restart", "resume"] as const
 export type DeployPhase = (typeof DEPLOY_PHASES)[number]
 
 type DeployState = GlobalDeployStatus & {
@@ -13,6 +14,10 @@ type DeployState = GlobalDeployStatus & {
   down: boolean
   // a reload to pick up the new build has been scheduled
   reloading: boolean
+  // this page lived through the server going silent during an active deploy:
+  // the final idle must reload it, while pages opened after the restart
+  // already have the new build and should not
+  restarted: boolean
 }
 
 const POLL_INTERVAL_MS = 2_000
@@ -55,23 +60,33 @@ export const { use: useDeploy, provider: DeployProvider } = createSimpleContext(
       const previous = store.servers[key]
       if (previous?.reloading) return
       if (status.phase === "idle" && !status.error) {
+        deployHold.release(key)
         // Nothing left to show. The boot-change reload in server-sdk covers
-        // the normal restart path; this reload is only a retry net for when
-        // the server actually stopped answering. Graceful shutdown keeps
-        // answering polls with a fresh idle state before the process exits,
-        // and reloading on that would flash the app mid-deploy.
-        if (previous && previous.phase !== "idle" && previous.down) {
+        // the normal restart path (while a deploy is held, the boot change
+        // leaves the reload to this branch, so the boot resume stays visible);
+        // this reload is also the retry net for when the server actually
+        // stopped answering. Graceful shutdown keeps answering polls with a
+        // fresh idle state before the process exits, and reloading on that
+        // would flash the app mid-deploy.
+        if (previous && previous.phase !== "idle" && previous.restarted) {
           setStore("servers", key, { ...previous, phase: "restart", down: true, reloading: true })
           setTimeout(() => location.reload(), RELOAD_DELAY_MS)
         }
         return
       }
-      setStore("servers", key, { ...status, down: false, reloading: false })
+      if (status.error) deployHold.release(key)
+      // restart = waiting for the rebooted process; resume = the rebooted
+      // server restoring the sessions the deploy interrupted
+      if (status.phase === "restart" || status.phase === "resume") deployHold.mark(key)
+      setStore("servers", key, { ...status, down: false, reloading: false, restarted: previous?.restarted ?? false })
     }
 
     const markDown = (key: ServerConnection.Key) => {
       const status = store.servers[key]
-      if (status && status.phase !== "idle" && !status.reloading) setStore("servers", key, "down", true)
+      if (status && status.phase !== "idle" && !status.reloading) {
+        setStore("servers", key, { down: true, restarted: true })
+        deployHold.mark(key)
+      }
     }
 
     const fetchStatus = (conn: ServerConnection.Any) => {

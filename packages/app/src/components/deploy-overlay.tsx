@@ -10,6 +10,7 @@ const PHASE_LABEL_KEYS: Record<DeployPhase, Parameters<ReturnType<typeof useLang
   manifest: "deploy.ongoing.phase.manifest",
   drain: "deploy.ongoing.phase.drain",
   restart: "deploy.ongoing.phase.restart",
+  resume: "deploy.ongoing.phase.resume",
 }
 
 function Elapsed(props: { startedAt?: number }) {
@@ -79,9 +80,14 @@ export function DeployOverlay() {
                         )}
                       </For>
                     </div>
-                    <Show when={phase() === "drain" && (status.activeSessions?.length ?? 0) > 0}>
+                    <Show
+                      when={(phase() === "drain" || phase() === "resume") && (status.activeSessions?.length ?? 0) > 0}
+                    >
                       <p class="text-12-regular text-text-weak mt-2">
-                        {language.plural("deploy.ongoing.drain.active", status.activeSessions!.length)}
+                        {language.plural(
+                          phase() === "resume" ? "deploy.ongoing.resume.active" : "deploy.ongoing.drain.active",
+                          status.activeSessions!.length,
+                        )}
                       </p>
                     </Show>
                     <Elapsed startedAt={status.startedAt} />

@@ -23,6 +23,38 @@ const PRUNED_TYPES = ["message.part.updated.1", "message.updated.1"]
 // time, message updates carry the info's update time.
 const eventTime = sql`(coalesce(json_extract(${EventTable.data}, '$.time'), json_extract(${EventTable.data}, '$.info.time.updated')))`
 
+// Journal rowids ascend with insert order and event times track insert order,
+// so everything older than the cutoff sits below a discoverable rowid
+// boundary. Sweeps used to rescan the whole table instead: each batch select
+// walked rowids forward until it filled 2000 matches (or hit the end), which
+// in steady state read every remaining blob in the database — 60-90s per pass
+// on the largest fleet database. Every statement serializes behind the
+// database semaphore, so the whole server stalled with it on every boot and
+// every sweep. A ~20-probe binary search finds the boundary instead, and the
+// delete pass scans only the band below it. Only the search relies on the
+// monotonic assumption: deletes still re-check the exact time predicate, so
+// out-of-order journaling just widens what the margin band rescans, never
+// what gets deleted.
+const SKEW_MARGIN = 10_000
+
+const timeAtOrAfter = Effect.fn("EventRetention.timeAtOrAfter")(function* (
+  db: Database.Interface["db"],
+  rowid: number,
+) {
+  const row = yield* db
+    .select({ time: eventTime })
+    .from(EventTable)
+    .where(sql`rowid >= ${rowid}`)
+    .orderBy(sql`rowid`)
+    .limit(1)
+    .get()
+    .pipe(Effect.orDie)
+  // json_extract can yield null; a row without a usable stamp counts as
+  // "found" so the boundary never moves past it and the delete pass, which
+  // re-checks the predicate exactly, still runs over it.
+  return typeof row?.time === "number" ? row.time : undefined
+})
+
 export const sweep = Effect.fn("EventRetention.sweep")(function* (db: Database.Interface["db"]) {
   const cutoff = Date.now() - RETENTION_MS
   const maxRow = yield* db
@@ -31,15 +63,26 @@ export const sweep = Effect.fn("EventRetention.sweep")(function* (db: Database.I
     .get()
     .pipe(Effect.orDie)
   const bound = maxRow?.m ?? 0
+  if (bound === 0) return 0
+  let lo = 1
+  let hi = bound
+  while (lo < hi) {
+    const mid = Math.floor((lo + hi) / 2)
+    const time = yield* timeAtOrAfter(db, mid)
+    if (time !== undefined && time >= cutoff) hi = mid
+    else lo = mid + 1
+  }
+  const bandEnd = Math.min(bound, lo + SKEW_MARGIN)
   let cursor = 0
   let deleted = 0
-  while (cursor < bound) {
+  while (cursor <= bandEnd) {
     const rows = yield* db
       .select({ rowid: sql<number>`rowid` })
       .from(EventTable)
       .where(
         and(
           sql`rowid > ${cursor}`,
+          sql`rowid <= ${bandEnd}`,
           inArray(EventTable.type, PRUNED_TYPES),
           sql`${eventTime} < ${cutoff}`,
         ),

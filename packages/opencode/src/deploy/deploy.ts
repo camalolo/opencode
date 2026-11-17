@@ -19,6 +19,10 @@ import { DeployShutdown } from "./shutdown"
 // session gets a deploy notice so the resumed model re-checks its last
 // operation instead of assuming it completed. Sleeping sessions stay parked
 // on their durable triggers and are never woken by a deploy.
+//
+// DeployResume owns the boot side: a restarted server reports the "resume"
+// deploy phase (through the deploy status endpoint) until the boot settle
+// completes, so clients keep their deploy screen through the restore.
 
 const STEP_TIMEOUT = "10 minutes"
 const MAX_STEP_OUTPUT_BYTES = 4 * 1024 * 1024

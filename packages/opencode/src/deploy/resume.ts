@@ -10,6 +10,7 @@ import { MessageTable, SessionTable } from "@opencode-ai/core/session/sql"
 import { SessionStore } from "@opencode-ai/core/session/store"
 import { SessionV1 } from "@opencode-ai/core/v1/session"
 import { InstanceStore } from "@/project/instance-store"
+import { GlobalBus } from "@/bus/global"
 import { Session } from "@/session/session"
 import { SessionPrompt } from "@/session/prompt"
 import { MessageID, PartID, SessionID } from "@/session/schema"
@@ -57,6 +58,26 @@ const START_DELAY = Duration.seconds(5)
 
 export const file = () => path.join(Global.Path.data, FILE)
 
+export interface BootResume {
+  startedAt: number
+  sessions: Array<string>
+}
+
+/**
+ * Reads a still-fresh capture without consuming it. The layer checks this at
+ * boot to announce the resume phase; stale, empty, or missing files announce
+ * nothing, matching what consume() would resume.
+ */
+export const readCapture = async (): Promise<{ at: number; sessions: Array<string> } | undefined> => {
+  try {
+    const parsed = decode(JSON.parse(await Bun.file(file()).text()))
+    if (Date.now() - parsed.at > MAX_AGE_MS || parsed.sessions.length === 0) return undefined
+    return { at: parsed.at, sessions: [...parsed.sessions] }
+  } catch {
+    return undefined
+  }
+}
+
 const Persisted = Schema.Struct({
   version: Schema.Literal(1),
   at: Schema.Number,
@@ -90,6 +111,10 @@ export const discard = Effect.fn("DeployResume.discard")(function* () {
 export interface Interface {
   /** Reads and consumes the resume file now. Boot runs this forked; tests call it directly. */
   readonly consume: () => Effect.Effect<void>
+  /** Boot-resume view for the deploy status: set while the boot consume is
+   * settling a deploy capture, undefined once it settles (or when the boot had
+   * no capture). */
+  readonly boot: () => Effect.Effect<BootResume | undefined>
 }
 
 export class Service extends Context.Service<Service, Interface>()("@opencode/DeployResume") {}
@@ -349,9 +374,52 @@ const layer = Layer.effect(
       )
     })
 
-    yield* Effect.forkScoped(consume().pipe(Effect.delay(START_DELAY)))
+    // A deploy restart leaves the capture file behind; while the boot consume
+    // settles it, the deploy status reports the "resume" phase so the web UI
+    // holds its deploy screen (instead of showing an idle server that is
+    // actually still restoring turns). Announcements ride the global bus both
+    // ways: "resume" at boot, "idle" when the settle completes — even if the
+    // consume died or hangs past the deadline, so clients can never wedge on
+    // a stuck resume.
+    let boot: BootResume | undefined
 
-    return Service.of({ consume })
+    const announceBoot = (phase: "resume" | "idle") =>
+      GlobalBus.emit("event", {
+        directory: "global",
+        payload: {
+          type: "server.deploy",
+          properties: {
+            phase,
+            ...(boot ? { startedAt: boot.startedAt } : {}),
+            ...(boot && boot.sessions.length > 0 ? { activeSessions: boot.sessions } : {}),
+          },
+        },
+      })
+
+    const capture = yield* Effect.promise(() => readCapture())
+    if (capture) {
+      boot = { startedAt: Date.now(), sessions: capture.sessions }
+      yield* Effect.logInfo("boot resume: restoring sessions interrupted by the deploy", { sessions: capture.sessions })
+      announceBoot("resume")
+    }
+
+    yield* Effect.forkScoped(
+      Effect.gen(function* () {
+        yield* consume().pipe(
+          Effect.timeout("30 minutes"),
+          Effect.catchCause((cause) => Effect.logError("boot resume failed", Cause.pretty(cause))),
+        )
+        if (boot === undefined) return
+        boot = undefined
+        announceBoot("idle")
+      }).pipe(Effect.delay(START_DELAY)),
+    )
+
+    const bootStatus: Interface["boot"] = Effect.fn("DeployResume.boot")(function* () {
+      return boot
+    })
+
+    return Service.of({ consume, boot: bootStatus })
   }),
 )
 

@@ -426,9 +426,12 @@ export const dict = {
   "deploy.ongoing.phase.manifest": "Regenerating UI manifest...",
   "deploy.ongoing.phase.drain": "Waiting for sessions to finish...",
   "deploy.ongoing.phase.restart": "Restarting server...",
+  "deploy.ongoing.phase.resume": "Resuming interrupted sessions...",
   "deploy.ongoing.down": "Waiting for server...",
   "deploy.ongoing.drain.active.one": "{{count}} session still running",
   "deploy.ongoing.drain.active.other": "{{count}} sessions still running",
+  "deploy.ongoing.resume.active.one": "{{count}} session still resuming",
+  "deploy.ongoing.resume.active.other": "{{count}} sessions still resuming",
   "deploy.failed.title": "Deploy failed",
   "deploy.failed.dismiss": "Return to app",
 

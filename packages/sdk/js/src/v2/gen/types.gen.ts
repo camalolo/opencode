@@ -2097,7 +2097,7 @@ export type Config = {
 }
 
 export type GlobalDeployStatus = {
-  phase: "idle" | "pull" | "install" | "build" | "manifest" | "drain" | "restart"
+  phase: "idle" | "resume" | "pull" | "install" | "build" | "manifest" | "drain" | "restart"
   startedAt?: number
   error?: string
   activeSessions?: Array<string>

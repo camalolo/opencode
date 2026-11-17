@@ -9,6 +9,7 @@ import { SessionV2 } from "@opencode-ai/core/session"
 import { Auth } from "../../src/auth"
 import { Config } from "../../src/config/config"
 import { Deploy } from "../../src/deploy/deploy"
+import { DeployResume } from "../../src/deploy/resume"
 import { Installation } from "../../src/installation"
 import { ServerAuth } from "../../src/server/auth"
 import { RootHttpApi } from "../../src/server/routes/instance/httpapi/api"
@@ -40,6 +41,7 @@ const apiLayer = HttpRouter.serve(
   Layer.provide(Layer.mock(Auth.Service)({})),
   Layer.provide(Layer.mock(Config.Service)({})),
   Layer.provide(Layer.mock(Deploy.Service)({ start: () => Effect.succeed({ started: false }), status: () => Effect.succeed({ phase: "idle" as const }) })),
+  Layer.provide(Layer.mock(DeployResume.Service)({ consume: () => Effect.void, boot: () => Effect.succeed(undefined) })),
   Layer.provide(Layer.mock(Installation.Service)({})),
   Layer.provide(
     Layer.mock(MoveSession.Service)({

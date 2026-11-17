@@ -14,6 +14,7 @@ import * as Sse from "effect/unstable/encoding/Sse"
 import { RootHttpApi } from "../api"
 import { GlobalDeployQuery, GlobalUpgradeInput } from "../groups/global"
 import { Deploy } from "@/deploy/deploy"
+import { DeployResume } from "@/deploy/resume"
 
 function eventData(data: unknown): Sse.Event {
   const payload = (data as { payload?: { id?: string } } | undefined)?.payload
@@ -113,6 +114,7 @@ export const globalHandlers = HttpApiBuilder.group(RootHttpApi, "global", (handl
     const installation = yield* Installation.Service
     const bridge = yield* EffectBridge.make()
     const deploySvc = yield* Deploy.Service
+    const resumeSvc = yield* DeployResume.Service
 
     const health = Effect.fn("GlobalHttpApi.health")(function* () {
       return { healthy: true as const, version: InstallationVersion }
@@ -189,6 +191,17 @@ export const globalHandlers = HttpApiBuilder.group(RootHttpApi, "global", (handl
     })
 
     const deployStatus = Effect.fn("GlobalHttpApi.deployStatus")(function* () {
+      // While the boot is settling a deploy capture, the resume view wins:
+      // the restarted server answers idle-deploy but is still restoring turns,
+      // and clients must keep the deploy screen until that finishes.
+      const boot = yield* resumeSvc.boot()
+      if (boot) {
+        return {
+          phase: "resume" as const,
+          startedAt: boot.startedAt,
+          ...(boot.sessions.length > 0 ? { activeSessions: boot.sessions } : {}),
+        }
+      }
       return yield* deploySvc.status()
     })
 

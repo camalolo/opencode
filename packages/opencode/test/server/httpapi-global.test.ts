@@ -6,6 +6,7 @@ import { HttpApiBuilder } from "effect/unstable/httpapi"
 import { Auth } from "../../src/auth"
 import { Config } from "../../src/config/config"
 import { Deploy } from "../../src/deploy/deploy"
+import { DeployResume } from "../../src/deploy/resume"
 import { Installation } from "../../src/installation"
 import { MoveSession } from "@opencode-ai/core/control-plane/move-session"
 import { ServerAuth } from "../../src/server/auth"
@@ -33,6 +34,7 @@ const apiLayer = HttpRouter.serve(
   Layer.provide(Layer.mock(Config.Service)({})),
   Layer.provide(Layer.mock(MoveSession.Service)({})),
   Layer.provide(Layer.mock(Deploy.Service)({ start: () => Effect.succeed({ started: false }), status: () => Effect.succeed({ phase: "idle" as const }) })),
+  Layer.provide(Layer.mock(DeployResume.Service)({ consume: () => Effect.void, boot: () => Effect.succeed(undefined) })),
   Layer.provide(
     Layer.mock(Installation.Service)({
       method: () => Effect.succeed("npm"),

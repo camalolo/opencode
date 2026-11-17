@@ -398,4 +398,54 @@ describe("deploy resume", () => {
       }),
     30_000,
   )
+
+  // boot tests need the capture present at layer init, so they own a
+  // describe with a beforeEach that writes it; they run live because the
+  // forked consume waits real seconds before settling
+  describe("boot resume phase", () => {
+    const boot = makeResume()
+
+    beforeEach(async () => {
+      await Fsp.rm(DeployResume.file(), { force: true })
+      await Fsp.writeFile(
+        DeployResume.file(),
+        JSON.stringify({ version: 1, at: Date.now(), sessions: ["ses_boot_ghost"] }),
+      )
+    })
+
+    boot.it.live(
+      "announces the resume view at boot and clears it once the consume settles",
+      () =>
+        Effect.gen(function* () {
+          const svc = yield* DeployResume.Service
+
+          const active = yield* svc.boot()
+          expect(active?.sessions).toEqual(["ses_boot_ghost"])
+          expect(active?.startedAt).toBeGreaterThan(0)
+
+          // the forked consume waits for the boot storm to settle, then
+          // settles the capture (the ghost session is skipped and dropped)
+          yield* pollWithTimeout(
+            Effect.gen(function* () {
+              return (yield* svc.boot()) === undefined ? (true as const) : undefined
+            }),
+            "boot resume never settled",
+            "30 seconds",
+          )
+          expect(yield* fileExists).toBe(false)
+        }),
+      60_000,
+    )
+  })
+
+  describe("boot resume without a capture", () => {
+    const idle = makeResume()
+
+    idle.it.effect("reports no boot resume", () =>
+      Effect.gen(function* () {
+        const svc = yield* DeployResume.Service
+        expect(yield* svc.boot()).toBeUndefined()
+      }),
+    )
+  })
 })

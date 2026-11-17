@@ -83,4 +83,61 @@ describe("event.retention", () => {
         void ids
       }),
   )
+
+  it.instance(
+    "drains a backlog larger than one batch",
+    () =>
+      Effect.gen(function* () {
+        const { db } = yield* Database.Service
+        const aggregate = "ses_retention_backlog"
+        yield* db
+          .insert(EventSequenceTable)
+          .values({ aggregate_id: aggregate, seq: 0 })
+          .onConflictDoNothing()
+          .run()
+          .pipe(Effect.orDie)
+        const stale = Date.now() - 30 * 24 * 60 * 60 * 1000
+        const fresh = Date.now() - 1 * 24 * 60 * 60 * 1000
+        // more old prunable rows than one 2000-row batch, interleaved with
+        // rows the sweep must keep
+        const rows: (typeof EventTable.$inferInsert)[] = []
+        for (let i = 0; i < 2001; i++) {
+          rows.push({
+            id: ID.make(`evt_backlog_old_${i}`),
+            aggregate_id: aggregate,
+            seq: i * 2,
+            type: "message.part.updated.1",
+            data: { sessionID: aggregate, part: {}, time: stale },
+          })
+          rows.push({
+            id: ID.make(`evt_backlog_keep_${i}`),
+            aggregate_id: aggregate,
+            seq: i * 2 + 1,
+            type: "session.updated.1",
+            data: { sessionID: aggregate, info: { time: { updated: stale } } },
+          })
+        }
+        rows.push({
+          id: ID.make("evt_backlog_new_part"),
+          aggregate_id: aggregate,
+          seq: 100_000,
+          type: "message.part.updated.1",
+          data: { sessionID: aggregate, part: {}, time: fresh },
+        })
+        yield* db.insert(EventTable).values(rows).run().pipe(Effect.orDie)
+
+        expect(yield* EventRetention.sweep(db)).toBe(2001)
+
+        const left = yield* db
+          .select({ id: EventTable.id })
+          .from(EventTable)
+          .where(eq(EventTable.aggregate_id, aggregate))
+          .all()
+          .pipe(Effect.orDie)
+        expect(left).toHaveLength(2002)
+        expect(new Set(left.map((row) => row.id)).has(ID.make("evt_backlog_new_part"))).toBe(true)
+        expect(left.some((row) => row.id.includes("backlog_old"))).toBe(false)
+      }),
+    60_000,
+  )
 })
