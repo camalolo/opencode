@@ -20,6 +20,7 @@ import { useLanguage } from "@/context/language"
 import { useProviders } from "@/hooks/use-providers"
 import { useSDK } from "@/context/sdk"
 import { useSessionLayout } from "@/pages/session/session-layout"
+import { compactionThresholdOptions } from "@/components/settings-v2/general-controllers"
 import { getSessionContext } from "./session-context-metrics"
 import { estimateSessionContextBreakdown, type SessionContextBreakdownKey } from "./session-context-breakdown"
 import { createSessionContextFormatter } from "./session-context-format"
@@ -96,7 +97,6 @@ function RawMessage(props: {
 const emptyMessages: Message[] = []
 const emptyUserMessages: UserMessage[] = []
 
-const compactionThresholdOptions: number[] = [0.5, 0.6, 0.7, 0.8, 0.9]
 const compactionPercent = (value: number) => `${Math.round(value * 100)}%`
 
 export function SessionContextTab() {

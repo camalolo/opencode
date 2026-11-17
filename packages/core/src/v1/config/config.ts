@@ -161,6 +161,10 @@ export const Info = Schema.Struct({
         description:
           "Trigger automatic compaction at this fraction of the model context window (0 < threshold <= 1). Overrides `reserved` when set. null resets to the default.",
       }),
+      max_context_tokens: Schema.optional(PositiveInt).annotate({
+        description:
+          "Hard cap on the context window share auto-compaction triggers at, in tokens, regardless of the model's window. The smallest of threshold and this cap wins.",
+      }),
       tail_turns: Schema.optional(NonNegativeInt).annotate({
         description:
           "Maximum number of recent user turns, including their following assistant/tool responses, to keep verbatim during compaction. By default retention is limited only by the preserved token budget.",

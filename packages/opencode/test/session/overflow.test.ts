@@ -42,4 +42,28 @@ describe("session.overflow.usable", () => {
     })
     expect(window).toBe(50_000)
   })
+
+  test("an absolute cap clamps the reserved-buffer window", () => {
+    const window = usable({
+      cfg: { compaction: { max_context_tokens: 150_000 } },
+      model: model({ context: 512_000, input: 510_000, output: 8_000 }),
+    })
+    expect(window).toBe(150_000)
+  })
+
+  test("an absolute cap clamps a threshold window", () => {
+    const window = usable({
+      cfg: { compaction: { threshold: 0.85, max_context_tokens: 150_000 } },
+      model: model({ context: 512_000, output: 8_000 }),
+    })
+    expect(window).toBe(150_000)
+  })
+
+  test("an absolute cap never raises the window on a smaller model", () => {
+    const window = usable({
+      cfg: { compaction: { max_context_tokens: 150_000 } },
+      model: model({ context: 128_000, input: 120_000, output: 8_000 }),
+    })
+    expect(window).toBe(112_000)
+  })
 })

@@ -72,11 +72,11 @@ export function createShellSettingsController() {
   }
 }
 
-// Auto-compact trigger as a fraction of the model context window. `null`
-// resets to the engine default (reserved-token buffer based). The generated
+// Auto-compact trigger as a fraction of the model context window, in 5% steps.
+// `null` resets to the engine default (reserved-token buffer based). The generated
 // SDK flattens the nullable schema to `number`, but the wire contract accepts
 // null as an explicit reset (mergeDeep drops the key server-side).
-export const compactionThresholdOptions: number[] = [0.5, 0.6, 0.7, 0.8, 0.9]
+export const compactionThresholdOptions: number[] = Array.from({ length: 19 }, (_, index) => (index + 1) / 20)
 
 export function createCompactionSettingsController() {
   const serverSync = useServerSync()

@@ -1,7 +1,7 @@
 export * as ConfigCompaction from "./compaction"
 
 import { Schema } from "effect"
-import { NonNegativeInt, UnitFraction } from "../schema"
+import { NonNegativeInt, PositiveInt, UnitFraction } from "../schema"
 
 export class Keep extends Schema.Class<Keep>("ConfigV2.Compaction.Keep")({
   tokens: NonNegativeInt.pipe(Schema.optional),
@@ -13,4 +13,5 @@ export class Info extends Schema.Class<Info>("ConfigV2.Compaction")({
   threshold: Schema.NullOr(UnitFraction).pipe(Schema.optional),
   keep: Keep.pipe(Schema.optional),
   buffer: NonNegativeInt.pipe(Schema.optional),
+  max_context_tokens: PositiveInt.pipe(Schema.optional),
 }) {}

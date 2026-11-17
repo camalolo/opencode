@@ -20,14 +20,17 @@ export function usable(input: {
   // A threshold (per session, else global) is a direct fraction of the context
   // window and takes precedence over the reserved-token buffer.
   const threshold = input.session?.compactionThreshold ?? input.cfg.compaction?.threshold ?? undefined
-  if (threshold) return Math.round((input.model.limit.input ?? context) * threshold)
-
   const reserved =
     input.cfg.compaction?.reserved ??
     Math.min(COMPACTION_BUFFER, ProviderTransform.maxOutputTokens(input.model, input.outputTokenMax))
-  return input.model.limit.input
-    ? Math.max(0, input.model.limit.input - reserved)
-    : Math.max(0, context - ProviderTransform.maxOutputTokens(input.model, input.outputTokenMax))
+  const base = threshold
+    ? Math.round((input.model.limit.input ?? context) * threshold)
+    : input.model.limit.input
+      ? Math.max(0, input.model.limit.input - reserved)
+      : Math.max(0, context - ProviderTransform.maxOutputTokens(input.model, input.outputTokenMax))
+  // An absolute token cap applies regardless of threshold: the smaller wins.
+  const cap = input.cfg.compaction?.max_context_tokens
+  return cap === undefined ? base : Math.min(base, cap)
 }
 
 export function isOverflow(input: {
