@@ -1,10 +1,18 @@
 import { Effect, Schema } from "effect"
 import { executeWithLimits } from "./interpreter/runtime.js"
-import { type HostTools, type Services, type ToolDescription, ToolRuntime } from "./tool-runtime.js"
+import { type DiscoveryOptions, type HostTools, type Services, type ToolDescription, ToolRuntime } from "./tool-runtime.js"
 import type { Definition } from "./tool.js"
 
 /** A tool call admitted during an execution. */
-export type { ToolCall, ToolCallEnded, ToolCallHooks, ToolCallStarted, ToolDescription } from "./tool-runtime.js"
+export type {
+  CatalogTool,
+  DiscoveryOptions,
+  ToolCall,
+  ToolCallEnded,
+  ToolCallHooks,
+  ToolCallStarted,
+  ToolDescription,
+} from "./tool-runtime.js"
 
 /** Resource budgets enforced independently during each CodeMode program execution. */
 export type ExecutionLimits = {
@@ -14,12 +22,6 @@ export type ExecutionLimits = {
   readonly maxToolCalls?: number
   /** Maximum UTF-8 bytes of model-facing output. No default: absent means no truncation. */
   readonly maxOutputBytes?: number
-}
-
-/** Controls how much of the tool catalog is inlined in agent instructions. */
-export type DiscoveryOptions = {
-  /** Approximate token budget (chars/4, default 2000) for full catalog entries. */
-  readonly catalogBudget?: number
 }
 
 type ToolTree<R = never> = {
@@ -149,7 +151,7 @@ export const make = <const Tools extends Record<string, unknown> = {}>(
   const tools = (options.tools ?? {}) as HostTools<Services<Tools>>
   ToolRuntime.assertValidTools(tools)
   const limits = resolveExecutionLimits(options.limits)
-  const prepared = ToolRuntime.prepare(tools, options.discovery?.catalogBudget)
+  const prepared = ToolRuntime.prepare(tools, options.discovery)
 
   return {
     catalog: () => prepared.catalog,

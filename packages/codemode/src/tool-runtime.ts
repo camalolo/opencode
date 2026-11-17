@@ -80,6 +80,27 @@ export type ToolDescription = {
   readonly signature: string
 }
 
+/** One catalog entry considered for progressive disclosure. */
+export type CatalogTool = {
+  readonly path: string
+  readonly namespace: string
+  readonly description: string
+  /** Estimated tokens of this tool's inlined catalog line. */
+  readonly cost: number
+}
+
+/** Controls how much of the tool catalog is inlined in agent instructions. */
+export type DiscoveryOptions = {
+  /** Approximate token budget (chars/4, default 2000) for full catalog entries. */
+  readonly catalogBudget?: number
+  /**
+   * Orders catalog entries before cost, highest first. Hosts use this to
+   * surface the tools a workload actually calls; every tool defaults to 0,
+   * which preserves cheapest-first selection. Called once per tool.
+   */
+  readonly priority?: (tool: CatalogTool) => number
+}
+
 export type SafeObject = Record<string, unknown>
 
 const reservedNamespace = "$codemode"
@@ -485,19 +506,31 @@ export const assertValidTools = <R>(tools: HostTools<R>): void => {
  * Budgeted catalog: every namespace is always listed with its tool count; full call
  * signatures are inlined against the `catalogBudget` (estimated tokens,
  * chars/4) round-robin across namespaces - in each round (namespaces alphabetical), every
- * namespace still holding un-inlined tools attempts to place its next-cheapest line, and
- * a namespace whose next line does not fit is done while the others keep going - so every
- * namespace gets some representation before any namespace gets everything. The section
- * states exactly how comprehensive it is - overall (COMPLETE vs PARTIAL) and per
- * namespace. Namespace stub lines are never budgeted: every namespace appears with its
- * tool count even at budget 0.
+ * namespace still holding un-inlined tools attempts to place its next line (highest
+ * `priority` first, then cheapest), and a namespace whose next line does not fit is done
+ * while the others keep going - so every namespace gets some representation before any
+ * namespace gets everything. The section states exactly how comprehensive it is - overall
+ * (COMPLETE vs PARTIAL) and per namespace. Namespace stub lines are never budgeted: every
+ * namespace appears with its tool count even at budget 0.
  */
-export const prepare = <R>(tools: HostTools<R>, catalogBudget = defaultCatalogBudget): DiscoveryPlan => {
+export const prepare = <R>(tools: HostTools<R>, discovery: DiscoveryOptions = {}): DiscoveryPlan => {
+  const catalogBudget = discovery.catalogBudget ?? defaultCatalogBudget
   if (!Number.isSafeInteger(catalogBudget) || catalogBudget < 0) {
     throw new RangeError("discovery.catalogBudget must be a non-negative safe integer")
   }
   const visible = visibleDefinitions(tools)
   const described = visible.map(({ description }) => description)
+
+  const priority = (tool: ToolDescription) => {
+    if (discovery.priority === undefined) return 0
+    const value = discovery.priority({
+      path: tool.path,
+      namespace: tool.path.split(".", 1)[0]!,
+      description: tool.description,
+      cost: estimateTokens(catalogLine(tool)),
+    })
+    return Number.isFinite(value) ? value : 0
+  }
 
   const namespaces = new Map<string, Array<ToolDescription>>()
   for (const tool of described) {
@@ -511,7 +544,7 @@ export const prepare = <R>(tools: HostTools<R>, catalogBudget = defaultCatalogBu
   // Select which signatures fit the budget before emitting, so the list can state
   // exactly how comprehensive it is. Round-robin fairness: in each round (namespaces
   // alphabetical), every namespace still holding un-inlined tools tries to place its
-  // next-cheapest line against the shared budget; a namespace whose next line does not
+  // next-ranked line against the shared budget; a namespace whose next line does not
   // fit is done - the others keep going - so every namespace gets some representation
   // before any namespace gets everything.
   const selections = ordered.map(([namespace, group]) => ({
@@ -519,7 +552,9 @@ export const prepare = <R>(tools: HostTools<R>, catalogBudget = defaultCatalogBu
     picked: new Set<ToolDescription>(),
     queue: [...group].sort(
       (left, right) =>
-        estimateTokens(catalogLine(left)) - estimateTokens(catalogLine(right)) || left.path.localeCompare(right.path),
+        priority(right) - priority(left) ||
+        estimateTokens(catalogLine(left)) - estimateTokens(catalogLine(right)) ||
+        left.path.localeCompare(right.path),
     ),
   }))
   let used = 0

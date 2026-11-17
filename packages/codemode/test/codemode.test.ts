@@ -543,6 +543,39 @@ describe("CodeMode public contract", () => {
     }
   })
 
+  test("discovery priority ranks entries ahead of cost and receives catalog metadata", () => {
+    const tool = (description: string) =>
+      Tool.make({
+        description,
+        input: Schema.Struct({}),
+        output: Schema.String,
+        run: () => Effect.succeed("ok"),
+      })
+    const tools = { alpha: { first: tool("First"), second: tool("Second") } }
+    // Fits exactly one of the two equally priced entries.
+    const catalogBudget = 15
+
+    const unranked = CodeMode.make({ tools, discovery: { catalogBudget } })
+    expect(unranked.instructions()).toContain("tools.alpha.first(")
+    expect(unranked.instructions()).not.toContain("tools.alpha.second(")
+
+    const seen: Array<CodeMode.CatalogTool> = []
+    const ranked = CodeMode.make({
+      tools,
+      discovery: {
+        catalogBudget,
+        priority: (entry) => {
+          seen.push(entry)
+          return entry.path === "alpha.second" ? 1 : 0
+        },
+      },
+    })
+    expect(ranked.instructions()).toContain("tools.alpha.second(")
+    expect(ranked.instructions()).not.toContain("tools.alpha.first(")
+    expect(seen.map((entry) => entry.path).sort()).toStrictEqual(["alpha.first", "alpha.second"])
+    expect(seen.every((entry) => entry.namespace === "alpha" && entry.cost > 0 && entry.description.length > 0)).toBe(true)
+  })
+
   test("renders bracket notation for tool names that are not JavaScript identifiers", async () => {
     const resolveLibrary = Tool.make({
       description: "Resolve a library ID",

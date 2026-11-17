@@ -45,8 +45,9 @@ advertised as `Promise<unknown>`.
 ### Discovery and model workflow
 
 The model sees a token-budgeted catalog. Every namespace remains visible, and complete signatures are selected
-round-robin across namespaces so one large namespace cannot starve the others. `$codemode.search` is always callable
-and is advertised when the inline catalog is partial.
+round-robin across namespaces so one large namespace cannot starve the others. Hosts may pass a `priority` function
+with the discovery options to inline the tools a workload actually calls ahead of cheaper ones; equal priorities keep
+cheapest-first selection. `$codemode.search` is always callable and is advertised when the inline catalog is partial.
 
 The intended workflow is:
 
