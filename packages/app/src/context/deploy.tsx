@@ -37,13 +37,13 @@ export const { use: useDeploy, provider: DeployProvider } = createSimpleContext(
       dismissed: {} as Record<ServerConnection.Key, number>,
     })
 
-    // The deploy state to surface for a server: hidden once its failure is
-    // dismissed; stays visible through the restart window until the reload.
+    // The deploy state to surface for a server: hidden once its failure —
+    // or its in-flight progress — is dismissed; stays visible through the
+    // restart window until the reload.
     const active = (key: ServerConnection.Key) => {
       const status = store.servers[key]
       if (!status) return undefined
-      if (status.error && status.startedAt !== undefined && store.dismissed[key] === status.startedAt)
-        return undefined
+      if (status.startedAt !== undefined && store.dismissed[key] === status.startedAt) return undefined
       return status
     }
 
@@ -51,7 +51,7 @@ export const { use: useDeploy, provider: DeployProvider } = createSimpleContext(
 
     const dismiss = () => {
       const status = store.servers[server.key]
-      if (!status?.error) return
+      if (!status) return
       if (status.startedAt !== undefined) setStore("dismissed", server.key, status.startedAt)
       else setStore("servers", server.key, undefined)
     }
@@ -74,7 +74,11 @@ export const { use: useDeploy, provider: DeployProvider } = createSimpleContext(
         }
         return
       }
-      if (status.error) deployHold.release(key)
+      if (status.error) {
+        deployHold.release(key)
+        // a failure always surfaces, even over a dismissed progress card
+        delete store.dismissed[key]
+      }
       // restart = waiting for the rebooted process; resume = the rebooted
       // server restoring the sessions the deploy interrupted
       if (status.phase === "restart" || status.phase === "resume") deployHold.mark(key)

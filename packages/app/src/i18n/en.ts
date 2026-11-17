@@ -420,6 +420,7 @@ export const dict = {
   "app.server.otherServers": "Other servers",
 
   "deploy.ongoing.title": "Deploy ongoing...",
+  "deploy.ongoing.dismiss": "Dismiss",
   "deploy.ongoing.phase.pull": "Pulling latest changes...",
   "deploy.ongoing.phase.install": "Installing dependencies...",
   "deploy.ongoing.phase.build": "Building web UI...",
