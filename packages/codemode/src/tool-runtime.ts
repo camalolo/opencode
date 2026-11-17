@@ -428,7 +428,13 @@ const makeSearchTool = (searchIndex: ReadonlyArray<SearchEntry>): Definition => 
           : scoped.find(
               (entry) => entry.description.path === pathQuery || toolExpression(entry.description.path) === trimmed,
             )
-      const terms = tokenize(query).map(termForms)
+      // Tokens shorter than three characters ("a", "at", "of") substring-match nearly every
+      // path and bury real hits under noise, so they never become search terms. A query of
+      // only such tokens matches nothing; only an empty query browses the index.
+      const terms = tokenize(query)
+        .filter((term) => term.length >= 3)
+        .map(termForms)
+      const browse = query.trim() === ""
       // Additive field-weighted scoring, summed across terms: exact path or path segment
       // (20) > path substring (8) > description substring (4) > any searchable text,
       // including input parameter names and descriptions (2).
@@ -450,7 +456,7 @@ const makeSearchTool = (searchIndex: ReadonlyArray<SearchEntry>): Definition => 
                 )
                 return { entry, score }
               })
-              .filter(({ score }) => terms.length === 0 || score > 0)
+              .filter(({ score }) => browse || score > 0)
               .sort(
                 (left, right) =>
                   right.score - left.score || left.entry.description.path.localeCompare(right.entry.description.path),

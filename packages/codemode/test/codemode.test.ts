@@ -785,6 +785,41 @@ describe("CodeMode public contract", () => {
     if (!removed.ok) expect(removed.error.kind).toBe("UnknownTool")
   })
 
+  test("search ignores sub-three-character tokens instead of matching every path", async () => {
+    const tool = (description: string) =>
+      Tool.make({
+        description,
+        input: Schema.Struct({ id: Schema.String }),
+        output: Schema.String,
+        run: () => Effect.succeed("ok"),
+      })
+    const runtime = CodeMode.make({
+      tools: {
+        mail: {
+          createDraft: tool("Compose a draft email"),
+          markAsRead: tool("Mark a message as read"),
+        },
+      },
+    })
+
+    const empty = await Effect.runPromise(runtime.execute(`return await tools.$codemode.search({ query: "a" })`))
+    expect(empty.ok).toBe(true)
+    if (empty.ok) expect((empty.value as { items: Array<unknown> }).items).toStrictEqual([])
+
+    const stopwords = await Effect.runPromise(
+      runtime.execute(`return await tools.$codemode.search({ query: "look at previous conversations" })`),
+    )
+    expect(stopwords.ok).toBe(true)
+    if (stopwords.ok) expect((stopwords.value as { items: Array<unknown> }).items).toStrictEqual([])
+
+    const noise = await Effect.runPromise(
+      runtime.execute(`return await tools.$codemode.search({ query: "mark a message as read" })`),
+    )
+    expect(noise.ok).toBe(true)
+    if (noise.ok)
+      expect((noise.value as { items: Array<{ path: string }> }).items[0]?.path).toBe("tools.mail.markAsRead")
+  })
+
   test("search defaults to 10 results and resolves exact tool paths", async () => {
     const tool = (index: number) =>
       Tool.make({
