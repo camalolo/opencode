@@ -8,7 +8,6 @@ import { createApiForServer, createSdkForServer, type ServerApi } from "@/utils/
 import { useLanguage } from "./language"
 import { usePlatform } from "./platform"
 import { ServerConnection, useServer } from "./server"
-import { deployHold } from "./deploy-hold"
 import { createRefCountMap } from "@/utils/refcount"
 import { useGlobal } from "./global"
 import { ServerScope } from "@/utils/server-scope"
@@ -409,11 +408,8 @@ function createServerSdkContextBase(server: ServerConnection.Any, scope: ServerS
                 // under this page: its lazy chunks may no longer exist in
                 // dist and fail to import mid-session. Reload once; the
                 // fresh document records the new boot as its first connect
-                // and never re-enters this branch for it. While a deploy is
-                // mid-flight the deploy overlay owns the reload instead — it
-                // fires when the restarted server reports its final idle, so
-                // the boot resume stays visible rather than flashing the app.
-                if (!deployHold.isHeld(ServerConnection.key(server))) location.reload()
+                // and never re-enters this branch for it.
+                location.reload()
               }
             }
             if (marker === "server.resumed") {

@@ -4,9 +4,8 @@ import { createEffect, onCleanup } from "solid-js"
 import { createStore } from "solid-js/store"
 import { useGlobal } from "./global"
 import { ServerConnection, useServer } from "./server"
-import { deployHold } from "./deploy-hold"
 
-export const DEPLOY_PHASES = ["pull", "install", "build", "manifest", "drain", "restart", "resume"] as const
+export const DEPLOY_PHASES = ["pull", "install", "build", "manifest", "drain", "restart"] as const
 export type DeployPhase = (typeof DEPLOY_PHASES)[number]
 
 type DeployState = GlobalDeployStatus & {
@@ -15,8 +14,8 @@ type DeployState = GlobalDeployStatus & {
   // a reload to pick up the new build has been scheduled
   reloading: boolean
   // this page lived through the server going silent during an active deploy:
-  // the final idle must reload it, while pages opened after the restart
-  // already have the new build and should not
+  // the rebooted server answering reloads it, while pages opened after the
+  // restart already have the new build and should not
   restarted: boolean
 }
 
@@ -33,7 +32,7 @@ export const { use: useDeploy, provider: DeployProvider } = createSimpleContext(
 
     const [store, setStore] = createStore({
       servers: {} as Record<ServerConnection.Key, DeployState | undefined>,
-      // startedAt of the failed deploy whose error the user dismissed
+      // startedAt of the deploy whose card the user dismissed
       dismissed: {} as Record<ServerConnection.Key, number>,
     })
 
@@ -59,29 +58,27 @@ export const { use: useDeploy, provider: DeployProvider } = createSimpleContext(
     const applyStatus = (key: ServerConnection.Key, status: GlobalDeployStatus) => {
       const previous = store.servers[key]
       if (previous?.reloading) return
-      if (status.phase === "idle" && !status.error) {
-        deployHold.release(key)
-        // Nothing left to show. The boot-change reload in server-sdk covers
-        // the normal restart path (while a deploy is held, the boot change
-        // leaves the reload to this branch, so the boot resume stays visible);
-        // this reload is also the retry net for when the server actually
-        // stopped answering. Graceful shutdown keeps answering polls with a
-        // fresh idle state before the process exits, and reloading on that
-        // would flash the app mid-deploy.
-        if (previous && previous.phase !== "idle" && previous.restarted) {
+      // The rebooted server answering at all means the boot is done — the
+      // overlay's job ends there. "resume" (background session restore) is
+      // deliberately not surfaced: it re-drives interrupted turns in the
+      // background and says nothing a reload must wait for. The boot-change
+      // reload in server-sdk covers the normal restart path; this branch is
+      // the retry net for when the stream misses the boot change. Graceful
+      // shutdown keeps answering polls with a fresh idle state before the
+      // process exits, and reloading on that would flash the app mid-deploy.
+      if (status.phase === "resume" || (status.phase === "idle" && !status.error)) {
+        if (previous && previous.restarted) {
           setStore("servers", key, { ...previous, phase: "restart", down: true, reloading: true })
           setTimeout(() => location.reload(), RELOAD_DELAY_MS)
+        } else {
+          setStore("servers", key, undefined)
         }
         return
       }
       if (status.error) {
-        deployHold.release(key)
         // a failure always surfaces, even over a dismissed progress card
         delete store.dismissed[key]
       }
-      // restart = waiting for the rebooted process; resume = the rebooted
-      // server restoring the sessions the deploy interrupted
-      if (status.phase === "restart" || status.phase === "resume") deployHold.mark(key)
       setStore("servers", key, { ...status, down: false, reloading: false, restarted: previous?.restarted ?? false })
     }
 
@@ -89,7 +86,6 @@ export const { use: useDeploy, provider: DeployProvider } = createSimpleContext(
       const status = store.servers[key]
       if (status && status.phase !== "idle" && !status.reloading) {
         setStore("servers", key, { down: true, restarted: true })
-        deployHold.mark(key)
       }
     }
 

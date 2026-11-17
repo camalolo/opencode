@@ -31,7 +31,6 @@ type Dictionary = i18n.Flatten<RawDictionary>
 type PluralKey =
   | UiI18nPluralKey
   | "deploy.ongoing.drain.active"
-  | "deploy.ongoing.resume.active"
   | "session.question.pending"
   | "session.followupDock.summary"
   | "session.revertDock.summary"

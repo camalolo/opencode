@@ -21,8 +21,9 @@ import { DeployShutdown } from "./shutdown"
 // on their durable triggers and are never woken by a deploy.
 //
 // DeployResume owns the boot side: a restarted server reports the "resume"
-// deploy phase (through the deploy status endpoint) until the boot settle
-// completes, so clients keep their deploy screen through the restore.
+// deploy phase through the deploy status endpoint while the boot settle
+// runs — API-visible only; the web UI reloads as soon as the rebooted
+// server answers and session restore finishes in the background.
 
 const STEP_TIMEOUT = "10 minutes"
 const MAX_STEP_OUTPUT_BYTES = 4 * 1024 * 1024
