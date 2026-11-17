@@ -2,6 +2,7 @@ import { google } from 'googleapis';
 import fs from 'fs/promises';
 import path from 'path';
 import { createServer } from 'http';
+import crypto from 'crypto';
 import open from 'open';
 import os from 'os';
 const SCOPES = [
@@ -15,15 +16,12 @@ const SCOPES = [
 ];
 const REDIRECT_PORT = 4100;
 const REDIRECT_URI = `http://localhost:${REDIRECT_PORT}/callback`;
-// Store tokens in user's home directory
-const getTokenPath = () => {
-    const configDir = path.join(os.homedir(), '.google-workspace-mcp');
-    return path.join(configDir, 'token.json');
-};
-const getCredentialsPath = () => {
-    const configDir = path.join(os.homedir(), '.google-workspace-mcp');
-    return path.join(configDir, 'credentials.json');
-};
+function authDir() {
+    return process.env.GOOGLE_WORKSPACE_MCP_AUTH_DIR || path.join(os.homedir(), '.google-workspace-mcp');
+}
+// Store tokens in the auth dir (overridable for tests/isolated instances)
+const getTokenPath = () => path.join(authDir(), 'token.json');
+const getCredentialsPath = () => path.join(authDir(), 'credentials.json');
 async function authenticateWithDeviceCode(credentials, oauth2Client) {
     const creds = getOAuthClientConfig(credentials);
     const deviceCodeParams = new URLSearchParams({
@@ -93,7 +91,7 @@ async function authenticateWithDeviceCode(credentials, oauth2Client) {
     throw new Error('Device authentication timed out');
 }
 async function ensureConfigDir() {
-    const configDir = path.join(os.homedir(), '.google-workspace-mcp');
+    const configDir = authDir();
     try {
         await fs.mkdir(configDir, { recursive: true });
     }
@@ -213,22 +211,34 @@ export async function getAuthenticatedClient() {
     const token = await loadToken();
     if (token) {
         oauth2Client.setCredentials(token);
-        // Check if token needs refresh
-        try {
-            // Try to refresh if we have a refresh token
-            if (token.refresh_token) {
-                const { credentials: newTokens } = await oauth2Client.refreshAccessToken();
-                oauth2Client.setCredentials(newTokens);
-                await saveToken(newTokens);
-            }
-            return oauth2Client;
-        }
-        catch (error) {
-            console.error('Token refresh failed, re-authenticating...');
-        }
+        if (await tryRefreshToken(oauth2Client)) return oauth2Client;
+        console.error('Token refresh failed, re-authenticating...');
     }
     // No valid token, need to authenticate
     const authFlow = (process.env.GOOGLE_WORKSPACE_MCP_AUTH_FLOW || 'auto').toLowerCase();
+    if (authFlow === 'link' || authFlow === 'auto') {
+        // Link mode (default): the user may be nowhere near this machine, so surface
+        // a re-auth link instead of blocking on an interactive flow. The browser is
+        // redirected by Google to <public base>/oauth/google/callback (served by the
+        // opencode server), which writes the code to auth-code.json in the auth dir;
+        // the next call exchanges it. A code the user just completed is consumed
+        // here, and token.json is re-checked in case a sibling MCP process won the
+        // single-use code race and refreshed it.
+        const link = await tryLinkAuth(credentials);
+        if (link.client) return link.client;
+        if (link.authUrl) {
+            throw new Error('Google Workspace MCP: the OAuth token expired or was revoked. '
+                + 'Re-authenticate by opening this link in your browser and completing Google sign-in, '
+                + 'then retry the request: ' + link.authUrl);
+        }
+        if (authFlow === 'link') {
+            throw new Error('Google Workspace MCP: token refresh failed and no public callback URL is configured. '
+                + 'Set GOOGLE_WORKSPACE_MCP_PUBLIC_URL (or write it to '
+                + path.join(authDir(), 'public-url') + ', e.g. https://home.opencode.camalolo.com) '
+                + 'so the re-auth redirect can reach this server.');
+        }
+        console.error('No public callback URL configured; falling back to interactive auth flows.');
+    }
     if (authFlow === 'device') {
         await authenticateWithDeviceCode(credentials, oauth2Client);
     }
@@ -245,5 +255,114 @@ export async function getAuthenticatedClient() {
         }
     }
     return oauth2Client;
+}
+async function tryLinkAuth(credentials) {
+    const base = await getPublicBaseUrl();
+    if (!base) return {};
+    for (let attempt = 0; attempt < 2; attempt++) {
+        const linked = await exchangePendingCode(credentials, base);
+        if (linked) return { client: linked };
+        const latest = await loadToken();
+        if (latest && latest.refresh_token) {
+            const client = createOAuth2Client(credentials);
+            client.setCredentials(latest);
+            if (await tryRefreshToken(client)) return { client };
+        }
+    }
+    return { authUrl: buildLinkAuthUrl(credentials, base) };
+}
+async function tryRefreshToken(oauth2Client) {
+    try {
+        const { credentials: newTokens } = await oauth2Client.refreshAccessToken();
+        oauth2Client.setCredentials(newTokens);
+        await saveToken(newTokens);
+        return true;
+    }
+    catch (error) {
+        console.error(`Token refresh failed: ${error.message}`);
+        return false;
+    }
+}
+function getCodePath() {
+    return path.join(authDir(), 'auth-code.json');
+}
+// Public origin the browser will be redirected back to. The opencode server on
+// that origin serves /oauth/google/callback and hands the code back through the
+// auth dir (see packages/opencode .../handlers/oauth-callback.ts).
+async function getPublicBaseUrl() {
+    if (process.env.GOOGLE_WORKSPACE_MCP_PUBLIC_URL) {
+        return process.env.GOOGLE_WORKSPACE_MCP_PUBLIC_URL.replace(/\/+$/, '');
+    }
+    try {
+        const value = (await fs.readFile(path.join(authDir(), 'public-url'), 'utf-8')).trim();
+        if (value) return value.replace(/\/+$/, '');
+    }
+    catch (error) {
+        // not configured through a file; fall through
+    }
+    return null;
+}
+function buildLinkAuthUrl(credentials, base) {
+    const creds = getOAuthClientConfig(credentials);
+    const oauth2Client = new google.auth.OAuth2(creds.client_id, creds.client_secret, REDIRECT_URI);
+    const authUrl = oauth2Client.generateAuthUrl({
+        access_type: 'offline',
+        scope: SCOPES,
+        prompt: 'consent',
+        redirect_uri: base + '/oauth/google/callback',
+        state: crypto.randomBytes(12).toString('hex'),
+    });
+    console.error('Re-authentication required. Open this URL in a browser:');
+    console.error(authUrl);
+    return authUrl;
+}
+// Exchange a code written by the server's OAuth callback route, if one is
+// pending and fresh. Returns an authenticated client or null. The callback is
+// single-use; failures clear the file so the next call surfaces a fresh link.
+async function exchangePendingCode(credentials, base) {
+    let raw;
+    try {
+        raw = await fs.readFile(getCodePath(), 'utf-8');
+    }
+    catch (error) {
+        return null;
+    }
+    const clear = () => fs.unlink(getCodePath()).catch(() => { });
+    let pending;
+    try {
+        pending = JSON.parse(raw);
+    }
+    catch (error) {
+        await clear();
+        return null;
+    }
+    if (!pending.code || !pending.received_at || Date.now() - pending.received_at > 10 * 60 * 1000) {
+        await clear();
+        return null;
+    }
+    const creds = getOAuthClientConfig(credentials);
+    // The redirect_uri must match the one embedded in the original consent URL.
+    const client = new google.auth.OAuth2(creds.client_id, creds.client_secret, base + '/oauth/google/callback');
+    try {
+        const { tokens } = await client.getToken(pending.code);
+        const saved = {
+            access_token: tokens.access_token,
+            refresh_token: tokens.refresh_token,
+            scope: tokens.scope,
+            token_type: tokens.token_type,
+            refresh_token_expires_in: tokens.refresh_token_expires_in,
+            expiry_date: tokens.expiry_date,
+        };
+        client.setCredentials(saved);
+        await saveToken(saved);
+        await clear();
+        console.error('Re-authentication complete; token saved.');
+        return client;
+    }
+    catch (error) {
+        console.error(`Callback code exchange failed (${error.message}); clearing it and requesting a new link.`);
+        await clear();
+        return null;
+    }
 }
 //# sourceMappingURL=auth.js.map

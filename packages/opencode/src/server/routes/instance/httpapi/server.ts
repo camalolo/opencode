@@ -97,6 +97,7 @@ import { fileHandlers } from "./handlers/file"
 import { globalHandlers } from "./handlers/global"
 import { instanceHandlers } from "./handlers/instance"
 import { mcpHandlers } from "./handlers/mcp"
+import { oauthCallbackRoute } from "./handlers/oauth-callback"
 import { permissionHandlers } from "./handlers/permission"
 import { projectHandlers } from "./handlers/project"
 import { projectCopyHandlers } from "./handlers/project-copy"
@@ -294,6 +295,10 @@ export function createRoutes(
     instanceRoutes,
     serverRoutes,
     docRoute,
+    // Browser-facing OAuth callback for local MCP servers (e.g. google-workspace).
+    // Mounted without auth: the redirect arrives from Google with no credentials.
+    // Registered before uiRoute so the catch-all never shadows it.
+    oauthCallbackRoute,
     uiRoute,
   ).pipe(
     Layer.provide([

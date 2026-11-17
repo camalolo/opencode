@@ -47,6 +47,25 @@ eviction or any upstream version bump. This copy is tracked and deploys with the
 - `build/index.js` — matching input schemas/descriptions for the above; the
   `call_tool` handler strips `_embed_images` from the JSON text block and
   re-emits it as MCP image content blocks.
+- `build/auth.js` — link-based re-auth (2026-11-17, supersedes the interactive
+  flows as the `auto` default): when the refresh token is expired/revoked and
+  `GOOGLE_WORKSPACE_MCP_PUBLIC_URL` (or `<authDir>/public-url`) is configured,
+  a failed tool call returns fast with a Google consent link instead of
+  hanging in browser auth (which waits 5 min on a `localhost:4100` callback
+  no remote browser will ever hit; on Windows services there is no usable
+  display either). The consent link redirects to
+  `<public base>/oauth/google/callback` — a route in the opencode server —
+  which writes the authorization code to `<authDir>/auth-code.json`; the next
+  MCP call exchanges it and proceeds. Handles the multi-process race where
+  several opencode-spawned MCP children compete for the single-use code (the
+  losers re-read token.json, which the winner refreshed). Exchange uses
+  `prompt=consent`, so the grant yields a durable refresh token — device-flow
+  grants carry `refresh_token_expires_in ≈ 28h` and die daily; device flow is
+  also rejected outright for desktop-type OAuth clients (`invalid_client`).
+  Set `GOOGLE_WORKSPACE_MCP_AUTH_FLOW=browser` to use the old on-box browser
+  flow; `auto` falls back to it (then device flow) only when no public URL is
+  configured. The auth dir defaults to `~/.google-workspace-mcp` and is
+  overridable with `GOOGLE_WORKSPACE_MCP_AUTH_DIR`.
 
 ## Wiring
 
