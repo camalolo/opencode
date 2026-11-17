@@ -1,14 +1,15 @@
 # Quick Setup Guide
 
 ## What You Built
-A unified Google Workspace MCP server with **45 tools** across:
-- **Gmail** (11)
+A unified Google Workspace MCP server with **55 tools** across:
+- **Gmail** (14)
 - **Calendar** (8)
 - **Drive** (11)
 - **Docs** (4)
 - **Sheets** (4)
 - **Slides** (3)
 - **People** (4)
+- **Chat** (6)
 
 ## Recommended Install (Published Package)
 ```bash
@@ -26,6 +27,7 @@ npx -y @alanxchen/google-workspace-mcp@1.0.2
    - Google Sheets API
    - Google Slides API
    - Google People API
+   - Google Chat API
 4. Configure OAuth consent screen and add scopes:
    - `https://www.googleapis.com/auth/gmail.modify`
    - `https://www.googleapis.com/auth/calendar`
@@ -34,6 +36,10 @@ npx -y @alanxchen/google-workspace-mcp@1.0.2
    - `https://www.googleapis.com/auth/spreadsheets`
    - `https://www.googleapis.com/auth/presentations`
    - `https://www.googleapis.com/auth/contacts`
+   - `https://www.googleapis.com/auth/chat.spaces.readonly`
+   - `https://www.googleapis.com/auth/chat.memberships.readonly`
+   - `https://www.googleapis.com/auth/chat.messages.readonly`
+   - `https://www.googleapis.com/auth/chat.messages.create`
 5. Create OAuth client ID (**Desktop app**) and download credentials JSON
 6. Save credentials:
    - Windows: `%USERPROFILE%\.google-workspace-mcp\credentials.json`

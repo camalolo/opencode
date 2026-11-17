@@ -47,6 +47,41 @@ eviction or any upstream version bump. This copy is tracked and deploys with the
 - `build/index.js` — matching input schemas/descriptions for the above; the
   `call_tool` handler strips `_embed_images` from the JSON text block and
   re-emits it as MCP image content blocks.
+- Google Chat support (2026-11-17):
+  - `build/auth.js` — added `chat.spaces.readonly`, `chat.memberships.readonly`,
+    `chat.messages.readonly`, `chat.messages.create` to `SCOPES`, plus
+    `missingScopes(token)`: a token that still refreshes fine but predates a scope
+    is treated as `reauth_required` (and `getAuthStatus` reports
+    `reason: missing_scopes` + `missingScopes`). Without this, an old token keeps
+    working for Gmail/Drive/... forever and the new scope is never requested.
+    The re-consent link carries the full scope set; after the callback exchange
+    the new token replaces token.json and the retry proceeds. One consent click
+    per server is needed (each server has its own auth dir/token).
+  - `build/tools/chat.js` — new module, user-authenticated Chat API v1:
+    `list_spaces` (named spaces, group chats, DMs; DM peer display names resolved
+    from the membership list, 8-way concurrency, `includeDmPeers:false` to skip),
+    `get_space`, `list_messages` (newest first by default, `since`/`until` →
+    `create_time` filter, `thread` filter, pagination), `get_message`,
+    `send_message` (text only, optional thread reply with
+    `REPLY_MESSAGE_FALLBACK_TO_NEW_THREAD`), `list_members`.
+    Message shape includes sender, thread, deleted marker and attachment metadata
+    (`driveFileId` for Drive-hosted attachments, usable with the Drive tools).
+    API quirks found while testing: `messages.list` rejects a bare `DESC` orderBy
+    (it wants `createTime DESC`, which the tool now sends), and `ASC` on some
+    long-lived spaces returns an empty first page — the tool documents that.
+    The caller's own membership is identified without the OIDC `profile` scope:
+    Gmail profile gives the address and `spaces.members.get` accepts the email as
+    a `users/{user}` alias (People `people/me` needs `profile`, which the shared
+    token does not hold), resolved once per process and cached.
+  - `build/index.js` — registered the six chat tools (55 definitions total) and
+    fixed the lazily-cached tool map: `getAllTools()` cached the *rejected*
+    promise when auth failed, so the "retry after re-consent" the error message
+    asks for could never succeed until the MCP child was restarted. The cache is
+    now cleared on failure and rebuilt on the next call.
+  - Console prerequisites on the Google Cloud project (`camalolo-gws-mcp`):
+    Chat API enabled; for an External (test-mode) OAuth app the four scopes must
+    also be listed under Google Auth platform → Data Access. Internal Workspace
+    apps don't need the scope list.
 - `build/auth.js` — link-based re-auth (2026-11-17, supersedes the interactive
   flows as the `auto` default): when the refresh token is expired/revoked and
   `GOOGLE_WORKSPACE_MCP_PUBLIC_URL` (or `<authDir>/public-url`) is configured,

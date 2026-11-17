@@ -1,9 +1,9 @@
 # Google Workspace MCP Server
 
-A unified Model Context Protocol (MCP) server for Gmail, Google Calendar, Google Drive, Google Docs, Google Sheets, Google Slides, and Google People.
+A unified Model Context Protocol (MCP) server for Gmail, Google Calendar, Google Drive, Google Docs, Google Sheets, Google Slides, Google People, and Google Chat.
 
 ## Highlights
-- 45 tools across Gmail, Calendar, Drive, Docs, Sheets, Slides, and People APIs
+- 55 tools across Gmail, Calendar, Drive, Docs, Sheets, Slides, People, and Chat APIs
 - Published npm package for easy MCP client integration
 - OAuth token caching to avoid repeated auth prompts
 - Robust auth modes for both local desktop and sandboxed environments
@@ -61,6 +61,13 @@ npx -y @alanxchen/google-workspace-mcp@1.0.2
 - Create contacts
 - Get contact details
 
+### Chat (6 tools)
+- List spaces, group chats and DMs (DM peer names resolved)
+- Get space details
+- List and read messages, filtered by time window or thread
+- Send a text message (as the user) to a space or thread
+- List space members
+
 ## Prerequisites
 - Node.js 18+
 - Google Cloud project with these APIs enabled:
@@ -71,6 +78,7 @@ npx -y @alanxchen/google-workspace-mcp@1.0.2
   - Google Sheets API
   - Google Slides API
   - Google People API
+  - Google Chat API
 - OAuth 2.0 Desktop app credentials JSON
 
 ## OAuth Setup
@@ -82,6 +90,10 @@ npx -y @alanxchen/google-workspace-mcp@1.0.2
    - `https://www.googleapis.com/auth/spreadsheets`
    - `https://www.googleapis.com/auth/presentations`
    - `https://www.googleapis.com/auth/contacts`
+   - `https://www.googleapis.com/auth/chat.spaces.readonly`
+   - `https://www.googleapis.com/auth/chat.memberships.readonly`
+   - `https://www.googleapis.com/auth/chat.messages.readonly`
+   - `https://www.googleapis.com/auth/chat.messages.create`
 2. Create OAuth client credentials with application type: **Desktop app**
 3. Save credentials JSON to:
    - Windows: `%USERPROFILE%\.google-workspace-mcp\credentials.json`

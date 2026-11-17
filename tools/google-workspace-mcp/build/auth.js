@@ -13,6 +13,14 @@ const SCOPES = [
     'https://www.googleapis.com/auth/spreadsheets',
     'https://www.googleapis.com/auth/presentations',
     'https://www.googleapis.com/auth/contacts',
+    // Google Chat. Read scopes cover spaces/messages/members listing; create
+    // covers sending. A token granted before these were added keeps working for
+    // the other APIs -- the missing-scope check below only forces the re-consent
+    // flow when a call actually needs a scope the token does not carry.
+    'https://www.googleapis.com/auth/chat.spaces.readonly',
+    'https://www.googleapis.com/auth/chat.memberships.readonly',
+    'https://www.googleapis.com/auth/chat.messages.readonly',
+    'https://www.googleapis.com/auth/chat.messages.create',
 ];
 const REDIRECT_PORT = 4100;
 const REDIRECT_URI = `http://localhost:${REDIRECT_PORT}/callback`;
@@ -141,6 +149,16 @@ function getOAuthClientConfig(credentials) {
 async function sleep(ms) {
     return new Promise((resolve) => setTimeout(resolve, ms));
 }
+function grantedScopes(token) {
+    return typeof token?.scope === 'string' ? token.scope.split(/\s+/).filter(Boolean) : [];
+}
+// Scopes the token does not cover. Tokens saved before a scope was added to
+// SCOPES keep refreshing fine, so a successful refresh alone is not proof the
+// token can serve every tool: missing scopes must run the re-consent flow.
+function missingScopes(token) {
+    const granted = new Set(grantedScopes(token));
+    return SCOPES.filter((scope) => !granted.has(scope));
+}
 async function authenticateWithBrowser(oauth2Client) {
     const authUrl = oauth2Client.generateAuthUrl({
         access_type: 'offline',
@@ -198,7 +216,13 @@ export async function getAuthStatus() {
     if (!base) return { status: 'unconfigured' };
     const link = await tryLinkAuth(credentials);
     if (link.client) return { status: 'ok' };
-    if (link.authUrl) return { status: 'reauth_required', link: link.authUrl };
+    if (link.authUrl) {
+        const missing = missingScopes(await loadToken());
+        if (missing.length) {
+            return { status: 'reauth_required', reason: 'missing_scopes', missingScopes: missing, link: link.authUrl };
+        }
+        return { status: 'reauth_required', reason: 'token_expired_or_revoked', link: link.authUrl };
+    }
     return { status: 'unconfigured' };
 }
 export async function getAuthenticatedClient() {
@@ -225,8 +249,14 @@ export async function getAuthenticatedClient() {
     const token = await loadToken();
     if (token) {
         oauth2Client.setCredentials(token);
-        if (await tryRefreshToken(oauth2Client)) return oauth2Client;
-        console.error('Token refresh failed, re-authenticating...');
+        if (await tryRefreshToken(oauth2Client)) {
+            const missing = missingScopes(await loadToken());
+            if (!missing.length) return oauth2Client;
+            console.error(`Token is missing required scopes (${missing.join(', ')}), re-authenticating...`);
+        }
+        else {
+            console.error('Token refresh failed, re-authenticating...');
+        }
     }
     // No valid token, need to authenticate
     const authFlow = (process.env.GOOGLE_WORKSPACE_MCP_AUTH_FLOW || 'auto').toLowerCase();
@@ -241,7 +271,11 @@ export async function getAuthenticatedClient() {
         const link = await tryLinkAuth(credentials);
         if (link.client) return link.client;
         if (link.authUrl) {
-            throw new Error('Google Workspace MCP: the OAuth token expired or was revoked. '
+            const missing = missingScopes(await loadToken());
+            const reason = missing.length
+                ? `the OAuth token does not cover the required scopes (${missing.join(', ')})`
+                : 'the OAuth token expired or was revoked';
+            throw new Error(`Google Workspace MCP: ${reason}. `
                 + 'Ask the user to re-authenticate: render this URL in your reply as a clickable markdown link, '
                 + 'and after the user completes Google sign-in in their browser, retry the request. URL: ' + link.authUrl);
         }
@@ -280,7 +314,7 @@ async function tryLinkAuth(credentials) {
         if (latest && latest.refresh_token) {
             const client = createOAuth2Client(credentials);
             client.setCredentials(latest);
-            if (await tryRefreshToken(client)) return { client };
+            if (await tryRefreshToken(client) && !missingScopes(await loadToken()).length) return { client };
         }
     }
     return { authUrl: buildLinkAuthUrl(credentials, base) };

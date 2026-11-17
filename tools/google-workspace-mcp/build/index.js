@@ -10,6 +10,7 @@ import { registerDocsTools } from './tools/docs.js';
 import { registerSheetsTools } from './tools/sheets.js';
 import { registerSlidesTools } from './tools/slides.js';
 import { registerPeopleTools } from './tools/people.js';
+import { registerChatTools } from './tools/chat.js';
 const SERVER_NAME = 'google-workspace-mcp';
 const SERVER_VERSION = '1.0.2';
 // Tool definitions for MCP
@@ -627,6 +628,89 @@ const TOOL_DEFINITIONS = [
             required: ['resourceName'],
         },
     },
+    // Chat tools
+    {
+        name: 'list_spaces',
+        description: 'List Google Chat spaces (named spaces, group chats and DMs) the user is a member of. DMs are only listed once a message was sent. For DM spaces the peer display name is resolved automatically (dmPeer).',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                pageSize: { type: 'number', description: 'Maximum number of spaces to return (default 100, max 1000)' },
+                pageToken: { type: 'string', description: 'Pagination token from a previous list_spaces call' },
+                filter: { type: 'string', description: 'Optional filter, e.g. space_type = "SPACE" (valid values SPACE, GROUP_CHAT, DIRECT_MESSAGE, combinable with OR)' },
+                includeDmPeers: { type: 'boolean', description: 'Resolve the other person for DM spaces (default true; costs one membership call per DM)' },
+            },
+        },
+    },
+    {
+        name: 'get_space',
+        description: 'Get details of one Google Chat space, including the peer name for a DM',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                space: { type: 'string', description: 'Space resource name, e.g. spaces/AAAAAAA' },
+            },
+            required: ['space'],
+        },
+    },
+    {
+        name: 'list_messages',
+        description: 'List messages in a Google Chat space, newest first by default. Use since/until (RFC 3339 timestamps) to narrow the window, or thread to read one thread. Message names and thread names can be passed back to get_message and send_message.',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                space: { type: 'string', description: 'Space resource name, e.g. spaces/AAAAAAA' },
+                pageSize: { type: 'number', description: 'Maximum number of messages to return (default 50, max 1000)' },
+                pageToken: { type: 'string', description: 'Pagination token from a previous list_messages call' },
+                order: { type: 'string', enum: ['desc', 'asc'], description: 'Order by create time (default desc = newest first; asc starts from the earliest available history and some spaces return an empty first page)' },
+                since: { type: 'string', description: 'Only messages created after this RFC 3339 timestamp (e.g. 2026-11-01T00:00:00Z)' },
+                until: { type: 'string', description: 'Only messages created before this RFC 3339 timestamp' },
+                thread: { type: 'string', description: 'Restrict to one thread: spaces/{space}/threads/{thread} or just the thread id' },
+                showDeleted: { type: 'boolean', description: 'Include deleted messages (content unavailable, default false)' },
+            },
+            required: ['space'],
+        },
+    },
+    {
+        name: 'get_message',
+        description: 'Get one Google Chat message by its resource name',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                name: { type: 'string', description: 'Message resource name, e.g. spaces/AAAAAAA/messages/BBBBBBBBB.BBBBBBBBBBB' },
+            },
+            required: ['name'],
+        },
+    },
+    {
+        name: 'send_message',
+        description: 'Send a text message to a Google Chat space the user is a member of (the message is attributed to the user). Pass thread to reply in a thread; threads fall back to a new thread if not found.',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                space: { type: 'string', description: 'Space resource name, e.g. spaces/AAAAAAA' },
+                text: { type: 'string', description: 'Message text (max 32000 bytes)' },
+                thread: { type: 'string', description: 'Optional thread to reply in: spaces/{space}/threads/{thread} or just the thread id' },
+            },
+            required: ['space', 'text'],
+        },
+    },
+    {
+        name: 'list_members',
+        description: 'List members of a Google Chat space',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                space: { type: 'string', description: 'Space resource name, e.g. spaces/AAAAAAA' },
+                pageSize: { type: 'number', description: 'Maximum number of memberships to return (default 100, max 1000)' },
+                pageToken: { type: 'string', description: 'Pagination token from a previous list_members call' },
+                filter: { type: 'string', description: 'Optional filter, e.g. member.type = "HUMAN" or role = "ROLE_MANAGER"' },
+                showGroups: { type: 'boolean', description: 'Also return Google Group memberships (default false)' },
+                showInvited: { type: 'boolean', description: 'Also return invited memberships (default false)' },
+            },
+            required: ['space'],
+        },
+    },
     {
         name: 'auth_link',
         description: 'Check Google Workspace auth status and, when re-authentication is needed, get the consent link the user must open in their browser. Render the link in your reply as a clickable markdown link.',
@@ -641,6 +725,8 @@ async function main() {
     let allToolsPromise = null;
     const getAllTools = async () => {
         if (!allToolsPromise) {
+            // A failed auth attempt (expired token, missing scopes) must not be
+            // cached: the retry that follows the user's re-consent has to rebuild.
             allToolsPromise = (async () => {
                 const auth = await getAuthenticatedClient();
                 console.error('Authentication successful!');
@@ -651,6 +737,7 @@ async function main() {
                 const sheetsTools = registerSheetsTools(auth);
                 const slidesTools = registerSlidesTools(auth);
                 const peopleTools = registerPeopleTools(auth);
+                const chatTools = registerChatTools(auth);
                 return {
                     ...gmailTools,
                     ...calendarTools,
@@ -659,8 +746,12 @@ async function main() {
                     ...sheetsTools,
                     ...slidesTools,
                     ...peopleTools,
+                    ...chatTools,
                 };
-            })();
+            })().catch((error) => {
+                allToolsPromise = null;
+                throw error;
+            });
         }
         return allToolsPromise;
     };
