@@ -9,6 +9,7 @@ import { Plugin } from "@/plugin"
 import { Session } from "@/session/session"
 import { Tool } from "@/tool/tool"
 import * as Truncate from "@/tool/truncate"
+import { ToolRanking } from "@/tool/ranking"
 import { MessageID, SessionID } from "@/session/schema"
 import { Cause, Effect, Exit, Layer, Schema } from "effect"
 
@@ -55,6 +56,9 @@ function harness(input: {
     }),
     Layer.mock(Session.Service, {
       get: () => Effect.succeed({ permission: [] } as any),
+    }),
+    Layer.mock(ToolRanking.Service, {
+      counts: () => Effect.succeed(new Map<string, number>()),
     }),
     Layer.mock(MCP.Service, {
       tools: () => Effect.succeed(input.mcpTools),
@@ -247,6 +251,27 @@ describe("code mode execute", () => {
     expect(out.metadata.toolCalls).toEqual([
       { tool: "$codemode.search", status: "completed", input: { query: "only tool", limit: 3, offset: 0 } },
     ])
+  })
+
+  test("ranks catalog entries by recorded usage ahead of cheaper ones", () => {
+    const tools: Record<string, MCP.McpTool> = {}
+    for (let i = 0; i < 80; i++) {
+      tools[`mail_tool_${i}`] = {
+        def: {
+          name: `tool_${i}`,
+          description: `Operation number ${i} with a description long enough to make every catalog line cost real budget`,
+          inputSchema: { type: "object", properties: { id: { type: "string" } } },
+        } as MCPToolDef,
+        client: { callTool: async () => ({ content: [] }) } as unknown as MCP.McpTool["client"],
+      }
+    }
+
+    const unranked = describeFor(tools, ["mail"])
+    expect(unranked).toContain("Available tools (PARTIAL - ")
+    expect(unranked).not.toContain("tools.mail.tool_79(")
+
+    const ranked = describeCatalog(Permission.visibleTools(tools, []), ["mail"], new Map([["mail_tool_79", 50]]))
+    expect(ranked).toContain("tools.mail.tool_79(")
   })
 
   test("runs plain JavaScript and returns the value as text", async () => {

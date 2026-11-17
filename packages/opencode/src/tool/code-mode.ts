@@ -8,8 +8,20 @@ import { Agent } from "@/agent/agent"
 import { Session } from "@/session/session"
 import { Permission } from "@/permission"
 import { Plugin } from "@/plugin"
+import { ToolRanking } from "./ranking"
 
 export const CODE_MODE_TOOL = "execute"
+
+/**
+ * Budgets that keep one script from monopolizing a turn or flooding the
+ * model's context. MCP calls may legitimately take minutes, so the timeout is
+ * generous; the call and output caps bound runaway loops instead.
+ */
+export const LIMITS: CodeMode.ExecutionLimits = {
+  timeoutMs: 5 * 60 * 1000,
+  maxToolCalls: 200,
+  maxOutputBytes: 64 * 1024,
+}
 
 const DESCRIPTION = "Run a confined orchestration script with access to connected MCP tools."
 
@@ -55,12 +67,64 @@ function groupByServer(mcpTools: Record<string, MCP.McpTool>, servers: readonly 
   return groups
 }
 
-export function describeCatalog(mcpTools: Record<string, MCP.McpTool>, servers: readonly string[]): string {
+/**
+ * Expected-use ranking for catalog disclosure: an intent floor plus recorded
+ * calls, divided by inline cost. Verbs separate cheap lookups from destructive
+ * or seldom-used operations before any usage data exists.
+ */
+const VERB_FLOORS: ReadonlyArray<readonly [string, number]> = [
+  ["search", 4],
+  ["read", 4],
+  ["list", 4],
+  ["get", 4],
+  ["find", 4],
+  ["fetch", 4],
+  ["query", 4],
+  ["create", 3],
+  ["send", 3],
+  ["reply", 3],
+  ["update", 3],
+  ["append", 3],
+  ["add", 3],
+  ["insert", 3],
+  ["quick", 3],
+  ["set", 3],
+  ["trash", 1],
+  ["delete", 1],
+  ["share", 1],
+  ["unsubscribe", 1],
+  ["extract", 1],
+  ["move", 1],
+  ["copy", 1],
+  ["remove", 1],
+]
+
+const verbFloor = (local: string) => {
+  const name = local.toLowerCase()
+  return VERB_FLOORS.find(([verb]) => name.startsWith(verb))?.[1] ?? 0.5
+}
+
+function makePriority(catalog: readonly CatalogEntry[], usage: ReadonlyMap<string, number> | undefined) {
+  if (usage === undefined || usage.size === 0) return undefined
+  const entries = new Map(catalog.map((entry) => [entry.path, entry]))
+  return (tool: CodeMode.CatalogTool) => {
+    const entry = entries.get(tool.path)
+    if (entry === undefined) return 0
+    // Direct calls record the tool name; code-mode calls record the path form.
+    const calls = (usage.get(entry.key) ?? 0) + (usage.get(entry.path) ?? 0)
+    return (verbFloor(entry.local) + calls) / Math.sqrt(Math.max(tool.cost, 1))
+  }
+}
+
+export function describeCatalog(
+  mcpTools: Record<string, MCP.McpTool>,
+  servers: readonly string[],
+  usage?: ReadonlyMap<string, number>,
+): string {
+  const catalog = [...groupByServer(mcpTools, servers).values()].flat()
   return CodeMode.make({
-    tools: toolTree(
-      [...groupByServer(mcpTools, servers).values()].flat(),
-      () => () => Effect.fail(toolError("Tool preview is not executable.")),
-    ),
+    tools: toolTree(catalog, () => () => Effect.fail(toolError("Tool preview is not executable."))),
+    discovery: { priority: makePriority(catalog, usage) },
   }).instructions()
 }
 
@@ -192,6 +256,7 @@ export const CodeModeTool = Tool.define(
     const agents = yield* Agent.Service
     const sessions = yield* Session.Service
     const plugin = yield* Plugin.Service
+    const ranking = yield* ToolRanking.Service
 
     const init: Tool.DefWithoutID<typeof Parameters, Metadata> = {
       description: DESCRIPTION,
@@ -210,6 +275,7 @@ export const CodeModeTool = Tool.define(
         const mcpTools = Permission.visibleTools(yield* mcp.tools(), ruleset)
         const servers = Object.keys(yield* mcp.clients()).map(McpCatalog.sanitize)
         const catalog = [...groupByServer(mcpTools, servers).values()].flat()
+        const usage = yield* ranking.counts(session.directory)
 
         const calls: CallEntry[] = []
         const attachments: Attachment[] = []
@@ -238,6 +304,8 @@ export const CodeModeTool = Tool.define(
 
         const runtime = CodeMode.make({
           tools: toolTree(catalog, callTool),
+          limits: LIMITS,
+          discovery: { priority: makePriority(catalog, usage) },
           onToolCallStart: ({ index, name, input }) =>
             Effect.suspend(() => {
               const shown = (() => {

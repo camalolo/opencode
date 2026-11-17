@@ -7,6 +7,7 @@ import { Plugin } from "@/plugin"
 import { Session } from "@/session/session"
 import { Tool } from "@/tool/tool"
 import * as Truncate from "@/tool/truncate"
+import { ToolRanking } from "@/tool/ranking"
 import { MessageID, SessionID } from "@/session/schema"
 import { Server } from "@modelcontextprotocol/sdk/server/index.js"
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js"
@@ -148,6 +149,7 @@ async function buildTool() {
     }),
     Layer.mock(Agent.Service, { get: () => Effect.succeed({ name: "build", permission: [] } as any) }),
     Layer.mock(Session.Service, { get: () => Effect.succeed({ permission: [] } as any) }),
+    Layer.mock(ToolRanking.Service, { counts: () => Effect.succeed(new Map<string, number>()) }),
     Layer.mock(MCP.Service, {
       tools: () => Effect.succeed(mcpTools),
       clients: () => Effect.succeed({ [SERVER]: {} as any }),
