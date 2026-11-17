@@ -2,7 +2,7 @@
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { CallToolRequestSchema, ListToolsRequestSchema, } from '@modelcontextprotocol/sdk/types.js';
-import { getAuthenticatedClient } from './auth.js';
+import { getAuthenticatedClient, getAuthStatus } from './auth.js';
 import { registerGmailTools } from './tools/gmail.js';
 import { registerCalendarTools } from './tools/calendar.js';
 import { registerDriveTools } from './tools/drive.js';
@@ -627,6 +627,14 @@ const TOOL_DEFINITIONS = [
             required: ['resourceName'],
         },
     },
+    {
+        name: 'auth_link',
+        description: 'Check Google Workspace auth status and, when re-authentication is needed, get the consent link the user must open in their browser. Render the link in your reply as a clickable markdown link.',
+        inputSchema: {
+            type: 'object',
+            properties: {},
+        },
+    },
 ];
 async function main() {
     console.error('Starting Google Workspace MCP Server...');
@@ -674,6 +682,15 @@ async function main() {
     // Handle call_tool request
     server.setRequestHandler(CallToolRequestSchema, async (request) => {
         const { name, arguments: args } = request.params;
+        // auth_link runs before getAllTools: it must work precisely when auth is
+        // broken (getAllTools would reject) and never blocks on interactive flows.
+        if (name === 'auth_link') {
+            const status = await getAuthStatus();
+            const text = status.status === 'reauth_required'
+                ? JSON.stringify({ ...status, instruction: 'Ask the user to open this link in their browser and complete Google sign-in, then retry the request. Render the link in your reply as a clickable markdown link like [Re-authenticate Google Workspace](<link>).' }, null, 2)
+                : JSON.stringify(status, null, 2);
+            return { content: [{ type: 'text', text }] };
+        }
         try {
             const allTools = await getAllTools();
             const tool = allTools[name];

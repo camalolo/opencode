@@ -187,6 +187,20 @@ async function authenticateWithBrowser(oauth2Client) {
         }, 5 * 60 * 1000);
     });
 }
+// Auth status + consent link for the `auth_link` tool. Runs the same recovery
+// path as a failing tool call (code exchange, token reload) but never throws:
+// the caller decides how to present it. link is a Google consent URL that the
+// model should render as a clickable markdown link in its chat reply.
+export async function getAuthStatus() {
+    const credentials = await loadCredentials();
+    if (!credentials) return { status: 'no_credentials' };
+    const base = await getPublicBaseUrl();
+    if (!base) return { status: 'unconfigured' };
+    const link = await tryLinkAuth(credentials);
+    if (link.client) return { status: 'ok' };
+    if (link.authUrl) return { status: 'reauth_required', link: link.authUrl };
+    return { status: 'unconfigured' };
+}
 export async function getAuthenticatedClient() {
     // First, check if we have credentials file
     let credentials = await loadCredentials();
@@ -228,8 +242,8 @@ export async function getAuthenticatedClient() {
         if (link.client) return link.client;
         if (link.authUrl) {
             throw new Error('Google Workspace MCP: the OAuth token expired or was revoked. '
-                + 'Re-authenticate by opening this link in your browser and completing Google sign-in, '
-                + 'then retry the request: ' + link.authUrl);
+                + 'Ask the user to re-authenticate: render this URL in your reply as a clickable markdown link, '
+                + 'and after the user completes Google sign-in in their browser, retry the request. URL: ' + link.authUrl);
         }
         if (authFlow === 'link') {
             throw new Error('Google Workspace MCP: token refresh failed and no public callback URL is configured. '
