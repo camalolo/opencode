@@ -26,8 +26,10 @@ function route(cmd: string, args: string[]): [string, string[]] {
 // own cgroup instead — the LSP client restarts it, and bounded memory with a
 // restart is strictly better than box-wide thrash. Children (tsserver,
 // tsgolint) inherit the scope, so wrapper daemons like `oxlint --lsp` are
-// covered too. Fail-open: without a usable user systemd (desktops, containers)
-// we spawn exactly as before — LSPs must work everywhere.
+// covered too. CPUWeight=50 makes a busy server (tsserver re-analyzing after
+// every edit) yield CPU to foreground builds and lint runs. Fail-open: without
+// a usable user systemd (desktops, containers) we spawn exactly as before —
+// LSPs must work everywhere.
 let scopeUsable: boolean | undefined
 
 function lspScope(): { argv: string[]; unit: string } | undefined {
@@ -36,7 +38,7 @@ function lspScope(): { argv: string[]; unit: string } | undefined {
     try {
       scopeUsable =
         process.platform === "linux" &&
-        Bun.spawnSync(["systemd-run", "--user", "--quiet", "--scope", "true"]).exitCode === 0
+        Bun.spawnSync(["systemd-run", "--user", "--quiet", "--scope", "-p", "CPUWeight=50", "true"]).exitCode === 0
     } catch {
       scopeUsable = false
     }
@@ -56,6 +58,8 @@ function lspScope(): { argv: string[]; unit: string } | undefined {
       "MemoryHigh=3G",
       "-p",
       "MemorySwapMax=1G",
+      "-p",
+      "CPUWeight=50",
       "--unit",
       unit,
       "--",

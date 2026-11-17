@@ -8,7 +8,7 @@ import * as LSPServer from "./server"
 import { Config } from "@/config/config"
 import { Process } from "@/util/process"
 import { spawn as lspspawn } from "./launch"
-import { Effect, Layer, Context, Schema } from "effect"
+import { Cause, Duration, Effect, Layer, Context, Schedule, Schema } from "effect"
 import { InstanceState } from "@/effect/instance-state"
 import { containsPath } from "@/project/instance-context"
 import { NonNegativeInt } from "@opencode-ai/core/schema"
@@ -109,11 +109,17 @@ const filterExperimentalServers = (servers: Record<string, LSPServer.Info>, flag
 
 type LocInput = { file: string; line: number; character: number }
 
+// An idle tsserver holds GBs of analyzed-project state on fleet boxes; release
+// it. The next touched file spawns a fresh server.
+const IDLE_SHUTDOWN_MS = 15 * 60_000
+const IDLE_SWEEP_EVERY = Duration.minutes(5)
+
 interface State {
   clients: LSPClient.Info[]
   servers: Record<string, LSPServer.Info>
   broken: Set<string>
   spawning: Map<string, Promise<LSPClient.Info | undefined>>
+  lastTouch: Map<string, number>
 }
 
 export interface Interface {
@@ -193,7 +199,32 @@ const layer = Layer.effect(
           servers,
           broken: new Set(),
           spawning: new Map(),
+          lastTouch: new Map(),
         }
+
+        const sweepIdle = Effect.fn("LSP.sweepIdle")(function* () {
+          const now = Date.now()
+          const idle = s.clients.filter(
+            (client) => now - (s.lastTouch.get(client.root + client.serverID) ?? now) > IDLE_SHUTDOWN_MS,
+          )
+          for (const client of idle) {
+            const index = s.clients.indexOf(client)
+            if (index !== -1) s.clients.splice(index, 1)
+            s.lastTouch.delete(client.root + client.serverID)
+          }
+          yield* Effect.promise(() => Promise.all(idle.map((client) => client.shutdown().catch(() => {}))))
+          if (idle.length > 0) {
+            yield* Effect.logInfo("shut down idle LSP servers", {
+              serverIds: idle.map((client) => client.serverID).join(", "),
+            })
+          }
+        })
+
+        yield* sweepIdle().pipe(
+          Effect.catchCause((cause) => Effect.logError("LSP idle sweep failed", { cause: Cause.pretty(cause) })),
+          Effect.repeat(Schedule.spaced(IDLE_SWEEP_EVERY)),
+          Effect.forkScoped,
+        )
 
         yield* Effect.addFinalizer(() =>
           Effect.promise(async () => {
@@ -293,6 +324,9 @@ const layer = Layer.effect(
       yield* Effect.forEach(Array.from({ length: clients.updated }), () => events.publish(Event.Updated, {}), {
         discard: true,
       })
+      for (const client of clients.result) {
+        s.lastTouch.set(client.root + client.serverID, Date.now())
+      }
       return clients.result
     })
 
