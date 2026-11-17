@@ -1,5 +1,5 @@
 import { LayerNode } from "@opencode-ai/core/effect/layer-node"
-import { SessionV1 } from "@opencode-ai/core/v1/session"
+import { AbortedError, SessionV1 } from "@opencode-ai/core/v1/session"
 import { ConfigV1 } from "@opencode-ai/core/v1/config/config"
 import { Session } from "./session"
 import { SessionID, MessageID, PartID } from "./schema"
@@ -338,6 +338,9 @@ const layer = Layer.effect(
       }
       const userMessage = parent.info
       const compactionPart = parent.parts.find((part): part is SessionV1.CompactionPart => part.type === "compaction")
+      if (!compactionPart) {
+        throw new Error(`Compaction parent must own a compaction part: ${input.parentID}`)
+      }
 
       let messages = input.messages
       let replay:
@@ -369,7 +372,7 @@ const layer = Layer.effect(
         ? yield* provider.getModel(agent.model.providerID, agent.model.modelID).pipe(Effect.orDie)
         : yield* provider.getModel(userMessage.model.providerID, userMessage.model.modelID).pipe(Effect.orDie)
       const cfg = yield* config.get()
-      const history = compactionPart && messages.at(-1)?.info.id === input.parentID ? messages.slice(0, -1) : messages
+      const history = messages.at(-1)?.info.id === input.parentID ? messages.slice(0, -1) : messages
       const prior = completedCompactions(history)
       const hidden = new Set(prior.flatMap((item) => [item.userIndex, item.assistantIndex]))
       const previousSummary = prior.at(-1)?.summary
@@ -659,7 +662,12 @@ const layer = Layer.effect(
         }
       }
 
-      if (processor.message.error) return "stop"
+      if (processor.message.error) {
+        if (AbortedError.isInstance(processor.message.error)) {
+          yield* rollback(input.sessionID, input.parentID)
+        }
+        return "stop"
+      }
       if (result === "continue") {
         yield* events.publish(Event.Compacted, { sessionID: input.sessionID })
       }
@@ -691,10 +699,33 @@ const layer = Layer.effect(
       })
     })
 
+    // An aborted compaction must not leave its marker pending: the next drain
+    // would re-run it against whichever user prompt arrives first, attaching the
+    // summary to that prompt and swallowing it. Runs in the interrupt handler, so
+    // it also covers aborts that land before or during the summary stream.
+    const rollback = Effect.fn("SessionCompaction.rollback")(function* (sessionID: SessionID, parentID: MessageID) {
+      const msgs = yield* session
+        .messages({ sessionID })
+        .pipe(
+          Effect.catchIf(
+            (error): error is NotFoundError => NotFoundError.isInstance(error),
+            () => Effect.succeed(undefined),
+          ),
+        )
+      if (!msgs) return
+      for (const msg of msgs) {
+        if (msg.info.role === "assistant" && msg.info.summary && msg.info.parentID === parentID) {
+          yield* session.removeMessage({ sessionID, messageID: msg.info.id })
+        }
+      }
+      yield* session.removeMessage({ sessionID, messageID: parentID })
+    })
+
     return Service.of({
       isOverflow,
       prune,
-      process: processCompaction,
+      process: (input) =>
+        processCompaction(input).pipe(Effect.onInterrupt(() => rollback(input.sessionID, input.parentID))),
       create,
     })
   }),

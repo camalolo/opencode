@@ -1695,7 +1695,44 @@ describe("session.message-v2.latest", () => {
     expect(state.finished?.id).toBe(SUMMARY_ASSISTANT)
     expect(state.user?.id).toBe(NEW_COMPACTION_USER)
     expect(state.tasks).toHaveLength(1)
-    expect(state.tasks[0]).toMatchObject({ type: "compaction", auto: true })
+    expect(state.tasks[0]?.part).toMatchObject({ type: "compaction", auto: true })
+    expect(state.tasks[0]?.message.id).toBe(NEW_COMPACTION_USER)
+  })
+
+  // Regression: a prompt arriving while a compaction marker is still pending must
+  // not become the compaction's parent - the loop used to pass lastUser.id, so the
+  // summary attached to the new prompt and the turn ended as if the prompt was answered.
+  test("a pending compaction task is owned by its marker message, not a newer prompt", () => {
+    const abandonedCompactionUser = MessageID.make("msg_007")
+    const abortedCompactionUser: SessionV1.WithParts = {
+      info: userInfo(abandonedCompactionUser),
+      parts: [
+        {
+          ...basePart(abandonedCompactionUser, "p1"),
+          type: "compaction",
+          auto: false,
+        },
+      ] as SessionV1.Part[],
+    }
+    const promptUser = MessageID.make("msg_008")
+
+    const state = MessageV2.latest([
+      tailUser,
+      overflowAssistant,
+      compactionUser,
+      summaryAssistant,
+      continueUser,
+      abortedCompactionUser,
+      {
+        info: userInfo(promptUser),
+        parts: [{ ...basePart(promptUser, "p1"), type: "text", text: "next real prompt" }] as SessionV1.Part[],
+      },
+    ])
+
+    expect(state.user?.id).toBe(promptUser)
+    expect(state.tasks).toHaveLength(1)
+    expect(state.tasks[0]?.part).toMatchObject({ type: "compaction" })
+    expect(state.tasks[0]?.message.id).toBe(abandonedCompactionUser)
   })
 
   test("selects compaction and subtask work after the finished boundary by creation time", () => {
@@ -1724,6 +1761,7 @@ describe("session.message-v2.latest", () => {
     const state = MessageV2.latest([newTask, { info: finished, parts: [] }, oldTask])
 
     expect(state.tasks).toHaveLength(1)
-    expect(state.tasks[0]).toMatchObject({ type: "subtask", prompt: "inspect" })
+    expect(state.tasks[0]?.part).toMatchObject({ type: "subtask", prompt: "inspect" })
+    expect(state.tasks[0]?.message.id).toBe(newTask.info.id)
   })
 })

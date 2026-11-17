@@ -589,11 +589,14 @@ export function latest(msgs: WithParts[]) {
     if (info.role === "assistant" && isAfter(info, assistant)) assistant = info
     if (info.role === "assistant" && info.finish && isAfter(info, finished)) finished = info
   }
-  const tasks = msgs.flatMap((m) =>
-    finished && !isAfter(m.info, finished)
-      ? []
-      : m.parts.filter((p): p is CompactionPart | SubtaskPart => p.type === "compaction" || p.type === "subtask"),
-  )
+  const tasks = msgs.flatMap((m): { part: CompactionPart | SubtaskPart; message: User }[] => {
+    if (finished && !isAfter(m.info, finished)) return []
+    if (m.info.role !== "user") return []
+    const message = m.info
+    return m.parts.flatMap((part) =>
+      part.type === "compaction" || part.type === "subtask" ? [{ part, message }] : [],
+    )
+  })
   return { user, assistant, finished, tasks }
 }
 

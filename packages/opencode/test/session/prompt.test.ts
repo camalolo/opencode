@@ -798,6 +798,58 @@ it.instance("loop continues when a length finish leaves tool calls pending", () 
   }),
 )
 
+const seedCompactionMarker = Effect.fn("test.seedCompactionMarker")(function* (sessionID: SessionID) {
+  const session = yield* Session.Service
+  const msg = yield* session.updateMessage({
+    id: MessageID.ascending(),
+    role: "user",
+    sessionID,
+    agent: "build",
+    model: ref,
+    time: { created: Date.now() },
+  })
+  yield* session.updatePart({
+    id: PartID.ascending(),
+    messageID: msg.id,
+    sessionID,
+    type: "compaction",
+    auto: false,
+  })
+  return msg
+})
+
+it.instance("loop drains a pending compaction against its marker before answering a new prompt", () =>
+  Effect.gen(function* () {
+    const { llm } = yield* useServerConfig(providerCfg)
+    const prompt = yield* SessionPrompt.Service
+    const sessions = yield* Session.Service
+    const chat = yield* sessions.create({ title: "Pinned" })
+    // A compaction request (e.g. from an interrupted run) is still pending when
+    // the user sends a new prompt.
+    const marker = yield* seedCompactionMarker(chat.id)
+    yield* llm.push(reply().text("summary of everything so far").stop())
+    yield* llm.push(reply().text("answered the new prompt").stop())
+
+    const result = yield* prompt.prompt({
+      sessionID: chat.id,
+      agent: "build",
+      parts: [{ type: "text", text: "next real prompt" }],
+    })
+
+    const messages = yield* sessions.messages({ sessionID: chat.id })
+    const summary = messages.find((msg) => msg.info.role === "assistant" && msg.info.summary)
+    // The summary is attached to the compaction marker, not hijacked by the new prompt.
+    expect(summary?.info.role === "assistant" ? summary.info.parentID : undefined).toBe(marker.id)
+    // And the new prompt still gets answered instead of being swallowed.
+    expect(result.info.role).toBe("assistant")
+    if (result.info.role === "assistant") {
+      expect(result.info.parentID).not.toBe(marker.id)
+      expect(result.parts.some((part) => part.type === "text" && part.text === "answered the new prompt")).toBe(true)
+    }
+    expect(yield* llm.hits).toHaveLength(2)
+  }),
+)
+
 it.instance("loop stops provider overflow instead of auto-compacting when disabled", () =>
   Effect.gen(function* () {
     const { llm } = yield* useServerConfig((url) => ({

@@ -24,7 +24,7 @@ import { SessionProjector } from "@opencode-ai/core/session/projector"
 import { Provider } from "@/provider/provider"
 import * as SessionProcessorModule from "../../src/session/processor"
 import { ProviderTest } from "../fake/provider"
-import { testEffect } from "../lib/effect"
+import { pollWithTimeout, testEffect } from "../lib/effect"
 import { CrossSpawnSpawner } from "@opencode-ai/core/cross-spawn-spawner"
 import { TestConfig } from "../fixture/config"
 import { RuntimeFlags } from "@/effect/runtime-flags"
@@ -189,6 +189,7 @@ function createCompactionMarker(sessionID: SessionID) {
         type: "compaction",
         auto: false,
       })
+      return msg
     }),
   )
 }
@@ -843,12 +844,41 @@ describe("session.compaction.process", () => {
   )
 
   it.instance(
+    "throws when parent does not own a compaction part",
+    Effect.gen(function* () {
+      const ssn = yield* SessionNs.Service
+      const session = yield* ssn.create({})
+      const msg = yield* createUserMessage(session.id, "hello")
+      const msgs = yield* ssn.messages({ sessionID: session.id })
+
+      const exit = yield* Effect.exit(
+        SessionCompaction.use.process({
+          parentID: msg.id,
+          messages: msgs,
+          sessionID: session.id,
+          auto: false,
+        }),
+      )
+
+      expect(Exit.isFailure(exit)).toBe(true)
+      if (Exit.isFailure(exit)) {
+        const error = Cause.squash(exit.cause)
+        expect(error).toBeInstanceOf(Error)
+        if (error instanceof Error) {
+          expect(error.message).toContain(`Compaction parent must own a compaction part: ${msg.id}`)
+        }
+      }
+    }),
+  )
+
+  it.instance(
     "publishes compacted event on continue",
     Effect.gen(function* () {
       const events = yield* EventV2Bridge.Service
       const ssn = yield* SessionNs.Service
       const session = yield* ssn.create({})
-      const msg = yield* createUserMessage(session.id, "hello")
+      yield* createUserMessage(session.id, "hello")
+      const marker = yield* createCompactionMarker(session.id)
       const msgs = yield* ssn.messages({ sessionID: session.id })
       const done = yield* Deferred.make<void, Error>()
       const seen: string[] = []
@@ -863,7 +893,7 @@ describe("session.compaction.process", () => {
       yield* Effect.addFinalizer(() => unsub)
 
       const result = yield* SessionCompaction.use.process({
-        parentID: msg.id,
+        parentID: marker.id,
         messages: msgs,
         sessionID: session.id,
         auto: false,
@@ -881,11 +911,12 @@ describe("session.compaction.process", () => {
     Effect.gen(function* () {
       const ssn = yield* SessionNs.Service
       const session = yield* ssn.create({})
-      const msg = yield* createUserMessage(session.id, "hello")
+      yield* createUserMessage(session.id, "hello")
+      const marker = yield* createCompactionMarker(session.id)
       const msgs = yield* ssn.messages({ sessionID: session.id })
 
       const result = yield* SessionCompaction.use.process({
-        parentID: msg.id,
+        parentID: marker.id,
         messages: msgs,
         sessionID: session.id,
         auto: false,
@@ -909,11 +940,12 @@ describe("session.compaction.process", () => {
     Effect.gen(function* () {
       const ssn = yield* SessionNs.Service
       const session = yield* ssn.create({})
-      const msg = yield* createUserMessage(session.id, "hello")
+      yield* createUserMessage(session.id, "hello")
+      const marker = yield* createCompactionMarker(session.id)
       const msgs = yield* ssn.messages({ sessionID: session.id })
 
       const result = yield* SessionCompaction.use.process({
-        parentID: msg.id,
+        parentID: marker.id,
         messages: msgs,
         sessionID: session.id,
         auto: true,
@@ -1111,11 +1143,12 @@ describe("session.compaction.process", () => {
     Effect.gen(function* () {
       const ssn = yield* SessionNs.Service
       const session = yield* ssn.create({})
-      const msg = yield* createUserMessage(session.id, "hello")
+      yield* createUserMessage(session.id, "hello")
+      const marker = yield* createCompactionMarker(session.id)
       const msgs = yield* ssn.messages({ sessionID: session.id })
 
       const result = yield* SessionCompaction.use.process({
-        parentID: msg.id,
+        parentID: marker.id,
         messages: msgs,
         sessionID: session.id,
         auto: true,
@@ -1154,11 +1187,11 @@ describe("session.compaction.process", () => {
         filename: "cat.png",
         url: "https://example.com/cat.png",
       })
-      const msg = yield* createUserMessage(session.id, "current")
+      const marker = yield* createCompactionMarker(session.id)
       const msgs = yield* ssn.messages({ sessionID: session.id })
 
       const result = yield* SessionCompaction.use.process({
-        parentID: msg.id,
+        parentID: marker.id,
         messages: msgs,
         sessionID: session.id,
         auto: true,
@@ -1181,12 +1214,11 @@ describe("session.compaction.process", () => {
     Effect.gen(function* () {
       const ssn = yield* SessionNs.Service
       const session = yield* ssn.create({})
-      yield* createUserMessage(session.id, "earlier")
-      const msg = yield* createUserMessage(session.id, "current")
+      const marker = yield* createCompactionMarker(session.id)
       const msgs = yield* ssn.messages({ sessionID: session.id })
 
       const result = yield* SessionCompaction.use.process({
-        parentID: msg.id,
+        parentID: marker.id,
         messages: msgs,
         sessionID: session.id,
         auto: true,
@@ -1232,7 +1264,8 @@ describe("session.compaction.process", () => {
         const events = yield* EventV2Bridge.Service
         const ready = yield* Deferred.make<void>()
         const session = yield* ssn.create({})
-        const msg = yield* createUserMessage(session.id, "hello")
+        yield* createUserMessage(session.id, "hello")
+        const marker = yield* createCompactionMarker(session.id)
         const msgs = yield* ssn.messages({ sessionID: session.id })
         const off = yield* events.listen((evt) => {
           if (evt.type !== SessionStatus.Event.Status.type) return Effect.void
@@ -1245,7 +1278,7 @@ describe("session.compaction.process", () => {
 
         const fiber = yield* SessionCompaction.use
           .process({
-            parentID: msg.id,
+            parentID: marker.id,
             messages: msgs,
             sessionID: session.id,
             auto: false,
@@ -1276,11 +1309,12 @@ describe("session.compaction.process", () => {
         return yield* Effect.gen(function* () {
           const ssn = yield* SessionNs.Service
           const session = yield* ssn.create({})
-          const msg = yield* createUserMessage(session.id, "hello")
+          yield* createUserMessage(session.id, "hello")
+          const marker = yield* createCompactionMarker(session.id)
           const msgs = yield* ssn.messages({ sessionID: session.id })
           const fiber = yield* SessionCompaction.use
             .process({
-              parentID: msg.id,
+              parentID: marker.id,
               messages: msgs,
               sessionID: session.id,
               auto: false,
@@ -1295,8 +1329,46 @@ describe("session.compaction.process", () => {
           expect(Exit.isFailure(exit)).toBe(true)
           if (Exit.isFailure(exit)) expect(Cause.hasInterrupts(exit.cause)).toBe(true)
           expect(all.some((msg) => msg.info.role === "assistant" && msg.info.summary)).toBe(false)
+          // The pending marker is rolled back too, so the next drain cannot re-run it.
+          expect(all.some((msg) => msg.parts.some((part) => part.type === "compaction"))).toBe(false)
         }).pipe(withCompaction({ plugin: plugin(ready) }))
       }),
+    { git: true },
+  )
+
+  itCompaction.instance(
+    "rolls back the pending marker and summary when the compaction is aborted mid-run",
+    () => {
+      const stub = llm()
+      stub.push(Stream.fromEffect(Effect.never))
+      return Effect.gen(function* () {
+        const ssn = yield* SessionNs.Service
+        const session = yield* ssn.create({})
+        yield* createUserMessage(session.id, "hello")
+        const marker = yield* createCompactionMarker(session.id)
+        const msgs = yield* ssn.messages({ sessionID: session.id })
+
+        const fiber = yield* SessionCompaction.use
+          .process({ parentID: marker.id, messages: msgs, sessionID: session.id, auto: false })
+          .pipe(Effect.forkChild)
+
+        yield* pollWithTimeout(
+          Effect.gen(function* () {
+            const all = yield* ssn.messages({ sessionID: session.id })
+            return all.some((item) => item.info.role === "assistant" && item.info.summary)
+              ? ({ ok: true } as const)
+              : undefined
+          }),
+          "summary assistant never appeared",
+        )
+
+        yield* Fiber.interrupt(fiber)
+        const all = yield* ssn.messages({ sessionID: session.id })
+        expect(all.some((item) => item.info.role === "assistant" && item.info.summary)).toBe(false)
+        expect(all.some((item) => item.parts.some((part) => part.type === "compaction"))).toBe(false)
+        expect(all.some((item) => item.info.id === marker.id)).toBe(false)
+      }).pipe(withCompaction({ llm: stub.llmLayer }))
+    },
     { git: true },
   )
 
@@ -1320,10 +1392,11 @@ describe("session.compaction.process", () => {
       return Effect.gen(function* () {
         const ssn = yield* SessionNs.Service
         const session = yield* ssn.create({})
-        const msg = yield* createUserMessage(session.id, "hello")
+        yield* createUserMessage(session.id, "hello")
+        const marker = yield* createCompactionMarker(session.id)
         const msgs = yield* ssn.messages({ sessionID: session.id })
         yield* SessionCompaction.use.process({
-          parentID: msg.id,
+          parentID: marker.id,
           messages: msgs,
           sessionID: session.id,
           auto: false,
@@ -1361,9 +1434,10 @@ describe("session.compaction.process", () => {
       return Effect.gen(function* () {
         const ssn = yield* SessionNs.Service
         const session = yield* ssn.create({})
-        const msg = yield* createUserMessage(session.id, "hello")
+        yield* createUserMessage(session.id, "hello")
+        const marker = yield* createCompactionMarker(session.id)
         const msgs = yield* ssn.messages({ sessionID: session.id })
-        yield* SessionCompaction.use.process({ parentID: msg.id, messages: msgs, sessionID: session.id, auto: false })
+        yield* SessionCompaction.use.process({ parentID: marker.id, messages: msgs, sessionID: session.id, auto: false })
 
         const summary = (yield* ssn.messages({ sessionID: session.id })).find(
           (item) => item.info.role === "assistant" && item.info.summary,
