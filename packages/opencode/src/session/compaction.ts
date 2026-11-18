@@ -648,7 +648,7 @@ const layer = Layer.effect(
               (input.overflow
                 ? "The previous request exceeded the provider's size limit due to large media attachments. The conversation was compacted and media files were removed from context. If the user was asking about attached images or files, explain that the attachments were too large to process and suggest they try again with smaller or fewer files.\n\n"
                 : "") +
-              "Continue if you have next steps, or stop and ask for clarification if you are unsure how to proceed."
+              "The conversation was compacted and the summary above captures the objective, work state, and next steps. Continue the task now: take the next concrete step from the summary's Next Move using tools — do not repeat or rewrite the summary, and only stop to ask the user if you are genuinely blocked."
             yield* session.updatePart({
               id: PartID.ascending(),
               messageID: continueMsg.id,
