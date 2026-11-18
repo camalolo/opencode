@@ -95,6 +95,7 @@ export const dict = {
   "ui.sessionTurn.status.gatheringThoughts": "正在整理思緒",
   "ui.sessionTurn.status.consideringNextSteps": "正在考慮下一步",
   "ui.sessionTurn.status.waitingForTool": "正在等待 {{tool}} 完成",
+  "ui.sessionTurn.status.waitingForWake": "正在等待下一次喚醒",
   "ui.sessionTurn.status.queued": "已加入佇列 - 等待目前回合",
 
   "ui.messagePart.questions.dismissed": "問題已略過",

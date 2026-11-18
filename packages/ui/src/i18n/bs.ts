@@ -98,6 +98,7 @@ export const dict = {
   "ui.sessionTurn.status.gatheringThoughts": "Sređivanje misli",
   "ui.sessionTurn.status.consideringNextSteps": "Razmatranje sljedećih koraka",
   "ui.sessionTurn.status.waitingForTool": "Čeka da {{tool}} završi",
+  "ui.sessionTurn.status.waitingForWake": "Čeka sljedeće buđenje",
   "ui.sessionTurn.status.queued": "Na čekanju - čeka trenutni krug",
 
   "ui.messagePart.questions.dismissed": "Pitanja odbačena",

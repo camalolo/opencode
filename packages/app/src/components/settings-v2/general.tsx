@@ -14,7 +14,9 @@ import { SettingsListV2 } from "./parts/list"
 import { SettingsRowV2 } from "./parts/row"
 import { LayoutRetirementNotice, LayoutTransitionToggle } from "./interface-transition"
 import {
+  compactionCapOptions,
   compactionThresholdOptions,
+  compactionTokens,
   createAppearanceSettingsController,
   createCompactionSettingsController,
   createPermissionScopeController,
@@ -149,6 +151,37 @@ const CompactionSetting: Component<{ controller: CompactionSettingsController }>
             : compactionPercent(option)
         }
         onSelect={(option) => props.controller.select(option ?? null)}
+      />
+    </SettingsRowV2>
+  )
+}
+
+const CompactionCapSetting: Component<{ controller: CompactionSettingsController }> = (props) => {
+  const language = useLanguage()
+  const options = createMemo(() => {
+    const current = props.controller.cap()
+    if (current === null || compactionCapOptions.includes(current)) return [null, ...compactionCapOptions]
+    return [null, current, ...compactionCapOptions]
+  })
+  return (
+    <SettingsRowV2
+      title={language.t("settings.general.row.compactionCap.title")}
+      description={language.t("settings.general.row.compactionCap.description")}
+    >
+      <SelectV2
+        appearance="inline"
+        data-action="settings-compaction-cap"
+        options={options()}
+        current={options().find((option) => option === props.controller.cap())}
+        placement="bottom-end"
+        gutter={6}
+        value={(option) => (option === null ? "default" : String(option))}
+        label={(option) =>
+          option === null
+            ? language.t("settings.general.row.compactionCap.default")
+            : compactionTokens(option, language.intl())
+        }
+        onSelect={(option) => props.controller.selectCap(option ?? null)}
       />
     </SettingsRowV2>
   )
@@ -428,6 +461,8 @@ export const SettingsGeneralV2: Component<{
 
       <SettingsListV2>
         <CompactionSetting controller={compaction} />
+
+        <CompactionCapSetting controller={compaction} />
 
         <SettingsRowV2
           title={language.t("settings.general.row.showFileTree.title")}

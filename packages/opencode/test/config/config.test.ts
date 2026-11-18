@@ -397,6 +397,32 @@ it.effect("updates global config and omits empty shell key in jsonc", () =>
   ),
 )
 
+it.effect("updates global config and drops a null compaction cap in json", () =>
+  withGlobalConfig({ config: { compaction: { threshold: 0.7, max_context_tokens: 150_000 } } }, ({ dir }) =>
+    Effect.gen(function* () {
+      yield* Config.use.updateGlobal({ compaction: { max_context_tokens: null } })
+
+      const writtenConfig = yield* FSUtil.use.readJson(path.join(dir, "opencode.json"))
+      expect(writtenConfig).toEqual({ $schema: "https://opencode.ai/config.json", compaction: { threshold: 0.7 } })
+    }),
+  ),
+)
+
+it.effect("updates global config and drops a null compaction cap in jsonc", () =>
+  withGlobalConfig({ config: { compaction: { threshold: 0.7, max_context_tokens: 150_000 } }, name: "opencode.jsonc" }, ({ dir }) =>
+    Effect.gen(function* () {
+      yield* Config.use.updateGlobal({ compaction: { max_context_tokens: null } })
+
+      const file = path.join(dir, "opencode.jsonc")
+      const writtenConfig = yield* FSUtil.use.readFileString(file)
+      const parsed = ConfigParse.schema(ConfigV1.Info, ConfigParse.jsonc(writtenConfig, file), file)
+      expect(writtenConfig).not.toContain("max_context_tokens")
+      expect(parsed.compaction?.max_context_tokens).toBeUndefined()
+      expect(parsed.compaction?.threshold).toBe(0.7)
+    }),
+  ),
+)
+
 it.instance(
   "loads formatter boolean config",
   Effect.gen(function* () {

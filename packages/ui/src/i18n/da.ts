@@ -91,6 +91,7 @@ export const dict = {
   "ui.sessionTurn.status.gatheringThoughts": "Samler tanker",
   "ui.sessionTurn.status.consideringNextSteps": "Overvejer næste skridt",
   "ui.sessionTurn.status.waitingForTool": "Venter på at {{tool}} bliver færdig",
+  "ui.sessionTurn.status.waitingForWake": "Venter på næste vækning",
   "ui.sessionTurn.status.queued": "I kø - venter på den igangværende tur",
 
   "ui.messagePart.questions.dismissed": "Spørgsmål afvist",

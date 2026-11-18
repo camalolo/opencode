@@ -69,6 +69,7 @@ export const dict = {
   "ui.sessionTurn.status.gatheringThoughts": "생각 정리 중",
   "ui.sessionTurn.status.consideringNextSteps": "다음 단계 고려 중",
   "ui.sessionTurn.status.waitingForTool": "{{tool}} 완료 대기 중",
+  "ui.sessionTurn.status.waitingForWake": "다음 웨이크를 기다리는 중",
   "ui.sessionTurn.status.queued": "대기열에 추가됨 - 현재 턴을 기다리는 중",
 
   "ui.messagePart.questions.dismissed": "질문 무시됨",

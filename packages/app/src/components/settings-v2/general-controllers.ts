@@ -78,15 +78,30 @@ export function createShellSettingsController() {
 // null as an explicit reset (mergeDeep drops the key server-side).
 export const compactionThresholdOptions: number[] = Array.from({ length: 19 }, (_, index) => (index + 1) / 20)
 
+// Hard cap in tokens on the auto-compact trigger, applied regardless of the
+// model window: the smaller of the threshold window and this cap wins. `null`
+// resets to the engine default (no cap).
+export const compactionCapOptions: number[] = [50_000, 100_000, 150_000, 200_000, 300_000, 500_000]
+
+// Locale-aware compact token count, e.g. 150000 -> "150K" (en) / "150.000" (de).
+export const compactionTokens = (value: number, locale: string) =>
+  new Intl.NumberFormat(locale, { notation: "compact", maximumFractionDigits: 1 }).format(value)
+
 export function createCompactionSettingsController() {
   const serverSync = useServerSync()
   const current = createMemo(() => serverSync().data.config.compaction?.threshold ?? null)
+  const cap = createMemo(() => serverSync().data.config.compaction?.max_context_tokens ?? null)
 
   return {
     current,
+    cap,
     select: (value: number | null) => {
       if (value === current()) return
       void serverSync().updateConfig({ compaction: { threshold: value as unknown as number } })
+    },
+    selectCap: (value: number | null) => {
+      if (value === cap()) return
+      void serverSync().updateConfig({ compaction: { max_context_tokens: value as unknown as number } })
     },
   }
 }

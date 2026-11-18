@@ -89,6 +89,7 @@ export const dict: Record<string, string> = {
   "ui.sessionTurn.status.gatheringThoughts": "خیال اکٹھے ہو رہے نیں",
   "ui.sessionTurn.status.consideringNextSteps": "اگلے قدماں بارے سوچیا جا رہیا اے",
   "ui.sessionTurn.status.waitingForTool": "{{tool}} دے پورا ہونے دی اڈیک",
+  "ui.sessionTurn.status.waitingForWake": "اگلی جگان دی اڈیک",
   "ui.sessionTurn.status.queued": "قطار چ - موجودہ ٹرن دی اڈیک",
   "ui.messagePart.diagnostic.error": "نقص",
   "ui.messagePart.title.edit": "ترمیم کرو",

@@ -72,6 +72,7 @@ export const dict: Record<Keys, string> = {
   "ui.sessionTurn.status.gatheringThoughts": "Samler tanker",
   "ui.sessionTurn.status.consideringNextSteps": "Vurderer neste trinn",
   "ui.sessionTurn.status.waitingForTool": "Venter på at {{tool}} blir ferdig",
+  "ui.sessionTurn.status.waitingForWake": "Venter på neste vekking",
   "ui.sessionTurn.status.queued": "I kø - venter på gjeldende runde",
 
   "ui.messagePart.questions.dismissed": "Spørsmål avvist",

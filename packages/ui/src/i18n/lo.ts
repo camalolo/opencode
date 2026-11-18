@@ -88,6 +88,7 @@ export const dict = {
   "ui.sessionTurn.status.gatheringThoughts": "ການລວບລວມຄວາມຄິດ",
   "ui.sessionTurn.status.consideringNextSteps": "ພິຈາລະນາຂັ້ນຕອນຕໍ່ໄປ",
   "ui.sessionTurn.status.waitingForTool": "ລໍຖ້າ {{tool}} ສຳເລັດ",
+  "ui.sessionTurn.status.waitingForWake": "ລໍຖ້າການປຸກຄັ້ງຕໍ່ໄປ",
   "ui.sessionTurn.status.queued": "ຄິວ - ກຳລັງລໍຖ້າຮອບປັດຈຸບັນ",
   "ui.messagePart.diagnostic.error": "ຜິດພາດ",
   "ui.messagePart.title.edit": "ແກ້ໄຂ",

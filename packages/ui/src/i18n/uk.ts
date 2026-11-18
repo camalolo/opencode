@@ -97,6 +97,7 @@ export const dict: Record<string, string> = {
   "ui.sessionTurn.status.gatheringThoughts": "Збирання думок",
   "ui.sessionTurn.status.consideringNextSteps": "Розгляд наступних кроків",
   "ui.sessionTurn.status.waitingForTool": "Очікування завершення: {{tool}}",
+  "ui.sessionTurn.status.waitingForWake": "Очікування наступного пробудження",
   "ui.sessionTurn.status.queued": "У черзі - очікування поточного ходу",
 
   "ui.messagePart.diagnostic.error": "Помилка",

@@ -169,10 +169,19 @@ function writableGlobal(info: Info) {
   const next = writable(info)
   // When a user changes config from a value back to default in the Desktop app, we don't want to leave a blank `"shell": "",` key
   if ("shell" in next && next.shell === "") return { ...next, shell: undefined }
-  // Same for an explicit null compaction threshold reset: mergeDeep drops
-  // undefined keys, so the reset never lands as a literal `"threshold": null`.
-  if (next.compaction?.threshold === null)
-    return { ...next, compaction: { ...next.compaction, threshold: undefined } }
+  // Explicit null compaction resets (threshold, max_context_tokens): mergeDeep
+  // deletes undefined keys, so the reset never lands as a literal null. Only the
+  // nulled keys may carry undefined here; adding other keys would delete them.
+  const compaction = next.compaction
+  if (compaction && (compaction.threshold === null || compaction.max_context_tokens === null))
+    return {
+      ...next,
+      compaction: {
+        ...compaction,
+        ...(compaction.threshold === null && { threshold: undefined }),
+        ...(compaction.max_context_tokens === null && { max_context_tokens: undefined }),
+      },
+    }
   return next
 }
 

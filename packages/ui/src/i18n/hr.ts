@@ -90,6 +90,7 @@ export const dict: Record<string, string> = {
   "ui.sessionTurn.status.gatheringThoughts": "Sabrati misli",
   "ui.sessionTurn.status.consideringNextSteps": "Razmatranje sljedećih koraka",
   "ui.sessionTurn.status.waitingForTool": "Čeka da {{tool}} završi",
+  "ui.sessionTurn.status.waitingForWake": "Čeka sljedeće buđenje",
   "ui.sessionTurn.status.queued": "U redu čekanja - čeka trenutni potez",
   "ui.messagePart.diagnostic.error": "Greška",
   "ui.messagePart.title.edit": "Uredi",

@@ -88,6 +88,7 @@ export const dict: Record<string, string> = {
   "ui.sessionTurn.status.gatheringThoughts": "Συγκέντρωση σκέψεων",
   "ui.sessionTurn.status.consideringNextSteps": "Σκεφτόμαστε τα επόμενα βήματα",
   "ui.sessionTurn.status.waitingForTool": "Αναμονή για την ολοκλήρωση του {{tool}}",
+  "ui.sessionTurn.status.waitingForWake": "Αναμονή για την επόμενη αφύπνιση",
   "ui.sessionTurn.status.queued": "Σε αναμονή - αναμονή του τρέχοντος γύρου",
   "ui.messagePart.diagnostic.error": "Σφάλμα",
   "ui.messagePart.title.edit": "Επεξεργασία",

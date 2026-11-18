@@ -352,6 +352,10 @@ export const dict = {
   "prompt.mode.normal": "Prompt",
   "prompt.mode.shell.exit": "ESC for å avslutte",
 
+  "session.sleeping.tooltip.waiting": "Venter på {{description}}. Tidsavbrudd om {{time}}.",
+  "session.sleeping.tooltip.waiting.loop": "Venter på {{description}}. Tidsavbrudd om {{time}}, og aktiveres deretter på nytt til det avbrytes.",
+  "session.sleeping.tooltip.stalled": "Venter på {{description}}. Overvåkerens hjerteslag er forsinket — ventingen kan ha stoppet.",
+  "session.sleeping.tooltip.broken": "{{count}} av {{limit}} kontroller mislyktes; når {{limit}} nås, deaktiveres overvåkeren.",
   "prompt.example.1": "Fiks en TODO i kodebasen",
   "prompt.example.2": "Hva er teknologistabelen i dette prosjektet?",
   "prompt.example.3": "Fiks ødelagte tester",
@@ -496,6 +500,18 @@ export const dict = {
   "dialog.directory.parent": "Overordnet",
   "dialog.directory.readError": "Kan ikke lese denne mappen",
 
+  "deploy.ongoing.title": "Distribusjon pågår...",
+  "deploy.ongoing.phase.pull": "Henter siste endringer...",
+  "deploy.ongoing.phase.install": "Installerer avhengigheter...",
+  "deploy.ongoing.phase.build": "Bygger nettbasert UI...",
+  "deploy.ongoing.phase.manifest": "Regenererer UI-manifest...",
+  "deploy.ongoing.phase.drain": "Venter på at sesjonene skal fullføres...",
+  "deploy.ongoing.phase.restart": "Starter serveren på nytt...",
+  "deploy.ongoing.down": "Venter på serveren...",
+  "deploy.ongoing.drain.active.one": "{{count}} sesjon kjører fortsatt",
+  "deploy.ongoing.drain.active.other": "{{count}} sesjoner kjører fortsatt",
+  "deploy.failed.title": "Distribusjon mislyktes",
+  "deploy.failed.dismiss": "Tilbake til appen",
   "dialog.server.title": "Servere",
   "dialog.server.description": "Bytt hvilken OpenCode-server denne appen kobler til.",
   "dialog.server.search.placeholder": "Søk etter servere",
@@ -549,6 +565,10 @@ export const dict = {
   "context.breakdown.tool": "Verktøykall",
   "context.breakdown.other": "Annet",
 
+  "context.compaction.title": "Automatisk komprimering",
+  "context.compaction.description": "Komprimer denne sesjonen automatisk når konteksten når denne andelen av modellvinduet",
+  "context.compaction.cap": "Hardt begrenset til {{cap}} tokener uavhengig av modellvinduet",
+  "context.compaction.default": "Standard",
   "context.systemPrompt.title": "Systemprompt",
   "context.rawMessages.title": "Rå meldinger",
 
@@ -1318,6 +1338,12 @@ export const dict = {
   "sidebar.empty.description": "Åpne et prosjekt for å komme i gang",
 
   "settings.general.section.advanced": "Avansert",
+  "settings.general.row.compaction.title": "Terskel for automatisk komprimering",
+  "settings.general.row.compaction.description": "Komprimer sesjoner automatisk når konteksten når denne andelen av modellens kontekstvindu",
+  "settings.general.row.compaction.default": "Standard",
+  "settings.general.row.compactionCap.title": "Grense for automatisk komprimering",
+  "settings.general.row.compactionCap.description": "Hård token-grense for når automatisk komprimering utløses, uavhengig av modellens kontekstvindu. Den minste av terskelen og denne grensen gjelder",
+  "settings.general.row.compactionCap.default": "Standard",
   "settings.general.row.shell.title": "Terminalskall",
   "settings.general.row.shell.description":
     "Velg skallet som skal brukes i terminalen. Kompatible skall brukes også til agentens verktøykall.",

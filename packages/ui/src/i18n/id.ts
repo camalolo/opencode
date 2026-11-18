@@ -94,6 +94,7 @@ export const dict: Record<string, string> = {
   "ui.sessionTurn.status.gatheringThoughts": "Mengumpulkan pemikiran",
   "ui.sessionTurn.status.consideringNextSteps": "Mempertimbangkan langkah selanjutnya",
   "ui.sessionTurn.status.waitingForTool": "Menunggu {{tool}} selesai",
+  "ui.sessionTurn.status.waitingForWake": "Menunggu bangun berikutnya",
   "ui.sessionTurn.status.queued": "Dalam antrean - menunggu giliran saat ini",
 
   "ui.messagePart.diagnostic.error": "Kesalahan",

@@ -89,6 +89,7 @@ export const dict = {
   "ui.sessionTurn.status.gatheringThoughts": "အတွေးများစုစည်းခြင်း။",
   "ui.sessionTurn.status.consideringNextSteps": "နောက်အဆင့်များကို ထည့်သွင်းစဉ်းစားခြင်း။",
   "ui.sessionTurn.status.waitingForTool": "{{tool}} ပြီးဆုံးရန် စောင့်နေသည်",
+  "ui.sessionTurn.status.waitingForWake": "နောက်တစ်ကြိမ် နိုးထမှုကို စောင့်နေသည်",
   "ui.sessionTurn.status.queued": "တန်းစီထားသည် - လက်ရှိ အလှည့်ကို စောင့်နေသည်",
   "ui.messagePart.diagnostic.error": "အမှား",
   "ui.messagePart.title.edit": "တည်းဖြတ်ပါ။",

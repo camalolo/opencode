@@ -90,6 +90,7 @@ export const dict: Record<string, string> = {
   "ui.sessionTurn.status.gatheringThoughts": "Raccolta delle idee",
   "ui.sessionTurn.status.consideringNextSteps": "Valutazione dei prossimi passaggi",
   "ui.sessionTurn.status.waitingForTool": "In attesa del completamento di {{tool}}",
+  "ui.sessionTurn.status.waitingForWake": "In attesa del prossimo risveglio",
   "ui.sessionTurn.status.queued": "In coda - in attesa del turno corrente",
   "ui.messagePart.diagnostic.error": "Errore",
   "ui.messagePart.title.edit": "Modifica",

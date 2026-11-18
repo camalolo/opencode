@@ -93,6 +93,7 @@ export const dict = {
   "ui.sessionTurn.status.gatheringThoughts": "กำลังรวบรวมความคิด",
   "ui.sessionTurn.status.consideringNextSteps": "กำลังพิจารณาขั้นตอนถัดไป",
   "ui.sessionTurn.status.waitingForTool": "กำลังรอ {{tool}} เสร็จ",
+  "ui.sessionTurn.status.waitingForWake": "กำลังรอการปลุกครั้งถัดไป",
   "ui.sessionTurn.status.queued": "อยู่ในคิว - กำลังรอรอบปัจจุบัน",
 
   "ui.messagePart.questions.dismissed": "ละทิ้งคำถามแล้ว",

@@ -88,6 +88,7 @@ export const dict: Record<string, string> = {
   "ui.sessionTurn.status.gatheringThoughts": "Að safna saman hugsunum",
   "ui.sessionTurn.status.consideringNextSteps": "Íhugar næstu skref",
   "ui.sessionTurn.status.waitingForTool": "Bíður eftir að {{tool}} klárast",
+  "ui.sessionTurn.status.waitingForWake": "Bíður eftir næstu vakningu",
   "ui.sessionTurn.status.queued": "Í biðröð - bíður eftir núverandi skipti",
   "ui.messagePart.diagnostic.error": "Villa",
   "ui.messagePart.title.edit": "Breyta",

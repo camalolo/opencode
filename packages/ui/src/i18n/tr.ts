@@ -99,6 +99,7 @@ export const dict = {
   "ui.sessionTurn.status.gatheringThoughts": "Düşünceler toplanıyor",
   "ui.sessionTurn.status.consideringNextSteps": "Sonraki adımlar değerlendiriliyor",
   "ui.sessionTurn.status.waitingForTool": "{{tool}} işleminin bitmesi bekleniyor",
+  "ui.sessionTurn.status.waitingForWake": "Sonraki uyandırmayı bekliyor",
   "ui.sessionTurn.status.queued": "Sırada - geçerli tur bekleniyor",
 
   "ui.messagePart.questions.dismissed": "Sorular kapatıldı",

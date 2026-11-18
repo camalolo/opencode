@@ -90,6 +90,7 @@ export const dict: Record<string, string> = {
   "ui.sessionTurn.status.gatheringThoughts": "Gondolatok gyűjtése",
   "ui.sessionTurn.status.consideringNextSteps": "A következő lépések mérlegelése",
   "ui.sessionTurn.status.waitingForTool": "Várakozás {{tool}} befejezésére",
+  "ui.sessionTurn.status.waitingForWake": "Várakozás a következő ébresztésre",
   "ui.sessionTurn.status.queued": "Sorban - a jelenlegi körre várakozás",
   "ui.messagePart.diagnostic.error": "Hiba",
   "ui.messagePart.title.edit": "Szerkesztés",

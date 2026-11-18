@@ -366,6 +366,10 @@ export const dict = {
   "session.child.promptDisabled": "Alt ajan oturumlarına istem gönderilemez.",
   "session.child.backToParent": "Ana oturuma dön.",
 
+  "session.sleeping.tooltip.waiting": "{{description}} bekleniyor. {{time}} içinde zaman aşımına uğrayacak.",
+  "session.sleeping.tooltip.waiting.loop": "{{description}} bekleniyor. {{time}} içinde zaman aşımına uğrayacak, ardından iptal edilene kadar kendini yeniden etkinleştirecek.",
+  "session.sleeping.tooltip.stalled": "{{description}} bekleniyor. İzleyicinin kalp atışı gecikti — bekleme takılmış olabilir.",
+  "session.sleeping.tooltip.broken": "{{limit}} kontrolden {{count}} tanesi başarısız oldu; {{limit}} değerine ulaşıldığında izleyici devre dışı bırakılır.",
   "prompt.example.1": "Kod tabanındaki bir TODO'yu düzelt",
   "prompt.example.2": "Bu projenin teknoloji yığını nedir?",
   "prompt.example.3": "Bozuk testleri düzelt",
@@ -510,6 +514,18 @@ export const dict = {
   "dialog.directory.parent": "Üst klasör",
   "dialog.directory.readError": "Bu klasör okunamıyor",
 
+  "deploy.ongoing.title": "Dağıtım sürüyor...",
+  "deploy.ongoing.phase.pull": "En son değişiklikler alınıyor...",
+  "deploy.ongoing.phase.install": "Bağımlılıklar yükleniyor...",
+  "deploy.ongoing.phase.build": "Web arayüzü derleniyor...",
+  "deploy.ongoing.phase.manifest": "Arayüz bildirimi yeniden oluşturuluyor...",
+  "deploy.ongoing.phase.drain": "Oturumların bitmesi bekleniyor...",
+  "deploy.ongoing.phase.restart": "Sunucu yeniden başlatılıyor...",
+  "deploy.ongoing.down": "Sunucu bekleniyor...",
+  "deploy.ongoing.drain.active.one": "{{count}} oturum hâlâ çalışıyor",
+  "deploy.ongoing.drain.active.other": "{{count}} oturum hâlâ çalışıyor",
+  "deploy.failed.title": "Dağıtım başarısız",
+  "deploy.failed.dismiss": "Uygulamaya dön",
   "dialog.server.title": "Sunucular",
   "dialog.server.description": "Bu uygulamanın hangi OpenCode sunucusuna bağlanacağını değiştirin.",
   "dialog.server.search.placeholder": "Sunucu ara",
@@ -647,6 +663,10 @@ export const dict = {
   "context.breakdown.tool": "Araç Çağrıları",
   "context.breakdown.other": "Diğer",
 
+  "context.compaction.title": "Otomatik sıkıştırma",
+  "context.compaction.description": "Bağlam, model penceresinin bu oranına ulaştığında bu oturumu otomatik olarak özetle",
+  "context.compaction.cap": "Model penceresinden bağımsız olarak {{cap}} token ile sabit sınır",
+  "context.compaction.default": "Varsayılan",
   "context.systemPrompt.title": "Sistem İstemi",
   "context.rawMessages.title": "Ham mesajlar",
 
@@ -987,6 +1007,12 @@ export const dict = {
 
   "settings.general.row.language.title": "Dil",
   "settings.general.row.language.description": "OpenCode'un görünüm dilini değiştirin",
+  "settings.general.row.compaction.title": "Otomatik sıkıştırma eşiği",
+  "settings.general.row.compaction.description": "Bağlam, modelin bağlam penceresinin bu oranına ulaştığında oturumları otomatik olarak özetle",
+  "settings.general.row.compaction.default": "Varsayılan",
+  "settings.general.row.compactionCap.title": "Otomatik sıkıştırma sınırı",
+  "settings.general.row.compactionCap.description": "Modelin bağlam penceresinden bağımsız olarak otomatik sıkıştırmanın tetikleneceği token sayısı için katı sınır. Eşik ile bu sınırın küçük olanı geçerlidir",
+  "settings.general.row.compactionCap.default": "Varsayılan",
   "settings.general.row.shell.title": "Terminal Kabuğu",
   "settings.general.row.shell.description":
     "Terminalinizde kullanılacak kabuğu seçin. Uyumlu kabuklar, ajan araç çağrılarında da kullanılır.",

@@ -88,6 +88,7 @@ export const dict = {
   "ui.sessionTurn.status.gatheringThoughts": "Бодол санаа цуглуулах",
   "ui.sessionTurn.status.consideringNextSteps": "Дараагийн алхмуудыг авч үзэх",
   "ui.sessionTurn.status.waitingForTool": "{{tool}} дуусахыг хүлээж байна",
+  "ui.sessionTurn.status.waitingForWake": "Дараагийн сэрэлтийг хүлээж байна",
   "ui.sessionTurn.status.queued": "Дараалалд орсон - одоогийн ээлжийг хүлээж байна",
   "ui.messagePart.diagnostic.error": "Алдаа",
   "ui.messagePart.title.edit": "Засварлах",

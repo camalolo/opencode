@@ -577,6 +577,7 @@ export const dict = {
 
   "context.compaction.title": "Auto-Compact",
   "context.compaction.description": "Summarize this session automatically when context reaches this share of the model window",
+  "context.compaction.cap": "Hard-capped at {{cap}} tokens regardless of the model window",
   "context.compaction.default": "Default",
 
   "context.systemPrompt.title": "System Prompt",
@@ -1004,6 +1005,9 @@ export const dict = {
   "settings.general.row.compaction.title": "Auto-compact threshold",
   "settings.general.row.compaction.description": "Summarize sessions automatically when context reaches this share of the model context window",
   "settings.general.row.compaction.default": "Default",
+  "settings.general.row.compactionCap.title": "Auto-compact cap",
+  "settings.general.row.compactionCap.description": "Hard limit in tokens for when auto-compact triggers, regardless of the model context window. The smaller of the threshold and this cap wins",
+  "settings.general.row.compactionCap.default": "Default",
   "settings.general.row.shell.title": "Terminal shell",
   "settings.general.row.shell.description": "Shell used by the terminal and agent tools",
   "settings.general.row.shell.autoDefault": "Auto (Default)",

@@ -90,6 +90,7 @@ export const dict = {
   "ui.sessionTurn.status.gatheringThoughts": "прикупљање мисли",
   "ui.sessionTurn.status.consideringNextSteps": "Разматрање следећих корака",
   "ui.sessionTurn.status.waitingForTool": "Се чека да се {{tool}} заврши",
+  "ui.sessionTurn.status.waitingForWake": "Чека се следеће буђење",
   "ui.sessionTurn.status.queued": "У реду чекања - чека се текући потез",
   "ui.messagePart.diagnostic.error": "Грешка",
   "ui.messagePart.title.edit": "Уреди",

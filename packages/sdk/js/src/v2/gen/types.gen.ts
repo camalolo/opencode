@@ -2044,7 +2044,7 @@ export type Config = {
               disabled: true
             }
           | {
-              command: Array<string>
+              command?: Array<string>
               extensions?: Array<string>
               disabled?: boolean
               env?: {
@@ -2073,6 +2073,7 @@ export type Config = {
     auto?: boolean
     prune?: boolean
     threshold?: number
+    max_context_tokens?: number
     tail_turns?: number
     preserve_recent_tokens?: number
     reserved?: number

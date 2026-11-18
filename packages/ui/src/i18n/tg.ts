@@ -88,6 +88,7 @@ export const dict = {
   "ui.sessionTurn.status.gatheringThoughts": "Ҷамъоварии фикрҳо",
   "ui.sessionTurn.status.consideringNextSteps": "Бо назардошти қадамҳои оянда",
   "ui.sessionTurn.status.waitingForTool": "Интизори итмои {{tool}}",
+  "ui.sessionTurn.status.waitingForWake": "Интизори бедории навбатӣ",
   "ui.sessionTurn.status.queued": "Дар навбат - интизори давраи ҷорӣ",
   "ui.messagePart.diagnostic.error": "Хатогӣ",
   "ui.messagePart.title.edit": "Таҳрир",

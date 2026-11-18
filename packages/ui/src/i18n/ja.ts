@@ -92,6 +92,7 @@ export const dict = {
   "ui.sessionTurn.status.gatheringThoughts": "考えをまとめています",
   "ui.sessionTurn.status.consideringNextSteps": "次のステップを検討中",
   "ui.sessionTurn.status.waitingForTool": "{{tool}}の完了を待機中",
+  "ui.sessionTurn.status.waitingForWake": "次のウェイクを待機中",
   "ui.sessionTurn.status.queued": "待機中 - 現在のターンを待っています",
 
   "ui.messagePart.questions.dismissed": "質問をスキップしました",

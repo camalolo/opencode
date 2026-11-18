@@ -89,6 +89,7 @@ export const dict = {
   "ui.sessionTurn.status.gatheringThoughts": "ការប្រមូលផ្តុំគំនិត",
   "ui.sessionTurn.status.consideringNextSteps": "ពិចារណាជំហានបន្ទាប់",
   "ui.sessionTurn.status.waitingForTool": "រង់ចាំ {{tool}} បញ្ចប់",
+  "ui.sessionTurn.status.waitingForWake": "រង់ចាំការភ្ញាក់បន្ទាប់",
   "ui.sessionTurn.status.queued": "តម្រង់ជួរ - កំពុងរង់ចាំជុំបច្ចុប្បន្ន",
   "ui.messagePart.diagnostic.error": "កំហុស",
   "ui.messagePart.title.edit": "កែសម្រួល",

@@ -20,7 +20,7 @@ import { useLanguage } from "@/context/language"
 import { useProviders } from "@/hooks/use-providers"
 import { useSDK } from "@/context/sdk"
 import { useSessionLayout } from "@/pages/session/session-layout"
-import { compactionThresholdOptions } from "@/components/settings-v2/general-controllers"
+import { compactionThresholdOptions, compactionTokens } from "@/components/settings-v2/general-controllers"
 import { getSessionContext } from "./session-context-metrics"
 import { estimateSessionContextBreakdown, type SessionContextBreakdownKey } from "./session-context-breakdown"
 import { createSessionContextFormatter } from "./session-context-format"
@@ -209,6 +209,7 @@ export function SessionContextTab() {
 
   const sessionThreshold = createMemo(() => info()?.compactionThreshold ?? null)
   const globalThreshold = createMemo(() => serverSync().data.config.compaction?.threshold ?? null)
+  const globalCap = createMemo(() => serverSync().data.config.compaction?.max_context_tokens ?? null)
   const thresholdOptions = createMemo(() => {
     const options: Array<number | null> = [null, ...compactionThresholdOptions]
     return options
@@ -345,7 +346,16 @@ export function SessionContextTab() {
           <div class="flex flex-col gap-2">
             <div class="text-12-regular text-text-weak">{language.t("context.compaction.title")}</div>
             <div class="flex flex-wrap items-center justify-between gap-2">
-              <div class="text-11-regular text-text-weaker">{language.t("context.compaction.description")}</div>
+              <div class="flex flex-col">
+                <div class="text-11-regular text-text-weaker">{language.t("context.compaction.description")}</div>
+                <Show when={globalCap()}>
+                  {(cap) => (
+                    <div class="text-11-regular text-text-weaker">
+                      {language.t("context.compaction.cap", { cap: compactionTokens(cap(), language.intl()) })}
+                    </div>
+                  )}
+                </Show>
+              </div>
               <SelectV2
                 appearance="inline"
                 data-action="session-compaction-threshold"

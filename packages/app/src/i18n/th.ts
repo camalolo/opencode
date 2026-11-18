@@ -359,6 +359,10 @@ export const dict = {
   "session.child.promptDisabled": "ไม่สามารถส่งพรอมต์ในเซสชันเอเจนต์ย่อยได้",
   "session.child.backToParent": "กลับไปยังเซสชันหลัก",
 
+  "session.sleeping.tooltip.waiting": "กำลังรอ {{description}} จะหมดเวลาใน {{time}}",
+  "session.sleeping.tooltip.waiting.loop": "กำลังรอ {{description}} จะหมดเวลาใน {{time}} แล้วจะตั้งค่าตัวเองใหม่จนกว่าจะถูกยกเลิก",
+  "session.sleeping.tooltip.stalled": "กำลังรอ {{description}} การเต้นของหัวใจของตัวเฝ้าดูล่าช้า — การรออาจค้างอยู่",
+  "session.sleeping.tooltip.broken": "การตรวจสอบ {{count}} จาก {{limit}} ครั้งล้มเหลว เมื่อถึง {{limit}} ตัวเฝ้าดูจะถูกปิด",
   "prompt.example.1": "แก้ไข TODO ในโค้ดเบส",
   "prompt.example.2": "เทคโนโลยีของโปรเจกต์นี้คืออะไร?",
   "prompt.example.3": "แก้ไขการทดสอบที่เสีย",
@@ -503,6 +507,18 @@ export const dict = {
   "dialog.directory.parent": "โฟลเดอร์หลัก",
   "dialog.directory.readError": "ไม่สามารถอ่านโฟลเดอร์นี้ได้",
 
+  "deploy.ongoing.title": "กำลังติดตั้งใช้งาน...",
+  "deploy.ongoing.phase.pull": "กำลังดึงการเปลี่ยนแปลงล่าสุด...",
+  "deploy.ongoing.phase.install": "กำลังติดตั้งส่วนที่ต้องพึ่งพา...",
+  "deploy.ongoing.phase.build": "กำลังสร้าง UI เว็บ...",
+  "deploy.ongoing.phase.manifest": "กำลังสร้าง manifest ของ UI ใหม่...",
+  "deploy.ongoing.phase.drain": "กำลังรอให้เซสชันเสร็จสิ้น...",
+  "deploy.ongoing.phase.restart": "กำลังรีสตาร์ทเซิร์ฟเวอร์...",
+  "deploy.ongoing.down": "กำลังรอเซิร์ฟเวอร์...",
+  "deploy.ongoing.drain.active.one": "{{count}} เซสชันยังทำงานอยู่",
+  "deploy.ongoing.drain.active.other": "{{count}} เซสชันยังทำงานอยู่",
+  "deploy.failed.title": "การติดตั้งใช้งานล้มเหลว",
+  "deploy.failed.dismiss": "กลับไปที่แอป",
   "dialog.server.title": "เซิร์ฟเวอร์",
   "dialog.server.description": "สลับเซิร์ฟเวอร์ OpenCode ที่แอปนี้เชื่อมต่อด้วย",
   "dialog.server.search.placeholder": "ค้นหาเซิร์ฟเวอร์",
@@ -639,6 +655,10 @@ export const dict = {
   "context.breakdown.tool": "การเรียกเครื่องมือ",
   "context.breakdown.other": "อื่น ๆ",
 
+  "context.compaction.title": "การบีบอัดอัตโนมัติ",
+  "context.compaction.description": "สรุปเซสชันนี้โดยอัตโนมัติเมื่อบริบทถึงสัดส่วนนี้ของหน้าต่างโมเดล",
+  "context.compaction.cap": "จำกัดสูงสุดที่ {{cap}} โทเค็น โดยไม่คำนึงถึงหน้าต่างของโมเดล",
+  "context.compaction.default": "ค่าเริ่มต้น",
   "context.systemPrompt.title": "พรอมต์ระบบ",
   "context.rawMessages.title": "ข้อความดิบ",
 
@@ -969,6 +989,12 @@ export const dict = {
 
   "settings.general.row.language.title": "ภาษา",
   "settings.general.row.language.description": "เปลี่ยนภาษาที่แสดงสำหรับ OpenCode",
+  "settings.general.row.compaction.title": "เกณฑ์การบีบอัดอัตโนมัติ",
+  "settings.general.row.compaction.description": "สรุปเซสชันโดยอัตโนมัติเมื่อบริบทถึงสัดส่วนนี้ของหน้าต่างบริบทของโมเดล",
+  "settings.general.row.compaction.default": "ค่าเริ่มต้น",
+  "settings.general.row.compactionCap.title": "ขีดจำกัดการบีบอัดอัตโนมัติ",
+  "settings.general.row.compactionCap.description": "ขีดจำกัดตายตัวเป็นจำนวนโทเค็นสำหรับเมื่อการบีบอัดอัตโนมัติเริ่มทำงาน โดยไม่คำนึงถึงหน้าต่างบริบทของโมเดล ค่าที่น้อยกว่าระหว่างเกณฑ์และขีดจำกัดนี้จะมีผล",
+  "settings.general.row.compactionCap.default": "ค่าเริ่มต้น",
   "settings.general.row.shell.title": "เชลล์เทอร์มินัล",
   "settings.general.row.shell.description":
     "เลือกเชลล์ที่จะใช้กับเทอร์มินัล เชลล์ที่เข้ากันได้จะใช้สำหรับการเรียกเครื่องมือของเอเจนต์ด้วย",

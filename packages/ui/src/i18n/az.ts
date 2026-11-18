@@ -88,6 +88,7 @@ export const dict: Record<string, string> = {
   "ui.sessionTurn.status.gatheringThoughts": "Düşüncələr toplanır",
   "ui.sessionTurn.status.consideringNextSteps": "Növbəti addımlar nəzərdən keçirilir",
   "ui.sessionTurn.status.waitingForTool": "{{tool}} işinin bitməsi gözlənilir",
+  "ui.sessionTurn.status.waitingForWake": "Növbəti oyanışı gözləyir",
   "ui.sessionTurn.status.queued": "Növbədədir - cari tur gözlənilir",
   "ui.messagePart.diagnostic.error": "Xəta",
   "ui.messagePart.title.edit": "Redaktə",

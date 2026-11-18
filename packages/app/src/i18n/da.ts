@@ -259,6 +259,10 @@ export const dict = {
   "session.child.promptDisabled": "Der kan ikke sendes prompts til underagentsessioner.",
   "session.child.backToParent": "Tilbage til hovedsessionen.",
 
+  "session.sleeping.tooltip.waiting": "Venter på {{description}}. Udløber om {{time}}.",
+  "session.sleeping.tooltip.waiting.loop": "Venter på {{description}}. Udløber om {{time}}, og genaktiverer derefter sig selv, indtil den annulleres.",
+  "session.sleeping.tooltip.stalled": "Venter på {{description}}. Overvågerens hjerteslag er forsinket — ventetiden kan være fastlåst.",
+  "session.sleeping.tooltip.broken": "{{count}} af {{limit}} kontroller mislykkedes; når {{limit}} nås, deaktiveres overvågeren.",
   "prompt.example.1": "Ret en TODO i koden",
   "prompt.example.2": "Hvad er teknologistakken for dette projekt?",
   "prompt.example.3": "Ret ødelagte tests",
@@ -403,6 +407,18 @@ export const dict = {
   "dialog.directory.parent": "Overordnet",
   "dialog.directory.readError": "Denne mappe kan ikke læses",
 
+  "deploy.ongoing.title": "Udrulning i gang...",
+  "deploy.ongoing.phase.pull": "Henter seneste ændringer...",
+  "deploy.ongoing.phase.install": "Installerer afhængigheder...",
+  "deploy.ongoing.phase.build": "Bygger web-UI...",
+  "deploy.ongoing.phase.manifest": "Regenererer UI-manifest...",
+  "deploy.ongoing.phase.drain": "Venter på, at sessioner afsluttes...",
+  "deploy.ongoing.phase.restart": "Genstarter server...",
+  "deploy.ongoing.down": "Venter på server...",
+  "deploy.ongoing.drain.active.one": "{{count}} session kører stadig",
+  "deploy.ongoing.drain.active.other": "{{count}} sessioner kører stadig",
+  "deploy.failed.title": "Udrulning mislykkedes",
+  "deploy.failed.dismiss": "Tilbage til appen",
   "dialog.server.title": "Servere",
   "dialog.server.description": "Skift hvilken OpenCode-server denne app forbinder til.",
   "dialog.server.search.placeholder": "Søg servere",
@@ -525,6 +541,10 @@ export const dict = {
   "context.breakdown.tool": "Værktøjskald",
   "context.breakdown.other": "Andre",
 
+  "context.compaction.title": "Automatisk komprimering",
+  "context.compaction.description": "Opsummer denne session automatisk, når konteksten når denne andel af modelvinduet",
+  "context.compaction.cap": "Hårdt begrænset til {{cap}} tokens uanset modelvinduet",
+  "context.compaction.default": "Standard",
   "context.systemPrompt.title": "Systemprompt",
   "context.rawMessages.title": "Rå beskeder",
 
@@ -859,6 +879,12 @@ export const dict = {
 
   "settings.general.row.language.title": "Sprog",
   "settings.general.row.language.description": "Ændr visningssproget for OpenCode",
+  "settings.general.row.compaction.title": "Tærskel for automatisk komprimering",
+  "settings.general.row.compaction.description": "Opsummer sessioner automatisk, når konteksten når denne andel af modellens kontekstvindue",
+  "settings.general.row.compaction.default": "Standard",
+  "settings.general.row.compactionCap.title": "Grænse for automatisk komprimering",
+  "settings.general.row.compactionCap.description": "Hård token-grænse for, hvornår automatisk komprimering udløses, uanset modellens kontekstvindue. Den mindste af tærsklen og denne grænse gælder",
+  "settings.general.row.compactionCap.default": "Standard",
   "settings.general.row.shell.title": "Terminalshell",
   "settings.general.row.shell.description":
     "Vælg den shell, der bruges i din terminal. Kompatible shells bruges også til agentens værktøjskald.",

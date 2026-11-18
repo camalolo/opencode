@@ -90,6 +90,7 @@ export const dict: Record<string, string> = {
   "ui.sessionTurn.status.gatheringThoughts": "Fikrlarni yig'ish",
   "ui.sessionTurn.status.consideringNextSteps": "Keyingi qadamlarni hisobga olgan holda",
   "ui.sessionTurn.status.waitingForTool": "{{tool}} tugashini kutish",
+  "ui.sessionTurn.status.waitingForWake": "Keyingi uyg'onishni kutish",
   "ui.sessionTurn.status.queued": "Navbatda - joriy qadamni kutish",
   "ui.messagePart.diagnostic.error": "Xato",
   "ui.messagePart.title.edit": "Tahrirlash",

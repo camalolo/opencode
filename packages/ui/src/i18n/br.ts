@@ -94,6 +94,7 @@ export const dict = {
   "ui.sessionTurn.status.gatheringThoughts": "Organizando pensamentos",
   "ui.sessionTurn.status.consideringNextSteps": "Considerando próximos passos",
   "ui.sessionTurn.status.waitingForTool": "Aguardando {{tool}} terminar",
+  "ui.sessionTurn.status.waitingForWake": "Aguardando o próximo espertar",
   "ui.sessionTurn.status.queued": "Na fila - aguardando o turno atual",
 
   "ui.messagePart.questions.dismissed": "Perguntas descartadas",
