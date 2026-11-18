@@ -9,7 +9,9 @@ export const Disabled = Schema.Struct({
 export const Entry = Schema.Union([
   Disabled,
   Schema.Struct({
-    command: Schema.mutable(Schema.Array(Schema.String)),
+    // Optional so a project config can re-enable a globally disabled builtin
+    // with `{ "disabled": false }` and inherit its command/extensions.
+    command: Schema.optional(Schema.mutable(Schema.Array(Schema.String))),
     extensions: Schema.optional(Schema.mutable(Schema.Array(Schema.String))),
     disabled: Schema.optional(Schema.Boolean),
     env: Schema.optional(Schema.Record(Schema.String, Schema.String)),
@@ -18,7 +20,8 @@ export const Entry = Schema.Union([
 ]).pipe((schema) => schema)
 
 // Keep this list aligned with the builtin servers in opencode's LSP runtime.
-// Custom servers must declare extensions because the runtime cannot infer them.
+// Custom servers must declare a command and extensions because the runtime
+// cannot infer either one.
 export const builtinServerIds = [
   "deno",
   "typescript",
@@ -68,9 +71,9 @@ export const requiresExtensionsForCustomServers = Schema.makeFilter<
   const ok = Object.entries(data).every(([id, config]) => {
     if ("disabled" in config && config.disabled) return true
     if (ids.has(id)) return true
-    return "extensions" in config && Boolean(config.extensions)
+    return Boolean(config.command?.length) && Boolean(config.extensions)
   })
-  return ok ? undefined : "For custom LSP servers, 'extensions' array is required."
+  return ok ? undefined : "For custom LSP servers, 'command' and 'extensions' arrays are required."
 })
 
 export const Info = Schema.Union([Schema.Boolean, Schema.Record(Schema.String, Entry)])

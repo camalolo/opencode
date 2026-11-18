@@ -2,8 +2,9 @@ import type { ChildProcessWithoutNullStreams } from "child_process"
 import fs from "node:fs"
 import { Readable, Writable } from "node:stream"
 import { Process } from "@/util/process"
+import { Systemd } from "@/util/systemd"
 
-type Child = Process.Child & ChildProcessWithoutNullStreams
+export type Child = Process.Child & ChildProcessWithoutNullStreams
 
 // npm-installed .bin LSP entries are node-shebang scripts and fleet service PATHs may have no
 // `node` — run script entries with the runtime opencode itself is running on
@@ -21,50 +22,21 @@ function route(cmd: string, args: string[]): [string, string[]] {
 }
 
 // LSP servers can balloon: one full-mode tsserver held ~8.2G of RAM+swap and
-// swap-thrashed the whole box (2026-11-16 incident). On Linux, run each server
-// inside a transient systemd user scope so a runaway is capped and OOMs in its
-// own cgroup instead — the LSP client restarts it, and bounded memory with a
-// restart is strictly better than box-wide thrash. Children (tsserver,
-// tsgolint) inherit the scope, so wrapper daemons like `oxlint --lsp` are
-// covered too. CPUWeight=50 makes a busy server (tsserver re-analyzing after
-// every edit) yield CPU to foreground builds and lint runs. Fail-open: without
-// a usable user systemd (desktops, containers) we spawn exactly as before —
-// LSPs must work everywhere.
-let scopeUsable: boolean | undefined
-
-function lspScope(): { argv: string[]; unit: string } | undefined {
-  if (process.env.OPENCODE_LSP_NO_SCOPE === "1") return undefined
-  if (scopeUsable === undefined) {
-    try {
-      scopeUsable =
-        process.platform === "linux" &&
-        Bun.spawnSync(["systemd-run", "--user", "--quiet", "--scope", "-p", "CPUWeight=50", "true"]).exitCode === 0
-    } catch {
-      scopeUsable = false
-    }
-  }
-  if (!scopeUsable) return undefined
-  const unit = `opencode-lsp-${crypto.randomUUID()}`
-  return {
-    unit,
-    argv: [
-      "systemd-run",
-      "--user",
-      "--quiet",
-      "--scope",
-      "-p",
-      "MemoryMax=4G",
-      "-p",
-      "MemoryHigh=3G",
-      "-p",
-      "MemorySwapMax=1G",
-      "-p",
-      "CPUWeight=50",
-      "--unit",
-      unit,
-      "--",
-    ],
-  }
+// swap-thrashed the whole box (2026-11-16 incident). Run each server inside a
+// transient systemd user scope so a runaway is capped and OOMs in its own
+// cgroup instead — the client respawns it on the next touch, and bounded
+// memory with a restart is strictly better than box-wide thrash. Children
+// (tsserver, tsgolint) inherit the scope, so wrapper daemons like
+// `oxlint --lsp` are covered too. CPUWeight=50 makes a busy server (tsserver
+// re-analyzing after every edit) yield CPU to foreground builds and lint runs.
+// Fail-open: without a usable user systemd (desktops, containers) we spawn
+// exactly as before — LSPs must work everywhere.
+function lspScope() {
+  return Systemd.scope({
+    prefix: "opencode-lsp",
+    properties: ["MemoryMax=4G", "MemoryHigh=3G", "MemorySwapMax=1G", "CPUWeight=50"],
+    disabled: process.env.OPENCODE_LSP_NO_SCOPE === "1",
+  })
 }
 
 // Bun's child_process compat drops output of children that write to fd 1 natively (napi CLIs
@@ -123,15 +95,9 @@ export function spawn(cmd: string, argsOrOpts?: string[] | Process.Options, opts
       } catch {
         // already exited
       }
-      if (scope) {
-        // killing systemd-run orphans the payload (tsserver/tsgolint would
-        // accumulate) — stop the whole scope so systemd reaps every process in it
-        void Bun.spawn(["systemctl", "--user", "stop", `${scope.unit}.scope`], {
-          stdin: "ignore",
-          stdout: "ignore",
-          stderr: "ignore",
-        })
-      }
+      // killing systemd-run orphans the payload (tsserver/tsgolint would
+      // accumulate) — stop the whole scope so systemd reaps every process in it
+      if (scope) Systemd.stop(scope.unit)
     },
     ref() {},
     unref() {},

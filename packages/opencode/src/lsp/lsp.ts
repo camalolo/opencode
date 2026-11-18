@@ -152,23 +152,36 @@ const layer = Layer.effect(
       Effect.fn("LSP.state")(function* (ctx) {
         const cfg = yield* config.get()
 
-        const servers: Record<string, LSPServer.Info> = {}
+        const builtins: Record<string, LSPServer.Info> = {}
+        for (const server of Object.values(LSPServer)) {
+          builtins[server.id] = server
+        }
+        filterExperimentalServers(builtins, flags)
+        const servers: Record<string, LSPServer.Info> = cfg.lsp ? { ...builtins } : {}
 
         if (!cfg.lsp) {
           yield* Effect.logInfo("all LSPs are disabled")
         } else {
-          for (const server of Object.values(LSPServer)) {
-            servers[server.id] = server
-          }
-
-          filterExperimentalServers(servers, flags)
-
           if (cfg.lsp !== true) {
             for (const [name, item] of Object.entries(cfg.lsp)) {
-              const existing = servers[name]
+              const existing = servers[name] ?? builtins[name]
               if (item.disabled) {
                 yield* Effect.logInfo(`LSP server ${name} is disabled`)
                 delete servers[name]
+                continue
+              }
+              const command = item.command
+              const spawn = command
+                ? async (root: string) => ({
+                    process: lspspawn(command[0], command.slice(1), {
+                      cwd: root,
+                      env: { ...process.env, ...item.env },
+                    }),
+                    initialization: item.initialization,
+                  })
+                : existing?.spawn.bind(existing)
+              if (!spawn) {
+                yield* Effect.logWarning(`LSP server ${name} has no command; skipping`)
                 continue
               }
               servers[name] = {
@@ -176,13 +189,7 @@ const layer = Layer.effect(
                 id: name,
                 root: existing?.root ?? (async (_file, ctx) => ctx.directory),
                 extensions: item.extensions ?? existing?.extensions ?? [],
-                spawn: async (root) => ({
-                  process: lspspawn(item.command[0], item.command.slice(1), {
-                    cwd: root,
-                    env: { ...process.env, ...item.env },
-                  }),
-                  initialization: item.initialization,
-                }),
+                spawn,
               }
             }
           }
@@ -279,6 +286,14 @@ const layer = Layer.effect(
           }
 
           s.clients.push(client)
+          // A crashed or OOM-killed server must not keep occupying the slot
+          // until the next idle sweep: drop it so the next touch respawns it.
+          void client.exited.then(() => {
+            const index = s.clients.indexOf(client)
+            if (index === -1) return
+            s.clients.splice(index, 1)
+            s.lastTouch.delete(root + server.id)
+          })
           return client
         }
 

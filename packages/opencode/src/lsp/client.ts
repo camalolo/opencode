@@ -544,6 +544,9 @@ export async function create(input: {
 
   const result = {
     root: input.root,
+    get exited() {
+      return input.server.process.exited
+    },
     get serverID() {
       return input.serverID
     },

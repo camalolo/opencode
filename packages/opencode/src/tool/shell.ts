@@ -13,6 +13,7 @@ import { fileURLToPath } from "url"
 import { Config } from "@/config/config"
 import { RuntimeFlags } from "@/effect/runtime-flags"
 import { Shell } from "@opencode-ai/core/shell"
+import { Systemd } from "@/util/systemd"
 import { ShellID } from "./shell/id"
 
 import * as Truncate from "./truncate"
@@ -290,23 +291,65 @@ const ask = Effect.fn("ShellTool.ask")(function* (ctx: Tool.Context, scan: Scan,
   })
 })
 
-function cmd(shell: string, command: string, cwd: string, env: NodeJS.ProcessEnv) {
+type Command = { process: ChildProcess.Command; unit?: string }
+
+const BASH_MEMORY_MAX = "OPENCODE_BASH_MEMORY_MAX"
+
+// Commands run in their own memory-capped scope so a runaway build or test
+// cannot eat the server's cgroup. The cap is deliberately generous; change it
+// with OPENCODE_BASH_MEMORY_MAX (e.g. "6G") in the server environment or opt
+// out with OPENCODE_BASH_NO_SCOPE=1.
+function memoryMax() {
+  const value = process.env[BASH_MEMORY_MAX]?.trim()
+  if (!value) return "3G"
+  if (!/^(infinity|\d+(\.\d+)?[KMGTPE]?)$/i.test(value)) return "3G"
+  return value
+}
+
+function cmd(shell: string, command: string, cwd: string, env: NodeJS.ProcessEnv): Command {
   if (process.platform === "win32" && Shell.ps(shell)) {
-    return ChildProcess.make(shell, ["-NoLogo", "-NoProfile", "-NonInteractive", "-Command", command], {
+    return {
+      process: ChildProcess.make(shell, ["-NoLogo", "-NoProfile", "-NonInteractive", "-Command", command], {
+        cwd,
+        env,
+        stdin: "ignore",
+        detached: false,
+      }),
+    }
+  }
+
+  const scope =
+    process.platform === "win32"
+      ? undefined
+      : Systemd.scope({
+          prefix: "opencode-bash",
+          properties: [`MemoryMax=${memoryMax()}`, "MemorySwapMax=0"],
+          disabled: process.env.OPENCODE_BASH_NO_SCOPE === "1",
+        })
+
+  if (scope) {
+    // systemd-run execs the payload, so the pid stays the shell's and the
+    // existing process-group timeout/kill keeps working.
+    return {
+      process: ChildProcess.make(scope.argv[0], [...scope.argv.slice(1), shell, "-c", command], {
+        cwd,
+        env,
+        stdin: "ignore",
+        detached: true,
+      }),
+      unit: scope.unit,
+    }
+  }
+
+  return {
+    process: ChildProcess.make(command, [], {
+      shell,
       cwd,
       env,
       stdin: "ignore",
-      detached: false,
-    })
+      detached: process.platform !== "win32",
+    }),
   }
-
-  return ChildProcess.make(command, [], {
-    shell,
-    cwd,
-    env,
-    stdin: "ignore",
-    detached: process.platform !== "win32",
-  })
 }
 const parser = lazy(async () => {
   const { Parser } = await import("web-tree-sitter")
@@ -436,6 +479,7 @@ export const ShellTool = Tool.define(
       ctx: Tool.Context,
     ) {
       const limits = yield* trunc.limits()
+      const command = cmd(input.shell, input.command, input.cwd, input.env)
       const keep = limits.maxBytes * 2
       let full = ""
       let last = ""
@@ -446,6 +490,8 @@ export const ShellTool = Tool.define(
       let cut = false
       let expired = false
       let aborted = false
+      let killed = false
+      let oom = false
 
       const closeSink = Effect.fnUntraced(function* () {
         const stream = sink
@@ -481,7 +527,7 @@ export const ShellTool = Tool.define(
       const code: number | null = yield* Effect.scoped(
         Effect.gen(function* () {
           yield* Effect.addFinalizer(closeSink)
-          const handle = yield* spawner.spawn(cmd(input.shell, input.command, input.cwd, input.env))
+          const handle = yield* spawner.spawn(command.process)
 
           yield* Effect.forkScoped(
             Stream.runForEach(Stream.decodeText(handle.all), (chunk) => {
@@ -540,7 +586,11 @@ export const ShellTool = Tool.define(
           const timeout = Effect.sleep(`${input.timeout + 100} millis`)
 
           const exit = yield* Effect.raceAll([
-            handle.exitCode.pipe(Effect.map((code) => ({ kind: "exit" as const, code }))),
+            // exitCode fails when the process was terminated by a signal
+            handle.exitCode.pipe(
+              Effect.map((code) => ({ kind: "exit" as const, code })),
+              Effect.catch(() => Effect.succeed({ kind: "signal" as const, code: null })),
+            ),
             abort.pipe(Effect.map(() => ({ kind: "abort" as const, code: null }))),
             timeout.pipe(Effect.map(() => ({ kind: "timeout" as const, code: null }))),
           ])
@@ -552,6 +602,14 @@ export const ShellTool = Tool.define(
           if (exit.kind === "timeout") {
             expired = true
             yield* handle.kill({ forceKillAfter: "3 seconds" }).pipe(Effect.orDie)
+          }
+          if ((exit.kind === "abort" || exit.kind === "timeout") && command.unit) Systemd.stop(command.unit)
+          if (exit.kind === "signal") {
+            killed = true
+            if (command.unit) {
+              oom = Systemd.result(command.unit) === "oom-kill"
+              Systemd.discard(command.unit)
+            }
           }
 
           return exit.kind === "exit" ? exit.code : null
@@ -565,6 +623,13 @@ export const ShellTool = Tool.define(
         )
       }
       if (aborted) meta.push("User aborted the command")
+      if (oom) {
+        meta.push(
+          `command was killed by the OOM killer inside its ${memoryMax()} memory-capped scope. Raise ${BASH_MEMORY_MAX} in the server environment or split the command. Scope: ${command.unit}.scope`,
+        )
+      } else if (killed) {
+        meta.push("command was terminated by a signal")
+      }
       const raw = list.map((item) => item.text).join("")
       const end = tail(raw, limits.maxLines, limits.maxBytes)
       if (end.cut) cut = true
