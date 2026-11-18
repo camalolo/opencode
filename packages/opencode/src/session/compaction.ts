@@ -11,6 +11,7 @@ import { Agent } from "@/agent/agent"
 import { Plugin } from "@/plugin"
 import { Config } from "@/config/config"
 import { NotFoundError } from "@/storage/storage"
+import { Database } from "@opencode-ai/core/database/database"
 
 import { Effect, Layer, Context, Stream } from "effect"
 import { InstanceState } from "@/effect/instance-state"
@@ -35,6 +36,7 @@ const PRUNE_PROTECTED_TOOLS = ["skill"]
 const MIN_PRESERVE_RECENT_TOKENS = 2_000
 const MAX_PRESERVE_RECENT_TOKENS = 15_000
 const SUMMARY_OUTPUT_TOKENS = 4_096
+const SUMMARY_NUDGE = `Your previous reply did not follow the summary format. Respond again with only the summary Markdown, starting with "## Objective". Do not continue the conversation and do not reproduce its transcript markers such as "[User]:", "[Assistant tool call]:" or "[Tool result]:".`
 type Turn = {
   start: number
   end: number
@@ -205,6 +207,7 @@ const layer = Layer.effect(
     const events = yield* EventV2Bridge.Service
     const flags = yield* RuntimeFlags.Service
     const llm = yield* LLM.Service
+    const database = yield* Database.Service
 
     const isOverflow = Effect.fn("SessionCompaction.isOverflow")(function* (input: {
       tokens: SessionV1.Assistant["tokens"]
@@ -511,70 +514,106 @@ const layer = Layer.effect(
           .filter(Boolean)
           .join("\n\n")
       const ctx = yield* InstanceState.context
-      const msg: SessionV1.Assistant = {
-        id: MessageID.ascending(),
-        role: "assistant",
-        parentID: input.parentID,
-        sessionID: input.sessionID,
-        mode: "compaction",
-        agent: "compaction",
-        summary: true,
-        path: {
-          cwd: ctx.directory,
-          root: ctx.worktree,
-        },
-        cost: 0,
-        tokens: {
-          output: 0,
-          input: 0,
-          reasoning: 0,
-          cache: { read: 0, write: 0 },
-        },
-        modelID: model.id,
-        providerID: model.providerID,
-        time: {
-          created: Date.now(),
-        },
-      }
-      yield* session.updateMessage(msg)
-      const processor = yield* processors.create({
-        assistantMessage: msg,
-        sessionID: input.sessionID,
-        model,
-      })
-      const result = yield* processor.process({
-        user,
-        agent,
-        sessionID: input.sessionID,
-        tools: {},
-        system: [],
-        messages: [
-          {
-            role: "user",
-            content: [
-              {
-                type: "text",
-                text: [
-                  nextPrompt,
-                  ...(compacting.prompt ? ["The following is the conversation history:", conversation] : []),
-                ]
-                  .filter(Boolean)
-                  .join("\n\n"),
-              },
-            ],
+      // A summary that does not open with a template section is not usable as
+      // the compacted history: models sometimes continue the serialized
+      // conversation ("Continuing the wiring — ..." plus replayed tool calls)
+      // instead of answering the prompt.
+      const filled = (message: SessionV1.Assistant) =>
+        Effect.gen(function* () {
+          const parts = yield* MessageV2.parts(message.id).pipe(Effect.provideService(Database.Service, database))
+          const first = summaryText({ info: message, parts })?.split("\n").find((line) => line.trim())
+          return first?.trim().startsWith("## ") ?? false
+        })
+      const attempt = Effect.fn("SessionCompaction.summary")(function* (nudged: boolean) {
+        const msg: SessionV1.Assistant = {
+          id: MessageID.ascending(),
+          role: "assistant",
+          parentID: input.parentID,
+          sessionID: input.sessionID,
+          mode: "compaction",
+          agent: "compaction",
+          summary: true,
+          path: {
+            cwd: ctx.directory,
+            root: ctx.worktree,
           },
-        ],
-        model,
+          cost: 0,
+          tokens: {
+            output: 0,
+            input: 0,
+            reasoning: 0,
+            cache: { read: 0, write: 0 },
+          },
+          modelID: model.id,
+          providerID: model.providerID,
+          time: {
+            created: Date.now(),
+          },
+        }
+        yield* session.updateMessage(msg)
+        const processor = yield* processors.create({
+          assistantMessage: msg,
+          sessionID: input.sessionID,
+          model,
+        })
+        const result = yield* processor.process({
+          user,
+          agent,
+          sessionID: input.sessionID,
+          tools: {},
+          system: [],
+          messages: [
+            {
+              role: "user",
+              content: [
+                {
+                  type: "text",
+                  text: [
+                    nextPrompt,
+                    ...(nudged ? [SUMMARY_NUDGE] : []),
+                    ...(compacting.prompt ? ["The following is the conversation history:", conversation] : []),
+                  ]
+                    .filter(Boolean)
+                    .join("\n\n"),
+                },
+              ],
+            },
+          ],
+          model,
+        })
+        return { message: processor.message, result }
       })
 
+      let summary = yield* attempt(false)
+      if (!summary.message.error && summary.result !== "compact" && !(yield* filled(summary.message))) {
+        yield* Effect.logInfo("compaction summary did not match the template; retrying", {
+          "session.id": input.sessionID,
+        })
+        // Replace the reply instead of keeping it: a transcript replay must not
+        // become the history other messages (and future compactions) anchor on.
+        yield* session.removeMessage({ sessionID: input.sessionID, messageID: summary.message.id })
+        summary = yield* attempt(true)
+        if (!summary.message.error && summary.result !== "compact" && !(yield* filled(summary.message))) {
+          summary.message.error = new SessionV1.APIError({
+            message: "Compaction summary did not match the required template",
+            isRetryable: false,
+          }).toObject()
+          summary.message.finish = "error"
+          yield* session.updateMessage(summary.message)
+          return "stop"
+        }
+      }
+      const assistantMessage = summary.message
+      const result = summary.result
+
       if (result === "compact") {
-        processor.message.error = new SessionV1.ContextOverflowError({
+        assistantMessage.error = new SessionV1.ContextOverflowError({
           message: replay
             ? "Conversation history too large to compact - exceeds model context limit"
             : "Session too large to compact - context exceeds model limit even after stripping media",
         }).toObject()
-        processor.message.finish = "error"
-        yield* session.updateMessage(processor.message)
+        assistantMessage.finish = "error"
+        yield* session.updateMessage(assistantMessage)
         return "stop"
       }
 
@@ -669,8 +708,8 @@ const layer = Layer.effect(
         }
       }
 
-      if (processor.message.error) {
-        if (AbortedError.isInstance(processor.message.error)) {
+      if (assistantMessage.error) {
+        if (AbortedError.isInstance(assistantMessage.error)) {
           yield* rollback(input.sessionID, input.parentID)
         }
         return "stop"
@@ -751,6 +790,7 @@ export const node = LayerNode.make({
     EventV2Bridge.node,
     RuntimeFlags.node,
     LLM.node,
+    Database.node,
   ],
 })
 

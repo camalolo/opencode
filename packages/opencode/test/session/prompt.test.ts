@@ -904,7 +904,7 @@ it.instance("loop drains a pending compaction against its marker before answerin
     // A compaction request (e.g. from an interrupted run) is still pending when
     // the user sends a new prompt.
     const marker = yield* seedCompactionMarker(chat.id)
-    yield* llm.push(reply().text("summary of everything so far").stop())
+    yield* llm.push(reply().text("## Objective\n- summary of everything so far").stop())
     yield* llm.push(reply().text("answered the new prompt").stop())
 
     const result = yield* prompt.prompt({

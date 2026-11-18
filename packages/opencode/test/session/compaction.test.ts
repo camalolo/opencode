@@ -4,7 +4,7 @@ import { SessionV1 } from "@opencode-ai/core/v1/session"
 import { Database } from "@opencode-ai/core/database/database"
 import { EventV2Bridge } from "@/event-v2-bridge"
 import { APICallError } from "ai"
-import { Cause, Deferred, Effect, Exit, Fiber, Layer, Schema } from "effect"
+import { Cause, Deferred, Effect, Exit, Fiber, Layer, Option, Schema } from "effect"
 import * as Stream from "effect/Stream"
 import { Config } from "@/config/config"
 import { LLM } from "../../src/session/llm"
@@ -205,7 +205,22 @@ function fake(
     },
     updateToolCall: Effect.fn("TestSessionProcessor.updateToolCall")(() => Effect.succeed(undefined)),
     completeToolCall: Effect.fn("TestSessionProcessor.completeToolCall")(() => Effect.void),
-    process: Effect.fn("TestSessionProcessor.process")(() => Effect.succeed(result)),
+    process: Effect.fn("TestSessionProcessor.process")(function* () {
+      // A real processor streams the summary into the message; the fake has to
+      // persist one too or the summary looks unusable.
+      if (result === "continue") {
+        const ssn = Option.getOrUndefined(yield* Effect.serviceOption(SessionNs.Service))
+        if (ssn)
+          yield* ssn.updatePart({
+            id: PartID.ascending(),
+            messageID: msg.id,
+            sessionID: input.sessionID,
+            type: "text",
+            text: "## Objective\n- summary",
+          })
+      }
+      return result
+    }),
   } satisfies SessionProcessorModule.SessionProcessor.Handle
 }
 
@@ -1025,7 +1040,7 @@ describe("session.compaction.process", () => {
     () => {
       const stub = llm()
       let captured = ""
-      stub.push(reply("summary", (input) => (captured = JSON.stringify(input.messages))))
+      stub.push(reply("## Objective\n- summary", (input) => (captured = JSON.stringify(input.messages))))
       return Effect.gen(function* () {
         const ssn = yield* SessionNs.Service
         const session = yield* ssn.create({})
@@ -1052,7 +1067,7 @@ describe("session.compaction.process", () => {
     () => {
       const stub = llm()
       let captured = ""
-      stub.push(reply("summary", (input) => (captured = JSON.stringify(input.messages))))
+      stub.push(reply("## Objective\n- summary", (input) => (captured = JSON.stringify(input.messages))))
       return Effect.gen(function* () {
         const ssn = yield* SessionNs.Service
         const session = yield* ssn.create({})
@@ -1089,7 +1104,7 @@ describe("session.compaction.process", () => {
     () => {
       const stub = llm()
       let captured: LLM.StreamInput | undefined
-      stub.push(reply("summary", (input) => (captured = input)))
+      stub.push(reply("## Objective\n- summary", (input) => (captured = input)))
       return Effect.gen(function* () {
         const ssn = yield* SessionNs.Service
         const session = yield* ssn.create({})
@@ -1122,7 +1137,7 @@ describe("session.compaction.process", () => {
     () => {
       const stub = llm()
       let captured = ""
-      stub.push(reply("summary", (input) => (captured = JSON.stringify(input.messages))))
+      stub.push(reply("## Objective\n- summary", (input) => (captured = JSON.stringify(input.messages))))
       return Effect.gen(function* () {
         const test = yield* TestInstance
         const ssn = yield* SessionNs.Service
@@ -1417,7 +1432,7 @@ describe("session.compaction.process", () => {
         Stream.make(
           LLMEvent.reasoningDelta({ id: "orphan-1", text: "stray reasoning" }),
           LLMEvent.textStart({ id: "txt-0" }),
-          LLMEvent.textDelta({ id: "txt-0", text: "summary" }),
+          LLMEvent.textDelta({ id: "txt-0", text: "## Objective\n- summary" }),
           LLMEvent.textEnd({ id: "txt-0" }),
           LLMEvent.stepFinish({ index: 0, reason: "stop", usage: basicUsage() }),
           LLMEvent.finish({ reason: "stop", usage: basicUsage() }),
@@ -1441,7 +1456,9 @@ describe("session.compaction.process", () => {
         )
         expect(summary?.parts.some((part) => part.type === "reasoning")).toBe(false)
         // Sanity: the text part still got through.
-        expect(summary?.parts.some((part) => part.type === "text" && part.text === "summary")).toBe(true)
+        expect(summary?.parts.some((part) => part.type === "text" && part.text === "## Objective\n- summary")).toBe(
+          true,
+        )
       }).pipe(withCompaction({ llm: stub.llmLayer }))
     },
     { git: true },
@@ -1490,7 +1507,7 @@ describe("session.compaction.process", () => {
       const stub = llm()
       let messages: LLM.StreamInput["messages"] = []
       stub.push(
-        reply("summary", (input) => {
+        reply("## Objective\n- summary", (input) => {
           messages = input.messages
         }),
       )
@@ -1543,9 +1560,9 @@ describe("session.compaction.process", () => {
     () => {
       const stub = llm()
       let captured = ""
-      stub.push(reply("summary one"))
+      stub.push(reply("## Objective\n- summary one"))
       stub.push(
-        reply("summary two", (input) => {
+        reply("## Objective\n- summary two", (input) => {
           captured = JSON.stringify(input.messages)
         }),
       )
@@ -1588,7 +1605,7 @@ describe("session.compaction.process", () => {
       const stub = llm()
       let captured = ""
       stub.push(
-        reply("summary", (input) => {
+        reply("## Objective\n- summary", (input) => {
           captured = JSON.stringify(input.messages)
         }),
       )
@@ -1631,7 +1648,7 @@ describe("session.compaction.process", () => {
       const stub = llm()
       let captured: LLM.StreamInput["messages"] = []
       stub.push(
-        reply("summary two", (input) => {
+        reply("## Objective\n- summary two", (input) => {
           captured = input.messages
         }),
       )
@@ -1695,8 +1712,8 @@ describe("session.compaction.process", () => {
 
   itCompaction.instance("keeps recent pre-compaction turns across repeated compactions", () => {
     const stub = llm()
-    stub.push(reply("summary one"))
-    stub.push(reply("summary two"))
+    stub.push(reply("## Objective\n- summary one"))
+    stub.push(reply("## Objective\n- summary two"))
 
     return Effect.gen(function* () {
       const ssn = yield* SessionNs.Service
@@ -1731,6 +1748,92 @@ describe("session.compaction.process", () => {
         filtered.some((msg) => msg.info.role === "user" && msg.parts.some((part) => part.type === "compaction")),
       ).toBe(true)
     }).pipe(withCompaction({ llm: stub.llmLayer, config: cfg({ tail_turns: 2, preserve_recent_tokens: 10_000 }) }))
+  })
+
+  itCompaction.instance("retries a summary that continues the conversation instead of following the template", () => {
+    const stub = llm()
+    let first = ""
+    let second = ""
+    stub.push(
+      reply("Continuing the wiring — relabeling the doll counter\n\n[Assistant tool call]: edit(...)", (input) => {
+        first = JSON.stringify(input.messages)
+      }),
+    )
+    stub.push(
+      reply("## Objective\n- real summary", (input) => {
+        second = JSON.stringify(input.messages)
+      }),
+    )
+
+    return Effect.gen(function* () {
+      const ssn = yield* SessionNs.Service
+      const session = yield* ssn.create({})
+      yield* createUserMessage(session.id, "older context")
+      yield* createUserMessage(session.id, "keep this turn")
+      yield* createCompactionMarker(session.id)
+
+      const msgs = yield* ssn.messages({ sessionID: session.id })
+      const parent = msgs.at(-1)?.info.id
+      expect(parent).toBeTruthy()
+      const result = yield* SessionCompaction.use.process({
+        parentID: parent!,
+        messages: msgs,
+        sessionID: session.id,
+        auto: false,
+      })
+
+      expect(result).toBe("continue")
+      expect(first).not.toContain("did not follow the summary format")
+      expect(second).toContain("did not follow the summary format")
+
+      const summaries = (yield* ssn.messages({ sessionID: session.id })).filter(
+        (msg) => msg.info.role === "assistant" && msg.info.summary,
+      )
+      expect(summaries).toHaveLength(1)
+      const summary = summaries[0]
+      expect(summary?.info.role).toBe("assistant")
+      if (summary?.info.role === "assistant") {
+        expect(summary.info.error).toBeUndefined()
+        expect(summary.info.finish).toBe("stop")
+      }
+      expect(summary?.parts.some((part) => part.type === "text" && part.text.includes("real summary"))).toBe(true)
+    }).pipe(withCompaction({ llm: stub.llmLayer }))
+  })
+
+  itCompaction.instance("fails the compaction when the summary never matches the template", () => {
+    const stub = llm()
+    stub.push(reply("Continuing the work — next I will edit the generator label."))
+    stub.push(reply("Still continuing the same conversation instead of summarizing."))
+
+    return Effect.gen(function* () {
+      const ssn = yield* SessionNs.Service
+      const session = yield* ssn.create({})
+      yield* createUserMessage(session.id, "older context")
+      yield* createUserMessage(session.id, "keep this turn")
+      yield* createCompactionMarker(session.id)
+
+      const msgs = yield* ssn.messages({ sessionID: session.id })
+      const parent = msgs.at(-1)?.info.id
+      expect(parent).toBeTruthy()
+      const result = yield* SessionCompaction.use.process({
+        parentID: parent!,
+        messages: msgs,
+        sessionID: session.id,
+        auto: false,
+      })
+
+      expect(result).toBe("stop")
+      const summaries = (yield* ssn.messages({ sessionID: session.id })).filter(
+        (msg) => msg.info.role === "assistant" && msg.info.summary,
+      )
+      expect(summaries).toHaveLength(1)
+      const summary = summaries[0]
+      expect(summary?.info.role).toBe("assistant")
+      if (summary?.info.role === "assistant") {
+        expect(summary.info.error).toBeDefined()
+        expect(summary.info.finish).toBe("error")
+      }
+    }).pipe(withCompaction({ llm: stub.llmLayer }))
   })
 
   itCompaction.instance(

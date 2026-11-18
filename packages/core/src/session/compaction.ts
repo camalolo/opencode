@@ -43,7 +43,8 @@ Rules:
 - Keep every section, even when empty.
 - Use terse bullets, not prose paragraphs.
 - Preserve exact file paths, symbols, commands, error strings, URLs, and identifiers when known.
-- Do not mention the summary process or that context was compacted.`
+- Do not mention the summary process or that context was compacted.
+- Start your response with "## Objective" and output only the summary itself: never continue the conversation, answer it, or reproduce its transcript markers such as "[User]:", "[Assistant tool call]:" or "[Tool result]:".`
 const SUMMARY_UPDATE_INSTRUCTIONS = `The <prior-summary> summarizes everything that happened before the <conversation>. Construct a new summary that combines both. The <prior-summary> is discarded after this: anything you do not carry into the new summary is lost.
 
 When combining:
