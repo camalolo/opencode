@@ -585,7 +585,14 @@ const layer = Layer.effect(
       })
 
       let summary = yield* attempt(false)
-      if (!summary.message.error && summary.result !== "compact" && !(yield* filled(summary.message))) {
+      // A plugin-provided prompt owns its own output format; only the built-in
+      // template can be checked.
+      if (
+        !compacting.prompt &&
+        !summary.message.error &&
+        summary.result !== "compact" &&
+        !(yield* filled(summary.message))
+      ) {
         yield* Effect.logInfo("compaction summary did not match the template; retrying", {
           "session.id": input.sessionID,
         })

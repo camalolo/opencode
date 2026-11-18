@@ -381,6 +381,20 @@ function autocontinue(enabled: boolean) {
   })
 }
 
+function compactionPrompt(prompt: string) {
+  return Layer.mock(Plugin.Service)({
+    trigger: <Name extends string, Input, Output>(name: Name, _input: Input, output: Output) => {
+      if (name !== "experimental.session.compacting") return Effect.succeed(output)
+      return Effect.sync(() => {
+        ;(output as { prompt?: string }).prompt = prompt
+        return output
+      })
+    },
+    list: () => Effect.succeed([]),
+    init: () => Effect.void,
+  })
+}
+
 function compactionContext(context: string) {
   return Layer.mock(Plugin.Service)({
     trigger: <Name extends string, Input, Output>(name: Name, _input: Input, output: Output) => {
@@ -1749,6 +1763,39 @@ describe("session.compaction.process", () => {
       ).toBe(true)
     }).pipe(withCompaction({ llm: stub.llmLayer, config: cfg({ tail_turns: 2, preserve_recent_tokens: 10_000 }) }))
   })
+
+  itCompaction.instance(
+    "skips template validation when a plugin replaces the compaction prompt",
+    () => {
+      const stub = llm()
+      let captured = ""
+      stub.push(reply("custom summary in the plugin format", (input) => (captured = JSON.stringify(input.messages))))
+
+      return Effect.gen(function* () {
+        const ssn = yield* SessionNs.Service
+        const session = yield* ssn.create({})
+        yield* createUserMessage(session.id, "hello")
+        const marker = yield* createCompactionMarker(session.id)
+        const msgs = yield* ssn.messages({ sessionID: session.id })
+
+        const result = yield* SessionCompaction.use.process({
+          parentID: marker.id,
+          messages: msgs,
+          sessionID: session.id,
+          auto: false,
+        })
+
+        expect(result).toBe("continue")
+        expect(captured).toContain("custom prompt")
+        expect(captured).toContain("The following is the conversation history:")
+        const summaries = (yield* ssn.messages({ sessionID: session.id })).filter(
+          (msg) => msg.info.role === "assistant" && msg.info.summary,
+        )
+        expect(summaries).toHaveLength(1)
+      }).pipe(withCompaction({ llm: stub.llmLayer, plugin: compactionPrompt("custom prompt") }))
+    },
+    { git: true },
+  )
 
   itCompaction.instance("retries a summary that continues the conversation instead of following the template", () => {
     const stub = llm()
