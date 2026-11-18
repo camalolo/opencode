@@ -773,8 +773,31 @@ const layer: Layer.Layer<
       )
     })
 
+    // A running turn resolves the model again at every provider step, so an
+    // explicit pick made during the turn can apply at the next step boundary.
+    // Stamping the change with server time lets the turn distinguish it from a
+    // saved pick that predates its user message (which must not override a
+    // model passed explicitly with the prompt).
+    const stampModelSelection = (previous: Info["metadata"], next: NonNullable<Info["metadata"]>) => {
+      const selection = next.modelSelection as Record<string, unknown> | undefined
+      if (!selection) return next
+      if (typeof selection.providerID !== "string" || typeof selection.modelID !== "string") return next
+      const saved = previous?.modelSelection as Record<string, unknown> | undefined
+      if (
+        saved?.providerID === selection.providerID &&
+        saved?.modelID === selection.modelID &&
+        (saved?.variant ?? undefined) === (selection.variant ?? undefined)
+      )
+        return next
+      return { ...next, modelSelection: { ...selection, time: Date.now() } }
+    }
+
     const setMetadata = Effect.fn("Session.setMetadata")(function* (input: typeof SetMetadataInput.Type) {
-      yield* patch(input.sessionID, { metadata: input.metadata, time: { updated: Date.now() } }).pipe(Effect.orDie)
+      const current = yield* get(input.sessionID).pipe(Effect.orDie)
+      yield* patch(input.sessionID, {
+        metadata: stampModelSelection(current.metadata, input.metadata),
+        time: { updated: Date.now() },
+      }).pipe(Effect.orDie)
     })
 
     const setAgentModel = Effect.fn("Session.setAgentModel")(function* (input: {

@@ -630,6 +630,32 @@ const layer = Layer.effect(
       return yield* Effect.die(err)
     })
 
+    // A turn resolves its model again at every provider step, so a selection
+    // picked while the turn is running applies at the next step boundary. Only
+    // a pick written after this turn's user message wins: an older saved pick
+    // never overrides a model passed explicitly with the prompt.
+    const selectedModel = Effect.fnUntraced(function* (sessionID: SessionID, user: SessionV1.User) {
+      const latest = yield* sessions.get(sessionID).pipe(Effect.orDie)
+      const selection = latest.metadata?.modelSelection as Record<string, unknown> | undefined
+      if (!selection) return user.model
+      if (typeof selection.time !== "number" || selection.time <= user.time.created) return user.model
+      if (typeof selection.providerID !== "string" || typeof selection.modelID !== "string") return user.model
+      const model = {
+        providerID: ProviderV2.ID.make(selection.providerID),
+        modelID: ModelV2.ID.make(selection.modelID),
+        variant: typeof selection.variant === "string" ? selection.variant : undefined,
+      }
+      if (
+        model.providerID === user.model.providerID &&
+        model.modelID === user.model.modelID &&
+        model.variant === user.model.variant
+      )
+        return user.model
+      const available = yield* provider.getModel(model.providerID, model.modelID).pipe(Effect.option)
+      if (Option.isNone(available)) return user.model
+      return model
+    })
+
     const currentModel = Effect.fnUntraced(function* (sessionID: SessionID) {
       const current = yield* db
         .select({ model: SessionTable.model })
@@ -1227,7 +1253,8 @@ const layer = Layer.effect(
               history: msgs,
             }).pipe(Effect.ignore, Effect.forkIn(scope))
 
-          const model = yield* getModel(lastUser.model.providerID, lastUser.model.modelID, sessionID)
+          const turnModel = yield* selectedModel(sessionID, lastUser)
+          const model = yield* getModel(turnModel.providerID, turnModel.modelID, sessionID)
           const task = tasks.pop()
 
           if (task?.part.type === "subtask") {
@@ -1252,7 +1279,7 @@ const layer = Layer.effect(
             lastFinished.summary !== true &&
             (yield* compaction.isOverflow({ tokens: lastFinished.tokens, model, session }))
           ) {
-            yield* compaction.create({ sessionID, agent: lastUser.agent, model: lastUser.model, auto: true })
+            yield* compaction.create({ sessionID, agent: lastUser.agent, model: turnModel, auto: true })
             continue
           }
 
@@ -1278,7 +1305,7 @@ const layer = Layer.effect(
             role: "assistant",
             mode: agent.name,
             agent: agent.name,
-            variant: lastUser.model.variant,
+            variant: turnModel.variant,
             path: { cwd: ctx.directory, root: ctx.worktree },
             cost: 0,
             tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
@@ -1356,7 +1383,7 @@ const layer = Layer.effect(
             const format = lastUser.format ?? { type: "text" as const }
             if (format.type === "json_schema") system.push(STRUCTURED_OUTPUT_SYSTEM_PROMPT)
             const result = yield* handle.process({
-              user: lastUser,
+              user: { ...lastUser, model: turnModel },
               agent,
               permission: session.permission,
               sessionID,

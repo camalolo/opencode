@@ -798,6 +798,83 @@ it.instance("loop continues when a length finish leaves tool calls pending", () 
   }),
 )
 
+const providerCfgWithOtherModel = (url: string) => ({
+  ...cfg,
+  provider: {
+    ...cfg.provider,
+    test: {
+      ...cfg.provider.test,
+      models: {
+        ...cfg.provider.test.models,
+        "other-model": { ...cfg.provider.test.models["test-model"], id: "other-model", name: "Other Model" },
+      },
+      options: { ...cfg.provider.test.options, baseURL: url },
+    },
+  },
+})
+
+it.instance("applies a model picked mid-turn at the next step", () =>
+  Effect.gen(function* () {
+    const { llm } = yield* useServerConfig(providerCfgWithOtherModel)
+    const prompt = yield* SessionPrompt.Service
+    const sessions = yield* Session.Service
+    const session = yield* sessions.create({
+      title: "Mid-turn switch",
+      permission: [{ permission: "*", pattern: "*", action: "allow" }],
+    })
+    yield* prompt.prompt({
+      sessionID: session.id,
+      agent: "build",
+      noReply: true,
+      parts: [{ type: "text", text: "hello" }],
+    })
+
+    const release = defer<void>()
+    yield* llm.push(reply().wait(release.promise).tool("first", { value: "first" }).stop())
+    yield* llm.text("done")
+
+    const fiber = yield* prompt.loop({ sessionID: session.id }).pipe(Effect.forkChild)
+    yield* llm.wait(1)
+    // Cross the millisecond boundary the selection timestamp is compared at.
+    yield* Effect.sleep("5 millis")
+    yield* sessions.setMetadata({
+      sessionID: session.id,
+      metadata: { modelSelection: { providerID: "test", modelID: "other-model" } },
+    })
+    release.resolve()
+    const result = yield* Fiber.join(fiber)
+
+    expect((yield* llm.hits)[1]?.body.model).toBe("other-model")
+    if (result.info.role === "assistant") expect(result.info.modelID).toBe(ModelV2.ID.make("other-model"))
+  }),
+  5_000,
+)
+
+it.instance("a saved model pick does not override an explicit prompt model", () =>
+  Effect.gen(function* () {
+    const { llm } = yield* useServerConfig(providerCfgWithOtherModel)
+    const prompt = yield* SessionPrompt.Service
+    const sessions = yield* Session.Service
+    const session = yield* sessions.create({ title: "Saved pick", permission: [] })
+
+    yield* sessions.setMetadata({
+      sessionID: session.id,
+      metadata: { modelSelection: { providerID: "test", modelID: "other-model" } },
+    })
+    yield* llm.text("done")
+
+    const result = yield* prompt.prompt({
+      sessionID: session.id,
+      agent: "build",
+      model: ref,
+      parts: [{ type: "text", text: "hello" }],
+    })
+
+    expect((yield* llm.hits)[0]?.body.model).toBe("test-model")
+    if (result.info.role === "assistant") expect(result.info.modelID).toBe(ref.modelID)
+  }),
+)
+
 const seedCompactionMarker = Effect.fn("test.seedCompactionMarker")(function* (sessionID: SessionID) {
   const session = yield* Session.Service
   const msg = yield* session.updateMessage({

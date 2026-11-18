@@ -429,7 +429,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
               write({ variant: value ?? null })
               if (model) {
                 models.variant.set({ providerID: model.provider.id, modelID: model.id }, value ?? undefined)
-                writeServerPick({ providerID: model.provider.id, modelID: model.id })
+                writeServerPick({ providerID: model.provider.id, modelID: model.id, variant: value ?? undefined })
               }
             }),
           )
