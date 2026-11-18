@@ -902,6 +902,7 @@ export const dict = {
   "terminal.connectTicket.statusError": "PTY-anslutningsbiljetten misslyckades med status {{status}}",
   "titlebar.update": "Uppdatera",
   "titlebar.updateVersion": "Uppdatera {{version}}",
+  "titlebar.tabs": "Open tabs",
   "common.closeTab": "Stäng fliken",
   "common.dismiss": "Avfärda",
   "common.moreCountSuffix": " (+{{count}} till)",

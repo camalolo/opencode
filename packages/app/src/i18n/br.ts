@@ -870,6 +870,7 @@ export const dict = {
 
   "titlebar.update": "Atualizar",
   "titlebar.updateVersion": "Atualizar {{version}}",
+  "titlebar.tabs": "Open tabs",
 
   "common.closeTab": "Fechar aba",
   "common.dismiss": "Descartar",

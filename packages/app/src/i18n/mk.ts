@@ -901,6 +901,7 @@ export const dict = {
   "terminal.connectTicket.statusError": "PTY билетот за поврзување не успеа со {{status}}",
   "titlebar.update": "Ажурирање",
   "titlebar.updateVersion": "Ажурирај {{version}}",
+  "titlebar.tabs": "Open tabs",
   "common.closeTab": "Затвори ја картичката",
   "common.dismiss": "Отфрли",
   "common.moreCountSuffix": "(+{{count}} повеќе)",

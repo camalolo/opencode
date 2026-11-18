@@ -338,3 +338,18 @@
     overflow-anchor: none;
   }
 }
+
+/* Phone conveniences: kill the gray tap flash on every press, and keep the
+   composer clear of the iOS home indicator. Unlayered so it wins over the
+   utility `pb-3` on the dock. */
+@media (hover: none) {
+  html {
+    -webkit-tap-highlight-color: transparent;
+  }
+}
+
+@media (max-width: 767px) {
+  [data-component="session-prompt-dock"] {
+    padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
+  }
+}

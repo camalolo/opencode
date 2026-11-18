@@ -894,6 +894,7 @@ export const dict: Record<string, string> = {
   "terminal.connectTicket.statusError": "{{status}} සමඟ PTY සම්බන්ධක ප්‍රවේශපත්‍රය අසාර්ථක විය",
   "titlebar.update": "යාවත්කාලීන කරන්න",
   "titlebar.updateVersion": "{{version}} යාවත්කාලීන කරන්න",
+  "titlebar.tabs": "Open tabs",
   "common.closeTab": "ටැබ් එක වසන්න",
   "common.dismiss": "අස් කරන්න",
   "common.moreCountSuffix": "(+{{count}} තව)",

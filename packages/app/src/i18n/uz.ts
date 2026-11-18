@@ -903,6 +903,7 @@ export const dict = {
   "terminal.connectTicket.statusError": "PTY ulanish chiptasi {{status}} bilan amalga oshmadi",
   "titlebar.update": "Yangilash",
   "titlebar.updateVersion": "{{version}}-ni yangilang",
+  "titlebar.tabs": "Open tabs",
   "common.closeTab": "Tabni yoping",
   "common.dismiss": "Rad etish",
   "common.moreCountSuffix": " (+{{count}} ko'proq)",

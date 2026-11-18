@@ -977,6 +977,7 @@ export const dict = {
 
   "titlebar.update": "업데이트",
   "titlebar.updateVersion": "업데이트 {{version}}",
+  "titlebar.tabs": "Open tabs",
 
   "command.project.previous": "이전 프로젝트",
   "command.project.next": "다음 프로젝트",

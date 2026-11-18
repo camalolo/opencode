@@ -872,6 +872,7 @@ export const dict = {
 
   "titlebar.update": "Aktualizuj",
   "titlebar.updateVersion": "Aktualizuj {{version}}",
+  "titlebar.tabs": "Open tabs",
   "common.closeTab": "Zamknij kartę",
   "common.dismiss": "Odrzuć",
   "common.requestFailed": "Żądanie nie powiodło się",

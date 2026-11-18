@@ -904,6 +904,7 @@ export const dict = {
   "terminal.connectTicket.statusError": "{{status}}-тэй PTY холбогдох тасалбар амжилтгүй боллоо",
   "titlebar.update": "Шинэчлэх",
   "titlebar.updateVersion": "Шинэчлэх {{version}}",
+  "titlebar.tabs": "Open tabs",
   "common.closeTab": "Табыг хаах",
   "common.dismiss": "Хаах",
   "common.moreCountSuffix": "(+{{count}} илүү)",

@@ -892,6 +892,7 @@ export const dict = {
   "terminal.connectTicket.statusError": "ປີ້ເຊື່ອມຕໍ່ PTY ລົ້ມເຫລວກັບ {{status}}",
   "titlebar.update": "ອັບເດດ",
   "titlebar.updateVersion": "ອັບເດດ {{version}}",
+  "titlebar.tabs": "Open tabs",
   "common.closeTab": "ປິດແຖບ",
   "common.dismiss": "ປິດ",
   "common.moreCountSuffix": "(+{{count}} ເພີ່ມເຕີມ)",

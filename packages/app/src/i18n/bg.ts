@@ -903,6 +903,7 @@ export const dict = {
   "terminal.connectTicket.statusError": "PTY неуспешно свързване на билет с {{status}}",
   "titlebar.update": "Актуализация",
   "titlebar.updateVersion": "Актуализация {{version}}",
+  "titlebar.tabs": "Open tabs",
   "common.closeTab": "Затваряне на раздела",
   "common.dismiss": "Отхвърляне",
   "common.moreCountSuffix": "(+{{count}} още)",

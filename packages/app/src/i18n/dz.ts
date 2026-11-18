@@ -911,6 +911,7 @@ export const dict: Record<string, string> = {
   "terminal.connectTicket.statusError": "PTY མཐུད་ལམ་ཤོག་བྱང་འདི་ {{status}}དང་གཅིག་ཁར་འཐུས་ཤོར་འབྱུང་ཡོདཔ།",
   "titlebar.update": "དུས༌མཐུན༌བཟོ༌ནི",
   "titlebar.updateVersion": "{{version}} དུས་མཐུན་བཟོ།",
+  "titlebar.tabs": "Open tabs",
   "common.closeTab": "མཆོང་ལྡེ་ཁ་བསྡམས།",
   "common.dismiss": "ཁུངས༌མེད༌བརྩི༌ནི",
   "common.moreCountSuffix": "(+{{count}} མང་།",

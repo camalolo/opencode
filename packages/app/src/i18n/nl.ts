@@ -906,6 +906,7 @@ export const dict = {
   "terminal.connectTicket.statusError": "PTY-verbindingsticket mislukt met status {{status}}",
   "titlebar.update": "Bijwerken",
   "titlebar.updateVersion": "Bijwerken {{version}}",
+  "titlebar.tabs": "Open tabs",
   "common.closeTab": "Tabblad sluiten",
   "common.dismiss": "Negeren",
   "common.moreCountSuffix": " (+{{count}} meer)",

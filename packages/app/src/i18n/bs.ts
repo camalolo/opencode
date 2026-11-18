@@ -929,6 +929,7 @@ export const dict = {
 
   "titlebar.update": "Ažuriraj",
   "titlebar.updateVersion": "Ažuriraj {{version}}",
+  "titlebar.tabs": "Open tabs",
 
   "common.closeTab": "Zatvori karticu",
   "common.dismiss": "Odbaci",

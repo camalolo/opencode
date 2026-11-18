@@ -910,6 +910,7 @@ export const dict = {
   "terminal.connectTicket.statusError": "PTY ކަނެކްޓް ޓިކެޓް {{status}} އާއެކު ފެއިލްވެއްޖެއެވެ",
   "titlebar.update": "އަޕްޑޭޓް",
   "titlebar.updateVersion": "{{version}} އަޕްޑޭޓް ކުރާށެވެ",
+  "titlebar.tabs": "Open tabs",
   "common.closeTab": "ޓެބް ބަންދުކުރުން",
   "common.dismiss": "ދުރުކޮށްލުން",
   "common.moreCountSuffix": " (+{{count}} އިތުރަށް)",

@@ -908,6 +908,7 @@ export const dict = {
   "terminal.connectTicket.statusError": "Vé kết nối PTY thất bại với trạng thái {{status}}",
   "titlebar.update": "Cập nhật",
   "titlebar.updateVersion": "Cập nhật {{version}}",
+  "titlebar.tabs": "Open tabs",
   "common.closeTab": "Đóng tab",
   "common.dismiss": "Bỏ qua",
   "common.moreCountSuffix": " (+{{count}} thêm)",

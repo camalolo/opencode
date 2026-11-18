@@ -906,6 +906,7 @@ export const dict = {
   "terminal.connectTicket.statusError": "PTY η σύνδεση εισιτηρίου απέτυχε με {{status}}",
   "titlebar.update": "Ενημέρωση",
   "titlebar.updateVersion": "Ενημέρωση {{version}}",
+  "titlebar.tabs": "Open tabs",
   "common.closeTab": "Κλείσιμο καρτέλας",
   "common.dismiss": "Παράβλεψη",
   "common.moreCountSuffix": " (+{{count}} περισσότερα)",

@@ -50,14 +50,14 @@ function HomeSurface(props: { home: ReturnType<typeof createHomeController> }) {
       >
         <div
           class={`
-            mx-auto grid min-h-full w-full max-w-[1080px] grid-rows-[auto_minmax(0,1fr)_auto] gap-4 px-3
+            mx-auto grid min-h-full w-full max-w-[1080px] grid-rows-none gap-4 px-3
             lg:grid-cols-[280px_minmax(0,720px)] lg:grid-rows-1 lg:gap-8 lg:px-6
           `}
         >
           <HomeProjects projects={projects} scroll={scroll} />
           <HomeSessions sessions={sessions} search={search} scroll={scroll} />
           <HomeUtilityNav
-            class="flex lg:hidden"
+            class="order-3 flex lg:hidden"
             onOpenSettings={projects.utility.settings}
             onOpenHelp={projects.utility.help}
             language={projects.copy.language}

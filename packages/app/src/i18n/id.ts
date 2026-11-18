@@ -969,6 +969,7 @@ export const dict = {
   "terminal.connectTicket.statusError": "Tiket koneksi PTY gagal dengan status {{status}}",
   "titlebar.update": "Perbarui",
   "titlebar.updateVersion": "Perbarui {{version}}",
+  "titlebar.tabs": "Open tabs",
 
   "common.closeTab": "Tutup tab",
   "common.dismiss": "Tutup",

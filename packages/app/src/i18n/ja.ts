@@ -1253,4 +1253,5 @@ export const dict = {
 
   "titlebar.update": "アップデート",
   "titlebar.updateVersion": "アップデート {{version}}",
+  "titlebar.tabs": "Open tabs",
 }

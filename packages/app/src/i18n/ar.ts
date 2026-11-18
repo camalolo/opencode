@@ -867,6 +867,7 @@ export const dict = {
 
   "titlebar.update": "تحديث",
   "titlebar.updateVersion": "تحديث {{version}}",
+  "titlebar.tabs": "Open tabs",
 
   "common.closeTab": "إغلاق علامة التبويب",
   "common.dismiss": "إهمال",

@@ -910,6 +910,7 @@ export const dict = {
   "terminal.connectTicket.statusError": "PTY prisijungimo bilietas nepavyko naudojant {{status}}",
   "titlebar.update": "Atnaujinti",
   "titlebar.updateVersion": "Atnaujinkite {{version}}",
+  "titlebar.tabs": "Open tabs",
   "common.closeTab": "Uždaryti skirtuką",
   "common.dismiss": "Atsisakyti",
   "common.moreCountSuffix": "(+{{count}} daugiau)",

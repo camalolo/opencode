@@ -900,6 +900,7 @@ export const dict = {
   "terminal.connectTicket.statusError": "Bileta e lidhjes PTY dështoi me {{status}}",
   "titlebar.update": "Përditëso",
   "titlebar.updateVersion": "Përditëso {{version}}",
+  "titlebar.tabs": "Open tabs",
   "common.closeTab": "Mbyll skedën",
   "common.dismiss": "Largoje",
   "common.moreCountSuffix": " (+{{count}} më shumë)",

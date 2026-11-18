@@ -916,6 +916,7 @@ export const dict = {
 
   "titlebar.update": "อัปเดต",
   "titlebar.updateVersion": "อัปเดต {{version}}",
+  "titlebar.tabs": "Open tabs",
 
   "common.closeTab": "ปิดแท็บ",
   "common.dismiss": "ปิด",

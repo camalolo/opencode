@@ -907,6 +907,7 @@ export const dict = {
   "terminal.connectTicket.statusError": "PTY el bitllet de connexió ha fallat amb {{status}}",
   "titlebar.update": "Actualització",
   "titlebar.updateVersion": "Actualització {{version}}",
+  "titlebar.tabs": "Open tabs",
   "common.closeTab": "Tanca la pestanya",
   "common.dismiss": "Descartar",
   "common.moreCountSuffix": " (+{{count}} més)",

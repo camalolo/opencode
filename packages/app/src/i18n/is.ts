@@ -900,6 +900,7 @@ export const dict = {
   "terminal.connectTicket.statusError": "PTY tengimiði mistókst með {{status}}",
   "titlebar.update": "Uppfærsla",
   "titlebar.updateVersion": "Uppfærðu {{version}}",
+  "titlebar.tabs": "Open tabs",
   "common.closeTab": "Loka flipa",
   "common.dismiss": "Segja frá",
   "common.moreCountSuffix": "(+{{count}} meira)",

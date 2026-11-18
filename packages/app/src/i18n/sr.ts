@@ -900,6 +900,7 @@ export const dict = {
   "terminal.connectTicket.statusError": "PTY улазница за повезивање није успела са {{status}}",
   "titlebar.update": "ажурирање",
   "titlebar.updateVersion": "ажурирање {{version}}",
+  "titlebar.tabs": "Open tabs",
   "common.closeTab": "Затвори картицу",
   "common.dismiss": "Одбаци",
   "common.moreCountSuffix": "(+{{count}} више)",

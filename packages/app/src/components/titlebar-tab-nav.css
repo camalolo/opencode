@@ -9,6 +9,26 @@
   justify-content: center;
 }
 
+/* Phones have no hover and coarse pointers: the close button is part of the
+   permanent layout and gets a full-size hit target instead of a 20px dot. */
+@media (hover: none), (max-width: 767px) {
+  [data-titlebar-tab] [data-slot="tab-close"] {
+    top: 2px;
+    inset-inline-end: 2px;
+    height: 32px;
+    width: 32px;
+  }
+
+  [data-titlebar-tab] [data-slot="tab-close"] [data-component="icon-button-v2"] {
+    width: 32px;
+    height: 32px;
+  }
+
+  [data-titlebar-tab-link] {
+    padding-inline-end: 26px;
+  }
+}
+
 [data-titlebar-tab] {
   --tab-base: var(--v2-background-bg-deep);
   --tab-overlay: transparent;

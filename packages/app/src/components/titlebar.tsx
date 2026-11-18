@@ -29,6 +29,7 @@ import { useSettings } from "@/context/settings"
 import { WindowsAppMenu } from "./windows-app-menu"
 import { applyPath, backPath, forwardPath } from "./titlebar-history"
 import { TitlebarTabStrip } from "@/components/titlebar-tab-strip"
+import { TitlebarTabsMenu } from "@/components/titlebar-tabs-menu"
 import { makeEventListener } from "@solid-primitives/event-listener"
 import { createMediaQuery } from "@solid-primitives/media"
 import { readSessionTabsRemovedDetail, SESSION_TABS_REMOVED_EVENT } from "@/components/titlebar-session-events"
@@ -173,7 +174,7 @@ export function Titlebar(props: { update?: TitlebarUpdate; debugTools?: { visibl
       data-slot={useV2Titlebar() ? "titlebar-v2" : undefined}
       classList={{
         "shrink-0 relative flex flex-row": true,
-        "h-9 bg-v2-background-bg-deep overflow-visible": useV2Titlebar(),
+        "h-9 max-md:h-12 bg-v2-background-bg-deep overflow-visible": useV2Titlebar(),
         "h-10 bg-background-base overflow-hidden": !useV2Titlebar(),
         "order-last": bottom(),
       }}
@@ -386,7 +387,7 @@ export function Titlebar(props: { update?: TitlebarUpdate; debugTools?: { visibl
                     type="button"
                     variant="ghost-muted"
                     size="large"
-                    class="!w-9 shrink-0"
+                    class="!w-9 shrink-0 max-md:!size-10"
                     icon={<IconV2 name="grid-plus" />}
                     state={layout.route().type === "home" ? "pressed" : undefined}
                     onClick={toggleHome}
@@ -395,6 +396,21 @@ export function Titlebar(props: { update?: TitlebarUpdate; debugTools?: { visibl
                   />
                 </TooltipV2>
 
+                <Show when={mobile() && tabsStore.length > 1}>
+                  <TitlebarTabsMenu
+                    tabs={tabsStore}
+                    info={tabs.info}
+                    current={currentTab}
+                    label={language.t("titlebar.tabs")}
+                    onNavigate={(tab) => {
+                      tabs.select(tab)
+                    }}
+                    onClose={(tab) => {
+                      const index = tabsStore.findIndex((item) => tabKey(item) === tabKey(tab))
+                      if (index !== -1) tabsStoreActions.closeTab(index)
+                    }}
+                  />
+                </Show>
                 <TitlebarTabStrip
                   tabs={tabsStore}
                   currentTab={currentTab}
@@ -423,7 +439,7 @@ export function Titlebar(props: { update?: TitlebarUpdate; debugTools?: { visibl
                     type="button"
                     variant="ghost-muted"
                     size="large"
-                    class="shrink-0"
+                    class="shrink-0 max-md:!size-10"
                     icon={<IconV2 name="plus" />}
                     onClick={openNewTab}
                     aria-label={language.t("command.session.new")}

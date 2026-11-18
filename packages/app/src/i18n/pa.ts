@@ -905,6 +905,7 @@ export const dict = {
   "terminal.connectTicket.statusError": "PTY کنکشن ٹکٹ {{status}} سٹیٹس نال ناکام ہو گیا",
   "titlebar.update": "اپ ڈیٹ کرو",
   "titlebar.updateVersion": "اپ ڈیٹ کرو {{version}}",
+  "titlebar.tabs": "Open tabs",
   "common.closeTab": "ٹیب بند کرو",
   "common.dismiss": "برخاست کرو",
   "common.moreCountSuffix": " (+{{count}} ہور)",

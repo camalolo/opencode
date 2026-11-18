@@ -893,6 +893,7 @@ export const dict = {
   "terminal.connectTicket.statusError": "PTY ühenduspilet ebaõnnestus kasutajaga {{status}}",
   "titlebar.update": "Värskenda",
   "titlebar.updateVersion": "Värskenda {{version}}",
+  "titlebar.tabs": "Open tabs",
   "common.closeTab": "Sule vahekaart",
   "common.dismiss": "Loobu",
   "common.moreCountSuffix": " (+{{count}} veel)",

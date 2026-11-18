@@ -911,6 +911,7 @@ export const dict = {
 
   "titlebar.update": "更新",
   "titlebar.updateVersion": "更新 {{version}}",
+  "titlebar.tabs": "Open tabs",
   "common.closeTab": "關閉分頁",
   "common.dismiss": "忽略",
   "common.requestFailed": "要求失敗",

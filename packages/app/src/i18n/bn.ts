@@ -896,6 +896,7 @@ export const dict: Record<string, string> = {
   "terminal.connectTicket.statusError": "{{status}}-এর সাথে PTY সংযোগ টিকিট ব্যর্থ হয়েছে",
   "titlebar.update": "আপডেট",
   "titlebar.updateVersion": "{{version}} আপডেট করুন",
+  "titlebar.tabs": "Open tabs",
   "common.closeTab": "ট্যাব বন্ধ করুন",
   "common.dismiss": "খারিজ",
   "common.moreCountSuffix": "(+{{count}} আরো)",

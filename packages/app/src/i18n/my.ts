@@ -906,6 +906,7 @@ export const dict = {
   "terminal.connectTicket.statusError": "PTY ချိတ်ဆက်မှုလက်မှတ် {{status}} ဖြင့် မအောင်မြင်ပါ။",
   "titlebar.update": "အပ်ဒိတ်",
   "titlebar.updateVersion": "{{version}} ကို အပ်ဒိတ်လုပ်ပါ။",
+  "titlebar.tabs": "Open tabs",
   "common.closeTab": "တဘ်ကို ပိတ်ပါ။",
   "common.dismiss": "ပယ်ရန်",
   "common.moreCountSuffix": "(+{{count}} နောက်ထပ်)",

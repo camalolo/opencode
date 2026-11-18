@@ -906,6 +906,7 @@ export const dict = {
   "terminal.connectTicket.statusError": "PTY bağlantı bileti {{status}} statusu ilə uğursuz oldu",
   "titlebar.update": "Yenilə",
   "titlebar.updateVersion": "Yenilə {{version}}",
+  "titlebar.tabs": "Open tabs",
   "common.closeTab": "Tabı bağla",
   "common.dismiss": "Bağla",
   "common.moreCountSuffix": " (+{{count}} daha)",

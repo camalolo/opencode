@@ -903,6 +903,7 @@ export const dict = {
   "terminal.connectTicket.statusError": "PTY միացման տոմսը ձախողվեց {{status}}",
   "titlebar.update": "Թարմացնել",
   "titlebar.updateVersion": "Թարմացնել {{version}}",
+  "titlebar.tabs": "Open tabs",
   "common.closeTab": "Փակել ներդիրը",
   "common.dismiss": "Փակել",
   "common.moreCountSuffix": " (+{{count}} ավելին)",

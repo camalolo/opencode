@@ -904,6 +904,7 @@ export const dict = {
   "terminal.connectTicket.statusError": "A PTY csatlakozási jegy sikertelen a {{status}}-vel",
   "titlebar.update": "Frissítés",
   "titlebar.updateVersion": "Frissítse a {{version}}-t",
+  "titlebar.tabs": "Open tabs",
   "common.closeTab": "Lap bezárása",
   "common.dismiss": "Elvetés",
   "common.moreCountSuffix": "(+{{count}} további)",

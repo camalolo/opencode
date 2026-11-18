@@ -900,6 +900,7 @@ export const dict = {
   "terminal.connectTicket.statusError": "PTY чиптаи пайвастшавӣ бо {{status}} ноком шуд",
   "titlebar.update": "Навсозӣ",
   "titlebar.updateVersion": "Навсозӣ {{version}}",
+  "titlebar.tabs": "Open tabs",
   "common.closeTab": "Варақаро пӯшед",
   "common.dismiss": "Рад кардан",
   "common.moreCountSuffix": "(+{{count}} бештар)",

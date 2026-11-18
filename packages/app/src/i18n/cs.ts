@@ -902,6 +902,7 @@ export const dict = {
   "terminal.connectTicket.statusError": "PTY lístek připojení se nezdařil s {{status}}",
   "titlebar.update": "Aktualizovat",
   "titlebar.updateVersion": "Aktualizovat {{version}}",
+  "titlebar.tabs": "Open tabs",
   "common.closeTab": "Zavřít kartu",
   "common.dismiss": "Odmítnout",
   "common.moreCountSuffix": " (+{{count}} další)",

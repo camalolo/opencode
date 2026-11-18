@@ -900,6 +900,7 @@ export const dict = {
   "terminal.connectTicket.statusError": "Lístok na pripojenie PTY zlyhal so stavom {{status}}",
   "titlebar.update": "Aktualizovať",
   "titlebar.updateVersion": "Aktualizovať na verziu {{version}}",
+  "titlebar.tabs": "Open tabs",
   "common.closeTab": "Zavrieť kartu",
   "common.dismiss": "Zavrieť",
   "common.moreCountSuffix": " (+{{count}} ďalšie)",

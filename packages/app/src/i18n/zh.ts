@@ -913,6 +913,7 @@ export const dict = {
 
   "titlebar.update": "更新",
   "titlebar.updateVersion": "更新 {{version}}",
+  "titlebar.tabs": "Open tabs",
 
   "common.closeTab": "关闭标签页",
   "common.dismiss": "忽略",

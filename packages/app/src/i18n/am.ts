@@ -881,6 +881,7 @@ export const dict = {
   "terminal.connectTicket.statusError": "PTY የግንኙነት ቲኬት ከ{{status}}] ጋር አልተሳካም",
   "titlebar.update": "አዘምን",
   "titlebar.updateVersion": "አዘምን {{version}}",
+  "titlebar.tabs": "Open tabs",
   "common.closeTab": "ትርፉን ዝጋ",
   "common.dismiss": "አሰናብት",
   "common.moreCountSuffix": " (+{{count}} ተጨማሪ)",

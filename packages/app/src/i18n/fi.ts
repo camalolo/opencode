@@ -796,6 +796,7 @@ export const dict = {
   "terminal.connectTicket.statusError": "PTY-yhteyslippu epäonnistui tilakoodilla {{status}}",
   "titlebar.update": "Päivitä",
   "titlebar.updateVersion": "Päivitä {{version}}",
+  "titlebar.tabs": "Open tabs",
   "common.closeTab": "Sulje välilehti",
   "common.dismiss": "Hylkää",
   "common.moreCountSuffix": " (+{{count}} muuta)",

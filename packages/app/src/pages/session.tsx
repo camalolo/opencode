@@ -2085,7 +2085,7 @@ export default function Page() {
     <Tabs value={store.mobileTab} class="h-auto">
       <Tabs.List
         classList={{
-          "!h-9": compact,
+          "!h-11": compact,
           "[&::after]:!border-b-0 [&::after]:!border-t [&::after]:!border-border-weak-base": bottom,
         }}
       >
