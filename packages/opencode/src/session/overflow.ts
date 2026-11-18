@@ -30,7 +30,7 @@ export function usable(input: {
       : Math.max(0, context - ProviderTransform.maxOutputTokens(input.model, input.outputTokenMax))
   // An absolute token cap applies regardless of threshold: the smaller wins.
   const cap = input.cfg.compaction?.max_context_tokens
-  return cap === undefined ? base : Math.min(base, cap)
+  return cap == null ? base : Math.min(base, cap)
 }
 
 export function isOverflow(input: {
