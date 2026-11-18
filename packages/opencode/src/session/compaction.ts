@@ -337,6 +337,14 @@ const layer = Layer.effect(
         throw new Error(`Compaction parent must be a user message: ${input.parentID}`)
       }
       const userMessage = parent.info
+      // Summarization is mechanical: never inherit the session's reasoning
+      // variant. Auto-compaction used to carry it while manual compaction did
+      // not, and the higher effort made the summarizer role-play the
+      // transcript instead of writing the summary.
+      const user: SessionV1.User = {
+        ...userMessage,
+        model: { providerID: userMessage.model.providerID, modelID: userMessage.model.modelID },
+      }
       const compactionPart = parent.parts.find((part): part is SessionV1.CompactionPart => part.type === "compaction")
       if (!compactionPart) {
         throw new Error(`Compaction parent must own a compaction part: ${input.parentID}`)
@@ -471,7 +479,7 @@ const layer = Layer.effect(
           running = yield* foldStep({
             sessionID: input.sessionID,
             prompt: buildPrompt({ previousSummary: running, context: [chunk.join("\n\n")] }),
-            user: userMessage,
+            user,
             agent,
             model,
           })
@@ -510,7 +518,6 @@ const layer = Layer.effect(
         sessionID: input.sessionID,
         mode: "compaction",
         agent: "compaction",
-        variant: userMessage.model.variant,
         summary: true,
         path: {
           cwd: ctx.directory,
@@ -536,7 +543,7 @@ const layer = Layer.effect(
         model,
       })
       const result = yield* processor.process({
-        user: userMessage,
+        user,
         agent,
         sessionID: input.sessionID,
         tools: {},

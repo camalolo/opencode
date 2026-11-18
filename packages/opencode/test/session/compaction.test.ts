@@ -1084,6 +1084,39 @@ describe("session.compaction.process", () => {
   )
 
   itCompaction.instance(
+    "strips the session reasoning variant from the summarizer request",
+    () => {
+      const stub = llm()
+      let captured: LLM.StreamInput | undefined
+      stub.push(reply("summary", (input) => (captured = input)))
+      return Effect.gen(function* () {
+        const ssn = yield* SessionNs.Service
+        const session = yield* ssn.create({})
+        yield* createUserMessage(session.id, "hello")
+        const sessionModel = { ...ref, variant: "high" }
+        yield* SessionCompaction.use.create({
+          sessionID: session.id,
+          agent: "build",
+          model: sessionModel,
+          auto: true,
+        })
+
+        const msgs = yield* ssn.messages({ sessionID: session.id })
+        const parent = msgs.at(-1)?.info.id
+        expect(parent).toBeTruthy()
+        yield* SessionCompaction.use.process({ parentID: parent!, messages: msgs, sessionID: session.id, auto: false })
+
+        expect(captured?.user.model.variant).toBeUndefined()
+        const summary = (yield* ssn.messages({ sessionID: session.id })).find(
+          (msg) => msg.info.role === "assistant" && msg.info.summary,
+        )
+        if (summary?.info.role === "assistant") expect(summary.info.variant).toBeUndefined()
+      }).pipe(withCompaction({ llm: stub.llmLayer }))
+    },
+    { git: true },
+  )
+
+  itCompaction.instance(
     "retains a split turn suffix when a later message fits the preserve token budget",
     () => {
       const stub = llm()
