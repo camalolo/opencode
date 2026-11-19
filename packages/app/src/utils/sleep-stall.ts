@@ -14,6 +14,10 @@ export type SleepingStatus = {
 
 export type SleepPhase = "normal" | "near" | "stalled"
 
+/** Narrow a session status to its sleeping trigger, if there is one. */
+export const sleepingStatus = (status: SleepingStatus | undefined) =>
+  status?.type === "sleeping" ? status : undefined
+
 /** How far past the due check time a trigger may lag before the heartbeat counts as stalled. */
 const stallGraceMs = 60_000
 

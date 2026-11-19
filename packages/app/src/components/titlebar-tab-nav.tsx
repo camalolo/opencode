@@ -9,15 +9,11 @@ import { useLanguage } from "@/context/language"
 import { ServerConnection, serverName } from "@/context/server"
 import { displayName, projectForSession } from "@/pages/layout/helpers"
 import { SessionTabAvatar } from "@/pages/layout/session-tab-avatar"
-import { sleepPhase, sleepTooltip, useNow, type SleepingStatus } from "@/utils/sleep-stall"
+import { sleepPhase, sleepTooltip, sleepingStatus, useNow } from "@/utils/sleep-stall"
 import type { Session } from "@opencode-ai/sdk/v2"
 import { canOpenTabRename, forwardTabRef } from "./titlebar-tab-gesture"
 import { TabPreviewPopover } from "./titlebar-tab-popover"
 import "./titlebar-tab-nav.css"
-
-function sleepingStatus(status: SleepingStatus | undefined) {
-  return status?.type === "sleeping" ? status : undefined
-}
 
 // MouseEvent.button uses 1 for the middle/wheel button.
 const MIDDLE_MOUSE_BUTTON = 1

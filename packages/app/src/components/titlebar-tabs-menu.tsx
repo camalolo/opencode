@@ -6,6 +6,9 @@ import { ServerConnection } from "@/context/server"
 import { useGlobal } from "@/context/global"
 import { useLanguage } from "@/context/language"
 import { tabKey, type Tab } from "@/context/tabs"
+import { projectForSession } from "@/pages/layout/helpers"
+import { SessionTabAvatar } from "@/pages/layout/session-tab-avatar"
+import { sleepPhase, sleepTooltip, sleepingStatus, useNow } from "@/utils/sleep-stall"
 
 // Touch-first replacement for the cramped desktop tab strip: a full list of
 // open tabs with roomy rows, so switching and closing stays reachable on a
@@ -96,6 +99,12 @@ function TabsMenuRow(props: { tab: Tab; active: boolean; onNavigate: () => void;
       cached()?.title ?? loaded()?.title ?? (loaded.loading ? "" : language.t("session.tab.unknown"))
     )
   })
+  const session = createMemo(() => cached() ?? loaded())
+  const project = createMemo(() => {
+    const value = session()
+    if (!value) return
+    return projectForSession(value, serverCtx()?.projects.list() ?? [])
+  })
 
   return (
     <div
@@ -107,6 +116,60 @@ function TabsMenuRow(props: { tab: Tab; active: boolean; onNavigate: () => void;
         class="flex h-full min-w-0 flex-1 items-center gap-2 rounded-md text-start text-[13px] font-medium text-v2-text-text-muted hover:text-v2-text-text-base"
         onClick={props.onNavigate}
       >
+        <span data-slot="project-avatar-slot" class="relative flex size-4 shrink-0 items-center justify-center">
+          <Show
+            when={props.tab.type === "session" ? session() : undefined}
+            keyed
+            fallback={<span class="block size-4 rounded-[3px] border border-v2-border-border-muted" aria-hidden="true" />}
+          >
+            {(value) => (
+              <>
+                <SessionTabAvatar
+                  project={project()}
+                  directory={value.directory}
+                  sessionId={value.id}
+                  server={props.tab.server}
+                />
+                <Show
+                  when={sleepingStatus(serverCtx()?.sync.session.data.session_status[value.id])}
+                  keyed
+                >
+                  {(status) => {
+                    const now = useNow()
+                    const phase = createMemo(() => sleepPhase(status, now()))
+                    return (
+                      <span
+                        class={`absolute -bottom-0.5 -end-0.5 flex size-3 items-center justify-center rounded-full ring-1 ring-v2-background-background-base ${
+                          phase() === "stalled"
+                            ? "bg-surface-warning-strong animate-pulse"
+                            : phase() === "near"
+                              ? "bg-surface-warning-strong"
+                              : "bg-text-diff-delete-base"
+                        }`}
+                        title={sleepTooltip(status, now(), language.t)}
+                        data-slot="tab-sleeping-indicator"
+                        data-phase={phase()}
+                        data-stalled={phase() === "stalled" ? "true" : undefined}
+                      >
+                        <svg
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="white"
+                          stroke-width="2.5"
+                          class="size-2"
+                          aria-hidden="true"
+                        >
+                          <circle cx="12" cy="12" r="9" />
+                          <path d="M12 7v5l3 2" stroke-linecap="round" stroke-linejoin="round" />
+                        </svg>
+                      </span>
+                    )
+                  }}
+                </Show>
+              </>
+            )}
+          </Show>
+        </span>
         <span class="truncate">{title()}</span>
       </button>
       <Show when={props.active}>
