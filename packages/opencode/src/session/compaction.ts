@@ -21,7 +21,7 @@ import { RuntimeFlags } from "@/effect/runtime-flags"
 import { EventV2Bridge } from "@/event-v2-bridge"
 import { ProviderV2 } from "@opencode-ai/core/provider"
 import { ModelV2 } from "@opencode-ai/core/model"
-import { buildPrompt } from "@opencode-ai/core/session/compaction"
+import { buildPrompt, SUMMARY_SYSTEM } from "@opencode-ai/core/session/compaction"
 import { SessionCompactionEvent } from "@opencode-ai/schema/session-compaction-event"
 import { LLMEvent } from "@opencode-ai/llm"
 import { LLM } from "@/session/llm"
@@ -72,7 +72,9 @@ const serialize = (message: SessionV1.WithParts) => {
   return message.parts
     .flatMap((part) => {
       if (part.type === "text") return part.text ? [`[Assistant]: ${part.text}`] : []
-      if (part.type === "reasoning") return part.text ? [`[Assistant reasoning]: ${part.text}`] : []
+      // Reasoning is the bulk of a working session and reads like a plan to
+      // continue; the summary is built from user turns, replies, and tools.
+      if (part.type === "reasoning") return []
       if (part.type !== "tool") return []
       const call = `[Assistant tool call]: ${part.tool}(${JSON.stringify(part.state.input)})`
       if (part.state.status === "completed") {
@@ -457,7 +459,7 @@ const layer = Layer.effect(
           sessionID: input.sessionID,
           model: input.model,
           agent: input.agent,
-          system: [],
+          system: [SUMMARY_SYSTEM],
           messages: [{ role: "user", content: input.prompt }],
           tools: {},
         })
@@ -561,7 +563,7 @@ const layer = Layer.effect(
           agent,
           sessionID: input.sessionID,
           tools: {},
-          system: [],
+          system: [SUMMARY_SYSTEM],
           messages: [
             {
               role: "user",

@@ -1548,9 +1548,10 @@ describe("session.compaction.process", () => {
         expect(messages[0]?.role).toBe("user")
         expect(captured).toContain("Here is the conversation so far:")
         expect(captured).toContain("<conversation>")
-        expect(captured.indexOf("[User]: older context")).toBeLessThan(
-          captured.indexOf("Create a new anchored summary"),
+        expect(captured.indexOf("Create a new anchored summary")).toBeLessThan(
+          captured.indexOf("[User]: older context"),
         )
+        expect(captured).toContain("Write the summary now")
         expect(captured).toContain("[User]: older context")
         // The tail stays out of the summarized <conversation> and is passed
         // separately under <recent-context> for reconciliation.
@@ -1604,8 +1605,8 @@ describe("session.compaction.process", () => {
         expect(captured).toContain("<prior-summary>")
         expect(captured).toContain("summary one")
         expect(captured.match(/summary one/g)?.length).toBe(1)
-        expect(captured.indexOf("latest turn")).toBeLessThan(captured.indexOf("<prior-summary>"))
-        expect(captured).toContain("summary of the conversation before the <conversation> above")
+        expect(captured.indexOf("<prior-summary>")).toBeLessThan(captured.indexOf("latest turn"))
+        expect(captured).toContain("summary of the conversation before the <conversation> below")
         expect(captured).toContain("## Important Details")
         expect(captured).toContain("## Work State")
       }).pipe(withCompaction({ llm: stub.llmLayer }))
@@ -1763,6 +1764,54 @@ describe("session.compaction.process", () => {
       ).toBe(true)
     }).pipe(withCompaction({ llm: stub.llmLayer, config: cfg({ tail_turns: 2, preserve_recent_tokens: 10_000 }) }))
   })
+
+  itCompaction.instance(
+    "omits assistant reasoning from the summarizer input",
+    () => {
+      const stub = llm()
+      let captured = ""
+      stub.push(
+        reply("## Objective\n- summary", (input) => {
+          captured = JSON.stringify(input)
+        }),
+      )
+
+      return Effect.gen(function* () {
+        const test = yield* TestInstance
+        const ssn = yield* SessionNs.Service
+        const session = yield* ssn.create({})
+        const user = yield* createUserMessage(session.id, "older context")
+        const replyMsg = yield* createAssistantMessage(session.id, user.id, test.directory)
+        yield* ssn.updatePart({
+          id: PartID.ascending(),
+          messageID: replyMsg.id,
+          sessionID: session.id,
+          type: "reasoning",
+          text: "PLAN-NOT-FOR-THE-SUMMARY",
+          time: { start: Date.now(), end: Date.now() },
+        })
+        yield* ssn.updatePart({
+          id: PartID.ascending(),
+          messageID: replyMsg.id,
+          sessionID: session.id,
+          type: "text",
+          text: "kept reply",
+        })
+        yield* createCompactionMarker(session.id)
+
+        const msgs = yield* ssn.messages({ sessionID: session.id })
+        const parent = msgs.at(-1)?.info.id
+        expect(parent).toBeTruthy()
+        yield* SessionCompaction.use.process({ parentID: parent!, messages: msgs, sessionID: session.id, auto: false })
+
+        expect(captured).not.toContain("PLAN-NOT-FOR-THE-SUMMARY")
+        expect(captured).not.toContain("[Assistant reasoning]")
+        expect(captured).toContain("kept reply")
+        expect(captured).toContain("You are writing a session summary")
+      }).pipe(withCompaction({ llm: stub.llmLayer }))
+    },
+    { git: true },
+  )
 
   itCompaction.instance(
     "skips template validation when a plugin replaces the compaction prompt",

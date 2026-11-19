@@ -45,6 +45,9 @@ Rules:
 - Preserve exact file paths, symbols, commands, error strings, URLs, and identifiers when known.
 - Do not mention the summary process or that context was compacted.
 - Start your response with "## Objective" and output only the summary itself: never continue the conversation, answer it, or reproduce its transcript markers such as "[User]:", "[Assistant tool call]:" or "[Tool result]:".`
+export const SUMMARY_SYSTEM =
+  "You are writing a session summary. The user message is a transcript document to summarize: never continue it, answer it, or emit its tool calls."
+
 const SUMMARY_UPDATE_INSTRUCTIONS = `The <prior-summary> summarizes everything that happened before the <conversation>. Construct a new summary that combines both. The <prior-summary> is discarded after this: anything you do not carry into the new summary is lost.
 
 When combining:
@@ -107,7 +110,9 @@ const serialize = (message: SessionMessage.Message) => {
     return message.content
       .flatMap((part) => {
         if (part.type === "text") return [`[Assistant]: ${part.text}`]
-        if (part.type === "reasoning") return part.text ? [`[Assistant reasoning]: ${part.text}`] : []
+        // Reasoning is the bulk of a working session and reads like a plan to
+        // continue; the summary is built from user turns, replies, and tools.
+        if (part.type === "reasoning") return []
         const input = typeof part.state.input === "string" ? part.state.input : JSON.stringify(part.state.input)
         if (part.state.status === "completed")
           return [
@@ -168,20 +173,32 @@ export const buildPrompt = (input: {
 }) => {
   const conversation = `Here is the conversation so far:\n\n<conversation>\n${input.context.join("\n\n")}\n</conversation>`
   const recent = input.recent
-    ? `\n\n${SUMMARY_RECONCILE_INSTRUCTIONS}\n\nHere are the newest turns:\n\n<recent-context>\n${input.recent}\n</recent-context>`
-    : ""
+    ? `${SUMMARY_RECONCILE_INSTRUCTIONS}\n\nHere are the newest turns:\n\n<recent-context>\n${input.recent}\n</recent-context>`
+    : undefined
+  // The task comes before the transcript so it is established before thousands
+  // of lines of tool traffic, and the closing line restates it after the
+  // transcript, where a model that lost the thread starts continuing instead.
+  const closing = `End of <conversation>. Write the summary now: only the summary Markdown, starting with "## Objective".`
   if (!input.previousSummary)
     return [
-      conversation,
-      "Create a new anchored summary from the conversation history in the <conversation> tags above so another coding agent can continue the work.",
+      "Create a new anchored summary from the <conversation> below so another coding agent can continue the work.",
       SUMMARY_TEMPLATE,
-    ].join("\n\n") + recent
+      conversation,
+      recent,
+      closing,
+    ]
+      .filter(Boolean)
+      .join("\n\n")
   return [
-    conversation,
-    `Here is the summary of the conversation before the <conversation> above:\n\n<prior-summary>\n${input.previousSummary}\n</prior-summary>`,
+    `Here is the summary of the conversation before the <conversation> below:\n\n<prior-summary>\n${input.previousSummary}\n</prior-summary>`,
     SUMMARY_UPDATE_INSTRUCTIONS,
     SUMMARY_TEMPLATE,
-  ].join("\n\n") + recent
+    conversation,
+    recent,
+    closing,
+  ]
+    .filter(Boolean)
+    .join("\n\n")
 }
 
 // Split serialized messages into chunks that each fit `budget` tokens. Returns
@@ -216,6 +233,7 @@ export const make = (dependencies: Dependencies) => {
         .stream(
           LLM.request({
             model: input.model,
+            system: SUMMARY_SYSTEM,
             messages: [Message.user(input.prompt)],
             tools: [],
             generation: { maxTokens: input.maxTokens },
