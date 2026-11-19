@@ -479,6 +479,44 @@ export function MessageTimeline(props: {
   let resizePinnedIndexes: number[] = []
   let resizePinFrame: number | undefined
   let virtualContent: HTMLDivElement | undefined
+  let scrollDirection: "forward" | "backward" | null = null
+  // Rows that have never been rendered are estimated from what has already been
+  // measured in this timeline. A flat fallback made every first measurement a
+  // large resize; rows above the viewport growing as rows of unrendered history
+  // scroll into the measurement window shifts the viewport by the accumulated
+  // estimate error. Per-tag averages keep those deltas small without rendering
+  // anything ahead of time.
+  const rowSizeSamples = new Map<string, { count: number; sum: number }>()
+  let rowSizeTotal = { count: 0, sum: 0 }
+  const rowSizeEstimates = new Map<string, number>()
+  const learnRowSize = (row: TimelineRow.TimelineRow | undefined, size: number) => {
+    if (!row || !Number.isFinite(size) || size <= 0) return
+    const sample = rowSizeSamples.get(row._tag) ?? { count: 0, sum: 0 }
+    sample.count += 1
+    sample.sum += size
+    rowSizeSamples.set(row._tag, sample)
+    rowSizeTotal = { count: rowSizeTotal.count + 1, sum: rowSizeTotal.sum + size }
+    // A measured row is its own best estimate: keep it so a later measure reset
+    // (resync) starts from the real height instead of a stale average.
+    rowSizeEstimates.set(TimelineRow.key(row), size)
+  }
+  const estimateRowSize = (row: TimelineRow.TimelineRow | undefined) => {
+    if (!row) return timelineFallbackItemSize
+    const key = TimelineRow.key(row)
+    const cached = rowSizeEstimates.get(key)
+    if (cached !== undefined) return cached
+    const sample = rowSizeSamples.get(row._tag)
+    const estimate =
+      sample && sample.count >= 1
+        ? sample.sum / sample.count
+        : rowSizeTotal.count >= 5
+          ? rowSizeTotal.sum / rowSizeTotal.count
+          : timelineFallbackItemSize
+    // Freeze per row: an estimate that moved with every new sample would
+    // reflow every row below it.
+    rowSizeEstimates.set(key, estimate)
+    return estimate
+  }
   // Shared diagnostic ring (window.__timelineDiag): resync bursts, mount
   // decisions and large scroll displacements, so an intermittent "the chat
   // jumped" report can be traced to the exact path afterwards. Set
@@ -511,7 +549,7 @@ export function MessageTimeline(props: {
     observeElementOffset: observeElementOffsetReconnectAware,
     initialOffset: () => (mountedAnchored() ? Number.MAX_SAFE_INTEGER : 0),
     initialMeasurementsCache: initialMeasurements,
-    estimateSize: () => timelineFallbackItemSize,
+    estimateSize: (index) => estimateRowSize(timelineRows()[index]),
     scrollToFn: (offset, options, instance) => {
       // Expose the computed range before core writes an anchor correction so the browser does not clamp it to the old height.
       if (virtualContent) virtualContent.style.height = `${instance.getTotalSize()}px`
@@ -590,10 +628,20 @@ export function MessageTimeline(props: {
       })
     }
     resizeItem(index, size)
+    learnRowSize(timelineRows()[index], size)
     if (root && props.shouldAnchorBottom()) anchorResizedBottom()
   }
   virtualizer.shouldAdjustScrollPositionOnItemSizeChange = (item) => {
     if (props.shouldAnchorBottom()) return false
+    // Rows in the overscan band above the viewport measure for the first time
+    // while the user scrolls up. Compensating their estimate→actual growth
+    // writes the viewport back down by the same amount, canceling the gesture:
+    // the unmeasured band is never crossed, and the chat reads as "it will not
+    // scroll up". While the user is heading up, the offset follows the finger;
+    // each row measures once, so the shift converges. The gesture window bounds
+    // the suppression: once scroll events stop, later growth above the viewport
+    // (async content) is compensated again.
+    if (scrollDirection === "backward" && props.hasScrollGesture()) return false
     const first = virtualizer.range?.startIndex
     return first !== undefined && item.index < first
   }
@@ -777,6 +825,13 @@ export function MessageTimeline(props: {
     props.onScheduleScrollState(root)
     props.onHistoryScroll()
     if (!props.hasScrollGesture()) return
+    // Only gesture-marked scrolls steer the direction: the virtualizer's own
+    // corrections pass through here too, and letting them flip the direction
+    // would re-enable the compensation the gesture just turned off.
+    if (previous !== undefined) {
+      const delta = root.scrollTop - previous
+      if (Math.abs(delta) > 1) scrollDirection = delta < 0 ? "backward" : "forward"
+    }
     props.onUserScroll()
     props.onAutoScrollHandleScroll()
     props.onMarkScrollGesture(root)
