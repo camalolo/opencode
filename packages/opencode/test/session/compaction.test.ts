@@ -1607,6 +1607,7 @@ describe("session.compaction.process", () => {
         expect(captured.match(/summary one/g)?.length).toBe(1)
         expect(captured.indexOf("<prior-summary>")).toBeLessThan(captured.indexOf("latest turn"))
         expect(captured).toContain("summary of the conversation before the <conversation> below")
+        expect(captured).toContain("## Decisions")
         expect(captured).toContain("## Important Details")
         expect(captured).toContain("## Work State")
       }).pipe(withCompaction({ llm: stub.llmLayer }))

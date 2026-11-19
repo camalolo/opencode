@@ -18,8 +18,11 @@ const SUMMARY_TEMPLATE = `Output exactly the Markdown structure shown inside <te
 ## Objective
 - [one or two brief sentences describing what the user is trying to accomplish]
 
+## Decisions
+- [decision: why it was made and which alternatives were rejected; otherwise "(none)"]
+
 ## Important Details
-- [constraints/preferences, decisions and why, important facts/assumptions, exact context needed to continue, or "(none)"]
+- [constraints/preferences, important facts/assumptions, exact context needed to continue, or "(none)"]
 
 ## Work State
 ### Completed
@@ -52,12 +55,13 @@ const SUMMARY_UPDATE_INSTRUCTIONS = `The <prior-summary> summarizes everything t
 
 When combining:
 - Carry forward objectives, constraints, user directives, decisions, and parallel workstreams from the <prior-summary> even when the <conversation> does not mention them. Drop only what is finished and no longer needed.
+- Keep each Decisions entry with its rationale; when the conversation reverses a decision, replace the old entry and record the corrected reason.
 - The <conversation> is more recent than the <prior-summary>. Where they conflict, the conversation wins: state the corrected fact and drop the old claim.
-- Add new progress, decisions, constraints, and context from the conversation.
+- Add new progress, decisions, constraints, and context from the conversation, with each new decision's rationale.
 - Move completed work from "Active" to "Completed".
 - If a blocker has been resolved, update the summary to reflect that while keeping any details still needed to continue the work.
 - Update "Objective" and "Next Move" to reflect the current work state.`
-const SUMMARY_RECONCILE_INSTRUCTIONS = `The <recent-context> section contains the newest turns of the conversation, kept verbatim in the live context after this summary. Reconcile the summary against it even though it is not part of the <conversation>: work shown as finished there moves to "Completed", and "Active" and "Next Move" must reflect its latest state instead of proposing work it already did.`
+const SUMMARY_RECONCILE_INSTRUCTIONS = `The <recent-context> section contains the newest turns of the conversation, kept verbatim in the live context after this summary. Reconcile the summary against it even though it is not part of the <conversation>: work shown as finished there moves to "Completed", and "Active" and "Next Move" must reflect its latest state instead of proposing work it already did. Decisions taken there belong in "Decisions".`
 
 type Entry = {
   readonly seq: number

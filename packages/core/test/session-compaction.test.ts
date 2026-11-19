@@ -10,10 +10,13 @@ test("compaction prompt preserves detailed work state and relevant files", () =>
   expect(prompt).toEndWith(
     'End of <conversation>. Write the summary now: only the summary Markdown, starting with "## Objective".',
   )
+  expect(prompt).toContain("## Decisions\n- [decision: why it was made")
   expect(prompt).toContain("## Work State\n### Completed")
   expect(prompt).toContain("### Active")
   expect(prompt).toContain("### Blocked")
   expect(prompt).toContain("## Relevant Files")
+  expect(prompt.indexOf("## Objective")).toBeLessThan(prompt.indexOf("## Decisions"))
+  expect(prompt.indexOf("## Decisions")).toBeLessThan(prompt.indexOf("## Important Details"))
 })
 
 test("compaction prompt gives update instructions for a prior summary", () => {
@@ -29,6 +32,7 @@ test("compaction prompt gives update instructions for a prior summary", () => {
   expect(prompt).toContain(
     "Carry forward objectives, constraints, user directives, decisions, and parallel workstreams from the <prior-summary>",
   )
+  expect(prompt).toContain("Keep each Decisions entry with its rationale")
   expect(prompt).toContain('Move completed work from "Active" to "Completed".')
   expect(prompt).toContain('Update "Objective" and "Next Move" to reflect the current work state.')
 })
@@ -42,6 +46,7 @@ test("compaction prompt reconciles against the retained tail", () => {
 
   expect(withoutRecent).not.toContain("<recent-context>")
   expect(prompt).toContain("Reconcile the summary against it")
+  expect(prompt).toContain('Decisions taken there belong in "Decisions".')
   expect(prompt).toContain("<recent-context>\n[User]: RECENT work already finished\n</recent-context>")
   expect(prompt.indexOf("</conversation>")).toBeLessThan(prompt.indexOf("<recent-context>"))
   expect(prompt.indexOf("<recent-context>")).toBeLessThan(prompt.indexOf("Write the summary now"))
