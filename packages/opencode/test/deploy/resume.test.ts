@@ -96,6 +96,23 @@ const fakeWithParts = (sessionID: SessionID): SessionV1.WithParts => ({
   parts: [],
 })
 
+/** The shape the crash sweep leaves on a task call the restart interrupted. */
+const taskPart = (sessionID: SessionID, messageID: MessageID, childID: SessionID, callID: string): SessionV1.Part => ({
+  id: PartID.ascending(),
+  sessionID,
+  messageID,
+  type: "tool",
+  tool: "task",
+  callID,
+  state: {
+    status: "error",
+    input: { description: "Research the bug", prompt: "investigate", subagent_type: "explore" },
+    error: "aborted: opencode stopped before this tool call finished, its result is unknown; re-run if needed",
+    metadata: { parentSessionId: sessionID, sessionId: childID, interrupted: true },
+    time: { start: Date.now() - 1000, end: Date.now() },
+  },
+})
+
 const writeCapture = (at: number, sessions: string[]) =>
   Effect.promise(() => Fsp.writeFile(DeployResume.file(), JSON.stringify({ version: 1, at, sessions }))).pipe(
     Effect.orDie,
@@ -327,6 +344,134 @@ describe("deploy resume", () => {
           expect(tool.state.metadata?.interrupted).toBeUndefined()
           expect(tool.state.metadata?.sessionId).toBe(childID)
         }
+        expect(yield* fileExists).toBe(false)
+      }),
+    30_000,
+  )
+
+  const nested = makeResume()
+
+  nested.it.effect(
+    "settles nested subagents depth-first before resuming the parent",
+    () =>
+      Effect.gen(function* () {
+        const db = (yield* Database.Service).db
+        const sessions = yield* SessionNs.Service
+        // parent -> child -> grandchild: each session was waiting on the one below
+        yield* insertSession(db, "ses_nested_parent")
+        yield* insertSession(db, "ses_nested_child", "ses_nested_parent")
+        yield* insertSession(db, "ses_nested_grandchild", "ses_nested_child")
+        const parentID = SessionID.make("ses_nested_parent")
+        const childID = SessionID.make("ses_nested_child")
+        const grandchildID = SessionID.make("ses_nested_grandchild")
+
+        const parentUser = userMessage(parentID)
+        yield* sessions.updateMessage(parentUser)
+        const parentAssistant = assistantMessage(parentID, parentUser.id)
+        yield* sessions.updateMessage(parentAssistant)
+        yield* sessions.updatePart(taskPart(parentID, parentAssistant.id, childID, "call_child"))
+
+        const childUser = userMessage(childID)
+        yield* sessions.updateMessage(childUser)
+        const childAssistant = assistantMessage(childID, childUser.id)
+        yield* sessions.updateMessage(childAssistant)
+        yield* sessions.updatePart(taskPart(childID, childAssistant.id, grandchildID, "call_grandchild"))
+        yield* sessions.updatePart({
+          id: PartID.ascending(),
+          sessionID: childID,
+          messageID: childAssistant.id,
+          type: "text",
+          text: "Child finished the work",
+        })
+
+        const grandchildUser = userMessage(grandchildID)
+        yield* sessions.updateMessage(grandchildUser)
+        const grandchildAssistant = assistantMessage(grandchildID, grandchildUser.id)
+        yield* sessions.updateMessage(grandchildAssistant)
+        yield* sessions.updatePart({
+          id: PartID.ascending(),
+          sessionID: grandchildID,
+          messageID: grandchildAssistant.id,
+          type: "text",
+          text: "Grandchild finished the work",
+        })
+
+        yield* writeCapture(Date.now(), [parentID])
+        const svc = yield* DeployResume.Service
+
+        yield* svc.consume()
+
+        // the deepest session finishes first, then its parent, then the root
+        expect(nested.calls).toEqual([grandchildID, childID, parentID])
+
+        const childMessages = yield* sessions.messages({ sessionID: childID })
+        const childTask = childMessages
+          .findLast((message) => message.info.role === "assistant")
+          ?.parts.find((part): part is SessionV1.ToolPart => part.type === "tool")
+        expect(childTask?.state.status).toBe("completed")
+        if (childTask?.state.status === "completed") {
+          expect(childTask.state.output).toContain("Grandchild finished the work")
+          expect(childTask.state.metadata?.interrupted).toBeUndefined()
+        }
+
+        const parentMessages = yield* sessions.messages({ sessionID: parentID })
+        const parentTask = parentMessages
+          .findLast((message) => message.info.role === "assistant")
+          ?.parts.find((part): part is SessionV1.ToolPart => part.type === "tool")
+        expect(parentTask?.state.status).toBe("completed")
+        if (parentTask?.state.status === "completed") {
+          expect(parentTask.state.output).toContain("Child finished the work")
+          expect(parentTask.state.metadata?.interrupted).toBeUndefined()
+        }
+      }),
+    30_000,
+  )
+
+  const capturedChild = makeResume()
+
+  capturedChild.it.effect(
+    "a captured subagent resumes its own subtasks before its turn",
+    () =>
+      Effect.gen(function* () {
+        const db = (yield* Database.Service).db
+        const sessions = yield* SessionNs.Service
+        // the parent finished its turn; the child was still busy at the restart
+        yield* insertSession(db, "ses_cc_parent")
+        yield* insertSession(db, "ses_cc_child", "ses_cc_parent")
+        yield* insertSession(db, "ses_cc_grandchild", "ses_cc_child")
+        const parentID = SessionID.make("ses_cc_parent")
+        const childID = SessionID.make("ses_cc_child")
+        const grandchildID = SessionID.make("ses_cc_grandchild")
+
+        const parentUser = userMessage(parentID)
+        yield* sessions.updateMessage(parentUser)
+        yield* sessions.updateMessage(assistantMessage(parentID, parentUser.id, { finish: "stop" }))
+
+        const childUser = userMessage(childID)
+        yield* sessions.updateMessage(childUser)
+        const childAssistant = assistantMessage(childID, childUser.id)
+        yield* sessions.updateMessage(childAssistant)
+        yield* sessions.updatePart(taskPart(childID, childAssistant.id, grandchildID, "call_grandchild"))
+
+        const grandchildUser = userMessage(grandchildID)
+        yield* sessions.updateMessage(grandchildUser)
+        const grandchildAssistant = assistantMessage(grandchildID, grandchildUser.id)
+        yield* sessions.updateMessage(grandchildAssistant)
+        yield* sessions.updatePart({
+          id: PartID.ascending(),
+          sessionID: grandchildID,
+          messageID: grandchildAssistant.id,
+          type: "text",
+          text: "Grandchild finished the work",
+        })
+
+        // only the subagent was captured: it must settle its own subtask
+        yield* writeCapture(Date.now(), [childID])
+        const svc = yield* DeployResume.Service
+
+        yield* svc.consume()
+
+        expect(capturedChild.calls).toEqual([grandchildID, childID])
         expect(yield* fileExists).toBe(false)
       }),
     30_000,

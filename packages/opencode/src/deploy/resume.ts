@@ -28,6 +28,11 @@ import { renderOutput } from "@/tool/task"
 // step: the subagent session is resumed to completion first and its real
 // output is written back into the parent's tool part, otherwise the parent's
 // resumed turn would see "aborted" and re-run the subagent from scratch.
+// Subagents nest, so the settle recurses: a resumed parent waits for its
+// subagent, which waits for its own subagents, just like the live task call
+// did. The loop is driven with `resume: true` because the crash sweep settled
+// the interrupted step — without it a step whose finish is already set would
+// end the turn instead of continuing past its interrupted tools.
 //
 // The busy capture cannot see everything: a turn that wrapped up cleanly at a
 // shutdown boundary went idle before the capture ran. Consume therefore also
@@ -247,7 +252,25 @@ const layer = Layer.effect(
       })
     })
 
-    const settleSubtasks = Effect.fn("DeployResume.settleSubtasks")(function* (sessionID: SessionID) {
+    /** Resumes one session depth-first: its interrupted task subtasks finish
+     * first (recursively, their results written back into this session's tool
+     * parts), then this session's own turn continues — the ordering a live
+     * task call has, so a resumed parent waits for its subagent exactly like
+     * before the deploy, at any nesting depth. */
+    const resumeSession: (
+      sessionID: SessionID,
+      seen: Set<SessionID>,
+    ) => Effect.Effect<SessionV1.WithParts> = Effect.fn("DeployResume.resumeSession")(function* (
+      sessionID: SessionID,
+      seen: Set<SessionID>,
+    ) {
+      yield* settleSubtasks(sessionID, seen)
+      return yield* prompt.loop({ sessionID, resume: true })
+    })
+
+    const settleSubtasks: (sessionID: SessionID, seen: Set<SessionID>) => Effect.Effect<void> = Effect.fn(
+      "DeployResume.settleSubtasks",
+    )(function* (sessionID: SessionID, seen: Set<SessionID>) {
       const messages = yield* sessions.messages({ sessionID }).pipe(Effect.orDie)
       const last = messages.findLast((message) => message.info.role === "assistant")
       if (!last) return
@@ -255,8 +278,12 @@ const layer = Layer.effect(
         const childID = interruptedSubtask(part)
         // the tool/error re-checks narrow `part` for repairSubtask
         if (!childID || part.type !== "tool" || part.state.status !== "error") continue
+        // Metadata is durable and could in principle name an already-visited
+        // session; resuming it twice would nest the same turn into itself.
+        if (seen.has(childID)) continue
         if (!(yield* store.get(childID))) continue
-        const exit = yield* prompt.loop({ sessionID: childID }).pipe(Effect.exit)
+        seen.add(childID)
+        const exit = yield* resumeSession(childID, seen).pipe(Effect.exit)
         // Shutdown raced the resume; leave the parent entry armed for next boot.
         if (exit._tag === "Failure" && Cause.hasInterruptsOnly(exit.cause)) return yield* Effect.failCause(exit.cause)
         // A failed child resume leaves the part interrupted, so the parent model
@@ -302,11 +329,14 @@ const layer = Layer.effect(
 
     const resumeInInstance = Effect.fn("DeployResume.resumeInInstance")(function* (sessionID: SessionID, notify: boolean) {
       const session = yield* sessions.get(sessionID).pipe(Effect.orDie)
-      // Subagent sessions resume like any other turn; their parent settles them.
-      if (session.parentID) return yield* prompt.loop({ sessionID })
-      yield* settleSubtasks(sessionID)
-      if (notify) yield* appendDeployNotice(sessionID)
-      return yield* prompt.loop({ sessionID })
+      const seen = new Set<SessionID>([sessionID])
+      // Settle subtasks for every session, subagents included: a captured
+      // subagent can itself have been waiting on nested subagents.
+      yield* settleSubtasks(sessionID, seen)
+      // Only the root session gets the notice — it is the conversation the
+      // user was in. A subagent just continues its interrupted work.
+      if (notify && !session.parentID) yield* appendDeployNotice(sessionID)
+      return yield* prompt.loop({ sessionID, resume: true })
     })
 
     const resumeOne = Effect.fn("DeployResume.resumeOne")(function* (id: string, at: number | undefined, notify: boolean) {

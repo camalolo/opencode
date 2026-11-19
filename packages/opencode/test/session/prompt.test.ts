@@ -1147,6 +1147,54 @@ it.instance("loop wraps up at the step boundary when shutdown is requested", () 
   }),
 )
 
+it.instance("resume loop continues past an interrupted tool at a settled step", () =>
+  Effect.gen(function* () {
+    const { llm } = yield* useServerConfig(providerCfg)
+    const prompt = yield* SessionPrompt.Service
+    const sessions = yield* Session.Service
+    const chat = yield* sessions.create({
+      title: "Resume",
+      permission: [{ permission: "*", pattern: "*", action: "allow" }],
+    })
+    // what the boot crash sweep leaves after a restart: the step settled with
+    // an "aborted" error, its tool marked interrupted
+    const seeded = yield* seed(chat.id, { finish: "stop" })
+    yield* sessions.updateMessage({
+      ...seeded.assistant,
+      time: { created: seeded.assistant.time.created, completed: Date.now() },
+      error: new SessionV1.AbortedError({ message: "Aborted" }),
+    })
+    yield* sessions.updatePart({
+      id: PartID.ascending(),
+      messageID: seeded.assistant.id,
+      sessionID: chat.id,
+      type: "tool",
+      tool: "bash",
+      callID: "call_interrupted",
+      state: {
+        status: "error",
+        input: { command: "echo hi" },
+        error: "aborted: opencode stopped before this tool call finished, its result is unknown; re-run if needed",
+        metadata: { interrupted: true },
+        time: { start: Date.now() - 1000, end: Date.now() },
+      },
+    })
+
+    // a plain drive treats the settled step as finished: no provider call
+    const settled = yield* prompt.loop({ sessionID: chat.id })
+    expect(yield* llm.calls).toBe(0)
+    expect(settled.info.role).toBe("assistant")
+
+    // the deploy resume continues the turn instead of terminating it
+    yield* llm.text("continued after the restart")
+    const resumed = yield* prompt.loop({ sessionID: chat.id, resume: true })
+    expect(yield* llm.calls).toBe(1)
+    expect(resumed.parts.some((part) => part.type === "text" && part.text === "continued after the restart")).toBe(
+      true,
+    )
+  }),
+)
+
 it.instance("glob tool keeps instance context during prompt runs", () =>
   Effect.gen(function* () {
     const { dir, llm } = yield* useServerConfig(providerCfg)

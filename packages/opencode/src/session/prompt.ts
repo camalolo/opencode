@@ -1137,8 +1137,9 @@ const layer = Layer.effect(
       yield* summary.summarize({ sessionID, messageID: parentID })
     })
 
-    const runLoop: (sessionID: SessionID) => Effect.Effect<SessionV1.WithParts> = Effect.fn("SessionPrompt.run")(
-      function* (sessionID: SessionID) {
+    const runLoop: (sessionID: SessionID, resume: boolean) => Effect.Effect<SessionV1.WithParts> = Effect.fn(
+      "SessionPrompt.run",
+    )(function* (sessionID: SessionID, resume: boolean) {
         const ctx = yield* InstanceState.context
         let structured: unknown
         let step = 0
@@ -1168,6 +1169,18 @@ const layer = Layer.effect(
               (part) => part.type === "tool" && !part.metadata?.providerExecuted && !isOrphanedInterruptedTool(part),
             ) ?? false
 
+          // A deploy resume re-drives a turn whose last step the boot crash
+          // sweep settled with interrupted tool parts. Without this, a "stop"
+          // finish (some providers return it with tool calls) would end the
+          // turn before the interrupted tool runs again. Only the first
+          // iteration is affected: later steps are live provider turns.
+          const interrupted =
+            resume &&
+            step === 0 &&
+            (lastAssistantMsg?.parts.some((part) => part.type === "tool" && isOrphanedInterruptedTool(part)) ?? false)
+          if (interrupted)
+            yield* Effect.logInfo("resume: continuing past interrupted tool", { "session.id": sessionID })
+
           // A provider-cut step is not a real answer: the stream ended before
           // the model finished (connection drop, Z.AI `repeat` guard, gateway
           // error frame) and the step holds no tool calls to feed back. Unlike
@@ -1181,6 +1194,7 @@ const layer = Layer.effect(
             !providerCut &&
             !["tool-calls"].includes(lastAssistant.finish) &&
             !hasToolCalls &&
+            !interrupted &&
             lastAssistant.parentID === lastUser.id
           ) {
             const orphan = lastAssistantMsg?.parts.find(
@@ -1206,7 +1220,7 @@ const layer = Layer.effect(
             const orphan = lastAssistantMsg?.parts.find(
               (part): part is SessionV1.ToolPart => part.type === "tool" && isOrphanedInterruptedTool(part),
             )
-            if (orphan) {
+            if (orphan && !interrupted) {
               yield* Effect.logWarning("loop exit with orphaned interrupted tool", {
                 "session.id": sessionID,
                 messageID: lastAssistant.id,
@@ -1477,7 +1491,7 @@ const layer = Layer.effect(
       input: LoopInput,
     ) {
       return yield* state
-        .ensureRunning(input.sessionID, lastAssistant(input.sessionID), runLoop(input.sessionID))
+        .ensureRunning(input.sessionID, lastAssistant(input.sessionID), runLoop(input.sessionID, input.resume === true))
         .pipe(
           Effect.ensuring(
             summarizeLastTurn(input.sessionID).pipe(Effect.ignore, Effect.forkIn(scope)),
@@ -1661,6 +1675,10 @@ export type PromptInput = Schema.Schema.Type<typeof PromptInput>
 
 export class LoopInput extends Schema.Class<LoopInput>("SessionPrompt.LoopInput")({
   sessionID: SessionID,
+  /** Deploy resume: the last step was settled by the boot crash sweep with
+   * interrupted tool parts, so continue the turn instead of treating it as
+   * finished. Only the first iteration is affected. */
+  resume: Schema.optional(Schema.Boolean),
 }) {}
 
 export const ShellInput = Schema.Struct({
