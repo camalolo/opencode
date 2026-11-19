@@ -399,7 +399,6 @@ export function Titlebar(props: { update?: TitlebarUpdate; debugTools?: { visibl
                 <Show when={mobile() && tabsStore.length > 1}>
                   <TitlebarTabsMenu
                     tabs={tabsStore}
-                    info={tabs.info}
                     current={currentTab}
                     label={language.t("titlebar.tabs")}
                     onNavigate={(tab) => {
