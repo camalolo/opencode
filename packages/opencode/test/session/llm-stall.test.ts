@@ -1,4 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test"
+import { NamedError } from "@opencode-ai/core/util/error"
+import { SessionRetry } from "../../src/session/retry"
 
 // The module reads its ceiling at import time — keep the defaults explicit so
 // the numbers below are self-describing.
@@ -122,8 +124,10 @@ describe("llm stall guard", () => {
     const error = await rejection(pending)
     expect(error.message).toMatch(/stream timed out after the process was suspended/)
     expect(error.message).not.toMatch(/stalled/)
-    // Retryable shape: SessionRetry matches "stream timed out" and re-issues.
-    expect(error.message).toMatch(/\bstream timed out\b/)
+    // The retry path must actually pick it up — this is the difference between
+    // the turn recovering on wake and the session dying for a bogus stall.
+    const parsed = new NamedError.Unknown({ message: error.message }).toObject()
+    expect(SessionRetry.retryable(parsed, "camalolo")).toBeDefined()
   })
 
   test("sibling LLM traffic defers the verdict to the remaining window", async () => {
