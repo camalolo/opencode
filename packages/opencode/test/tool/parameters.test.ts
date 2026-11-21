@@ -18,6 +18,7 @@ import { Parameters as Lsp } from "../../src/tool/lsp"
 import { Parameters as Plan } from "../../src/tool/plan"
 import { Parameters as Question } from "../../src/tool/question"
 import { Parameters as Read } from "../../src/tool/read"
+import { Parameters as ReadSession } from "../../src/tool/read-session"
 import { Parameters as SearchSessions } from "../../src/tool/search-sessions"
 import { Parameters as Shell } from "../../src/tool/shell"
 import { Parameters as ShowImage } from "../../src/tool/show-image"
@@ -48,6 +49,7 @@ describe("tool parameters", () => {
     test("plan", () => expect(toJsonSchema(Plan)).toMatchSnapshot())
     test("question", () => expect(toJsonSchema(Question)).toMatchSnapshot())
     test("read", () => expect(toJsonSchema(Read)).toMatchSnapshot())
+    test("read_session", () => expect(toJsonSchema(ReadSession)).toMatchSnapshot())
     test("search_sessions", () => expect(toJsonSchema(SearchSessions)).toMatchSnapshot())
     test("show_image", () => expect(toJsonSchema(ShowImage)).toMatchSnapshot())
     test("skill", () => expect(toJsonSchema(Skill)).toMatchSnapshot())
@@ -226,6 +228,31 @@ describe("tool parameters", () => {
       const parsed = parse(Read, { filePath: "/a", offset: 10, limit: 100 })
       expect(parsed.offset).toBe(10)
       expect(parsed.limit).toBe(100)
+    })
+  })
+
+  describe("read_session", () => {
+    test("accepts session_id-only", () => {
+      expect(parse(ReadSession, { session_id: "ses_test" })).toEqual({ session_id: "ses_test" })
+    })
+    test("accepts filters", () => {
+      const parsed = parse(ReadSession, {
+        session_id: "ses_test",
+        query: "deploy.*failed",
+        regex: true,
+        case_sensitive: true,
+        sources: ["reasoning", "tools"],
+        after: 5,
+      })
+      expect(parsed.regex).toBe(true)
+      expect(parsed.sources).toEqual(["reasoning", "tools"])
+      expect(parsed.after).toBe(5)
+    })
+    test("rejects missing session_id", () => {
+      expect(accepts(ReadSession, {})).toBe(false)
+    })
+    test("rejects unknown source", () => {
+      expect(accepts(ReadSession, { session_id: "ses_test", sources: ["everything"] })).toBe(false)
     })
   })
 

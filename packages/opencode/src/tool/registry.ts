@@ -12,6 +12,7 @@ import { EditTool } from "./edit"
 import { GlobTool } from "./glob"
 import { GrepTool } from "./grep"
 import { SearchSessionsTool } from "./search-sessions"
+import { ReadSessionTool } from "./read-session"
 import { ReadTool } from "./read"
 import { ShowImageTool } from "./show-image"
 import { SendFileToUserTool } from "./send-file-to-user"
@@ -124,6 +125,7 @@ const layer = Layer.effect(
     const edit = yield* EditTool
     const greptool = yield* GrepTool
     const searchSessionsTool = yield* SearchSessionsTool
+    const readSessionTool = yield* ReadSessionTool
     const patchtool = yield* ApplyPatchTool
     const skilltool = yield* SkillTool
     const sleepUntilTool = yield* SleepUntilTool
@@ -234,6 +236,7 @@ const layer = Layer.effect(
           glob: Tool.init(globtool),
           grep: Tool.init(greptool),
           searchSessions: Tool.init(searchSessionsTool),
+          readSession: Tool.init(readSessionTool),
           edit: Tool.init(edit),
           write: Tool.init(writetool),
           task: Tool.init(task),
@@ -264,6 +267,7 @@ const layer = Layer.effect(
             tool.glob,
             tool.grep,
             tool.searchSessions,
+            tool.readSession,
             tool.edit,
             tool.write,
             tool.task,

@@ -533,3 +533,48 @@ exports[`tool parameters JSON Schema (wire shape) show_image 1`] = `
   "type": "object",
 }
 `;
+
+exports[`tool parameters JSON Schema (wire shape) read_session 1`] = `
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "properties": {
+    "after": {
+      "description": "Start at this 1-based turn number to page through a long transcript.",
+      "type": "number",
+    },
+    "case_sensitive": {
+      "description": "Match case exactly. Defaults to false.",
+      "type": "boolean",
+    },
+    "query": {
+      "description": "Only include turns whose shown content contains this text. With regex: true this is a regular expression.",
+      "type": "string",
+    },
+    "regex": {
+      "description": "Treat query as a regular expression. Defaults to a case-insensitive literal search.",
+      "type": "boolean",
+    },
+    "session_id": {
+      "description": "Session to read, for example an id from search_sessions results. The current session's id is allowed.",
+      "type": "string",
+    },
+    "sources": {
+      "description": "Which content to show: "user" prompts, "assistant" replies, "reasoning", and tool calls/outputs ("tools"). Defaults to user and assistant text.",
+      "items": {
+        "enum": [
+          "user",
+          "assistant",
+          "reasoning",
+          "tools",
+        ],
+        "type": "string",
+      },
+      "type": "array",
+    },
+  },
+  "required": [
+    "session_id",
+  ],
+  "type": "object",
+}
+`;

@@ -1,0 +1,5 @@
+- Read the full transcript of one session on this machine as clean plain text
+- Use it after search_sessions to read a matched session's turns in full, or with the current session's id to recover verbatim context after compaction
+- One `[turn N · role · time]` header per message; the lines below a header are that message's verbatim content
+- `query` (optionally regex) limits the output to turns containing the text; `sources` adds reasoning or tool calls/outputs (default is user and assistant text only)
+- Long transcripts are paged: re-run with `after` set to the next turn number the output reports
