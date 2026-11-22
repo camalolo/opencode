@@ -61,9 +61,22 @@ export function embeddedUI(disableEmbeddedWebUi: boolean) {
     // first; keep the original specifier for built binaries.
     import("../../opencode-web-ui.gen.ts")
       .then((module) => module.default as unknown as Record<string, string>)
-      .catch(() =>
+      .catch((sourceError) =>
         // @ts-expect-error - generated file at build time
-        import("opencode-web-ui.gen.ts").then((module) => module.default as Record<string, string>).catch(() => null),
+        import("opencode-web-ui.gen.ts")
+          .then((module) => module.default as Record<string, string>)
+          .catch((bundledError) => {
+            // Falling back to the upstream UI is not a normal state for a
+            // source-run server: the generated manifest exists but fails to
+            // load, e.g. after the dist rebuild without a manifest regen (the
+            // manifest still points at deleted chunks). Say so loudly instead
+            // of silently serving a foreign UI with different semantics.
+            console.error(`[ui] embedded web UI manifest unavailable, proxying ${UI_UPSTREAM.host}`, {
+              source: String(sourceError),
+              bundled: String(bundledError),
+            })
+            return null
+          }),
       ))
 }
 
