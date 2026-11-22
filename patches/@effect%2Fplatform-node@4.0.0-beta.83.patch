@@ -1,0 +1,288 @@
+diff --git a/dist/NodeHttpServer.js b/dist/NodeHttpServer.js
+index b86c25f22f37fa45895d7c515f5dd338667cef0f..ae57c15b70c1aed4197389066651229ee51e2b51 100644
+--- a/dist/NodeHttpServer.js
++++ b/dist/NodeHttpServer.js
+@@ -298,6 +298,23 @@ export const layerTest = /*#__PURE__*/HttpServer.layerTestClient.pipe(/*#__PURE_
+ // -----------------------------------------------------------------------------
+ // Internal
+ // -----------------------------------------------------------------------------
++// A response write can wait on the peer forever: Node emits no "drain" and no
++// "close"/"error" while a peer that stopped reading keeps its connection open
++// (sleeping phone, dropped NAT mapping, throttled tab). An unbounded wait parks
++// the request fiber for the lifetime of the socket (2026-11-22 wedge: a prompt
++// response sat in the stream drain wait for 10 hours). Bound every write wait;
++// on a stall the connection is destroyed, which is exactly what a client abort
++// does. A timer that fires after a system sleep lands here too - the connection
++// it kills would have been dead or reconnecting anyway.
++const writeStallMs = () => Number(process.env.OPENCODE_HTTP_WRITE_STALL_MS ?? 60000);
++const withWriteStall = (nodeResponse, wait, onStall = () => {}) => Effect.timeoutOrElse(wait, {
++  duration: writeStallMs(),
++  orElse: () => Effect.sync(() => {
++    console.warn(`[http] response write stalled for ${writeStallMs()}ms without the peer accepting data, destroying the connection`);
++    onStall();
++    if (!nodeResponse.destroyed) nodeResponse.destroy();
++  })
++});
+ const handleResponse = (request, response) => {
+   const nodeResponse = request.resolvedResponse;
+   if (nodeResponse.writableEnded) {
+@@ -316,9 +333,9 @@ const handleResponse = (request, response) => {
+   }
+   if (request.method === "HEAD") {
+     nodeResponse.writeHead(response.status, headers);
+-    return Effect.callback(resume => {
++    return withWriteStall(nodeResponse, Effect.callback(resume => {
+       nodeResponse.end(() => resume(Effect.void));
+-    });
++    }));
+   }
+   const body = response.body;
+   switch (body._tag) {
+@@ -347,9 +364,9 @@ const handleResponse = (request, response) => {
+             })
+           }).pipe(Effect.interruptible, Effect.tapCause(handleCause(nodeResponse, response)));
+         }
+-        return Effect.callback(resume => {
++        return withWriteStall(nodeResponse, Effect.callback(resume => {
+           nodeResponse.end(body.body, () => resume(Effect.void));
+-        });
++        }));
+       }
+     case "Uint8Array":
+       {
+@@ -359,9 +376,9 @@ const handleResponse = (request, response) => {
+           nodeResponse.end(body.body);
+           return Effect.void;
+         }
+-        return Effect.callback(resume => {
++        return withWriteStall(nodeResponse, Effect.callback(resume => {
+           nodeResponse.end(body.body, () => resume(Effect.void));
+-        });
++        }));
+       }
+     case "FormData":
+       {
+@@ -371,7 +388,7 @@ const handleResponse = (request, response) => {
+             ...headers,
+             ...Object.fromEntries(r.headers)
+           });
+-          return Effect.callback((resume, signal) => {
++          return withWriteStall(nodeResponse, Effect.callback((resume, signal) => {
+             Readable.fromWeb(r.body, {
+               signal
+             }).pipe(nodeResponse).on("error", cause => {
+@@ -386,15 +403,26 @@ const handleResponse = (request, response) => {
+             }).once("finish", () => {
+               resume(Effect.void);
+             });
+-          }).pipe(Effect.interruptible, Effect.tapCause(handleCause(nodeResponse, response)));
++          })).pipe(Effect.interruptible, Effect.tapCause(handleCause(nodeResponse, response)));
+         });
+       }
+     case "Stream":
+       {
+         nodeResponse.writeHead(response.status, headers);
+         const drainLatch = Latch.makeUnsafe();
++        let closed = false;
++        const abort = () => {
++          closed = true;
++          drainLatch.openUnsafe();
++        };
+         nodeResponse.on("drain", () => drainLatch.openUnsafe());
+-        return body.stream.pipe(Stream.orDie, Stream.runForEachArray(array => {
++        nodeResponse.on("close", abort);
++        nodeResponse.on("error", abort);
++        return body.stream.pipe(Stream.orDie,
++        // Stop pulling once the peer is gone: an infinite body (SSE) must not
++        // keep its subscription alive after the connection is dead.
++        Stream.takeWhile(() => !closed), Stream.runForEachArray(array => {
++          if (closed) return Effect.void;
+           let needDrain = false;
+           for (let i = 0; i < array.length; i++) {
+             const written = nodeResponse.write(array[i]);
+@@ -406,9 +434,11 @@ const handleResponse = (request, response) => {
+             }
+           }
+           if (!needDrain) return Effect.void;
+-          return drainLatch.await;
++          return withWriteStall(nodeResponse, drainLatch.await, abort);
+         }), Effect.interruptible, Effect.matchCauseEffect({
+-          onSuccess: () => Effect.sync(() => nodeResponse.end()),
++          onSuccess: () => Effect.sync(() => {
++            if (!nodeResponse.writableEnded && !nodeResponse.destroyed) nodeResponse.end();
++          }),
+           onFailure: handleCause(nodeResponse, response)
+         }));
+       }
+diff --git a/src/NodeHttpServer.ts b/src/NodeHttpServer.ts
+index f6838fb329942f4db1f3894eecf5e3d3ee57b28a..953555c2b5345a5939203614fd2bedad9760f94e 100644
+--- a/src/NodeHttpServer.ts
++++ b/src/NodeHttpServer.ts
+@@ -495,6 +495,33 @@ export const layerTest: Layer.Layer<
+ // Internal
+ // -----------------------------------------------------------------------------
+ 
++// A response write can wait on the peer forever: Node emits no "drain" and no
++// "close"/"error" while a peer that stopped reading keeps its connection open
++// (sleeping phone, dropped NAT mapping, throttled tab). An unbounded wait parks
++// the request fiber for the lifetime of the socket (2026-11-22 wedge: a prompt
++// response sat in the stream drain wait for 10 hours). Bound every write wait;
++// on a stall the connection is destroyed, which is exactly what a client abort
++// does. A timer that fires after a system sleep lands here too - the connection
++// it kills would have been dead or reconnecting anyway.
++const writeStallMs = () => Number(process.env.OPENCODE_HTTP_WRITE_STALL_MS ?? 60_000)
++
++const withWriteStall = <E, R>(
++  nodeResponse: Http.ServerResponse,
++  wait: Effect.Effect<void, E, R>,
++  onStall: () => void = () => {}
++): Effect.Effect<void, E, R> =>
++  Effect.timeoutOrElse(wait, {
++    duration: writeStallMs(),
++    orElse: () =>
++      Effect.sync(() => {
++        console.warn(
++          `[http] response write stalled for ${writeStallMs()}ms without the peer accepting data, destroying the connection`
++        )
++        onStall()
++        if (!nodeResponse.destroyed) nodeResponse.destroy()
++      })
++  })
++
+ const handleResponse = (
+   request: HttpServerRequest,
+   response: HttpServerResponse
+@@ -516,9 +543,12 @@ const handleResponse = (
+ 
+   if (request.method === "HEAD") {
+     nodeResponse.writeHead(response.status, headers)
+-    return Effect.callback<void>((resume) => {
+-      nodeResponse.end(() => resume(Effect.void))
+-    })
++    return withWriteStall(
++      nodeResponse,
++      Effect.callback<void>((resume) => {
++        nodeResponse.end(() => resume(Effect.void))
++      })
++    )
+   }
+   const body = response.body
+   switch (body._tag) {
+@@ -549,9 +579,12 @@ const handleResponse = (
+           Effect.tapCause(handleCause(nodeResponse, response))
+         )
+       }
+-      return Effect.callback<void>((resume) => {
+-        nodeResponse.end(body.body, () => resume(Effect.void))
+-      })
++      return withWriteStall(
++        nodeResponse,
++        Effect.callback<void>((resume) => {
++          nodeResponse.end(body.body, () => resume(Effect.void))
++        })
++      )
+     }
+     case "Uint8Array": {
+       nodeResponse.writeHead(response.status, headers)
+@@ -560,9 +593,12 @@ const handleResponse = (
+         nodeResponse.end(body.body)
+         return Effect.void
+       }
+-      return Effect.callback<void>((resume) => {
+-        nodeResponse.end(body.body, () => resume(Effect.void))
+-      })
++      return withWriteStall(
++        nodeResponse,
++        Effect.callback<void>((resume) => {
++          nodeResponse.end(body.body, () => resume(Effect.void))
++        })
++      )
+     }
+     case "FormData": {
+       return Effect.suspend(() => {
+@@ -571,25 +607,28 @@ const handleResponse = (
+           ...headers,
+           ...Object.fromEntries(r.headers)
+         })
+-        return Effect.callback<void, HttpServerError>((resume, signal) => {
+-          Readable.fromWeb(r.body as any, { signal })
+-            .pipe(nodeResponse)
+-            .on("error", (cause) => {
+-              resume(Effect.fail(
+-                new HttpServerError({
+-                  reason: new ResponseError({
+-                    request,
+-                    response,
+-                    description: "Error writing FormData response",
+-                    cause
++        return withWriteStall(
++          nodeResponse,
++          Effect.callback<void, HttpServerError>((resume, signal) => {
++            Readable.fromWeb(r.body as any, { signal })
++              .pipe(nodeResponse)
++              .on("error", (cause) => {
++                resume(Effect.fail(
++                  new HttpServerError({
++                    reason: new ResponseError({
++                      request,
++                      response,
++                      description: "Error writing FormData response",
++                      cause
++                    })
+                   })
+-                })
+-              ))
+-            })
+-            .once("finish", () => {
+-              resume(Effect.void)
+-            })
+-        }).pipe(
++                ))
++              })
++              .once("finish", () => {
++                resume(Effect.void)
++              })
++          })
++        ).pipe(
+           Effect.interruptible,
+           Effect.tapCause(handleCause(nodeResponse, response))
+         )
+@@ -598,10 +637,21 @@ const handleResponse = (
+     case "Stream": {
+       nodeResponse.writeHead(response.status, headers)
+       const drainLatch = Latch.makeUnsafe()
++      let closed = false
++      const abort = () => {
++        closed = true
++        drainLatch.openUnsafe()
++      }
+       nodeResponse.on("drain", () => drainLatch.openUnsafe())
++      nodeResponse.on("close", abort)
++      nodeResponse.on("error", abort)
+       return body.stream.pipe(
+         Stream.orDie,
++        // Stop pulling once the peer is gone: an infinite body (SSE) must not
++        // keep its subscription alive after the connection is dead.
++        Stream.takeWhile(() => !closed),
+         Stream.runForEachArray((array) => {
++          if (closed) return Effect.void
+           let needDrain = false
+           for (let i = 0; i < array.length; i++) {
+             const written = nodeResponse.write(array[i])
+@@ -613,11 +663,14 @@ const handleResponse = (
+             }
+           }
+           if (!needDrain) return Effect.void
+-          return drainLatch.await
++          return withWriteStall(nodeResponse, drainLatch.await, abort)
+         }),
+         Effect.interruptible,
+         Effect.matchCauseEffect({
+-          onSuccess: () => Effect.sync(() => nodeResponse.end()),
++          onSuccess: () =>
++            Effect.sync(() => {
++              if (!nodeResponse.writableEnded && !nodeResponse.destroyed) nodeResponse.end()
++            }),
+           onFailure: handleCause(nodeResponse, response)
+         })
+       )
