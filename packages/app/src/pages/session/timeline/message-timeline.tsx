@@ -295,11 +295,9 @@ export function MessageTimeline(props: {
   onMarkScrollGesture: (target?: EventTarget | null) => void
   hasScrollGesture: () => boolean
   onUserScroll: () => void
-  onUserScrollUp: () => void
   onHistoryScroll: () => void
   onAutoScrollInteraction: (event: MouseEvent) => void
   shouldAnchorBottom: () => boolean
-  userScrolled: () => boolean
   centered: boolean
   setContentRef: (el: HTMLDivElement) => void
   userMessages: UserMessage[]
@@ -576,18 +574,8 @@ export function MessageTimeline(props: {
       }
     },
     anchorTo: "end",
-    // While the user is away from the bottom, virtual-core must not follow the
-    // end: its 80px band treats a small upward scroll as "still at the end"
-    // and re-anchors on every resize/append, dragging a touch swipe straight
-    // back down (touch has no wheel event to break follow first). Collapsing
-    // the threshold turns the band off; returning to the bottom flips
-    // `userScrolled` back and restores streaming follow.
-    get followOnAppend() {
-      return !props.userScrolled()
-    },
-    get scrollEndThreshold() {
-      return props.userScrolled() ? 1 : 80
-    },
+    followOnAppend: true,
+    scrollEndThreshold: 80,
     get scrollMargin() {
       return headerScrollMargin()
     },
@@ -842,23 +830,12 @@ export function MessageTimeline(props: {
     // Only gesture-marked scrolls steer the direction: the virtualizer's own
     // corrections pass through here too, and letting them flip the direction
     // would re-enable the compensation the gesture just turned off.
-    let backward = false
     if (previous !== undefined) {
       const delta = root.scrollTop - previous
-      if (Math.abs(delta) > 1) {
-        scrollDirection = delta < 0 ? "backward" : "forward"
-        backward = delta < 0
-      }
+      if (Math.abs(delta) > 1) scrollDirection = delta < 0 ? "backward" : "forward"
     }
     props.onUserScroll()
     props.onAutoScrollHandleScroll()
-    // A gesture-marked upward move is deliberate: leave bottom-follow right
-    // here, matching what the wheel handler does for desktop. Touch has no
-    // wheel event, so waiting for `handleScroll`'s distance threshold lets
-    // the auto-follow window (remarked on every streamed resize) snap the
-    // viewport back to the end mid-drag. Must run after `handleScroll` so its
-    // near-bottom reset cannot undo the stop within the same event.
-    if (backward) props.onUserScrollUp()
     props.onMarkScrollGesture(root)
   }
 
