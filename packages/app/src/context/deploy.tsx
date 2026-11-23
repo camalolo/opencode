@@ -5,7 +5,9 @@ import { createStore } from "solid-js/store"
 import { useGlobal } from "./global"
 import { ServerConnection, useServer } from "./server"
 
-export const DEPLOY_PHASES = ["pull", "install", "build", "manifest", "drain", "restart"] as const
+// "restore" (the HEAD~1 rewind of POST /global/restore) leads the bar when a
+// restore pipeline runs; the other phases are shared with the deploy pipeline.
+export const DEPLOY_PHASES = ["restore", "pull", "install", "build", "manifest", "drain", "restart"] as const
 export type DeployPhase = (typeof DEPLOY_PHASES)[number]
 
 type DeployState = GlobalDeployStatus & {

@@ -4,6 +4,7 @@ import { DEPLOY_PHASES, useDeploy, type DeployPhase } from "@/context/deploy"
 import { useLanguage } from "@/context/language"
 
 const PHASE_LABEL_KEYS: Record<DeployPhase, Parameters<ReturnType<typeof useLanguage>["t"]>[0]> = {
+  restore: "deploy.ongoing.phase.restore",
   pull: "deploy.ongoing.phase.pull",
   install: "deploy.ongoing.phase.install",
   build: "deploy.ongoing.phase.build",

@@ -2,7 +2,7 @@ import { TextField } from "@opencode-ai/ui/text-field"
 import * as Sentry from "@sentry/solid"
 import { Logo } from "@opencode-ai/ui/logo"
 import { Button } from "@opencode-ai/ui/button"
-import { Component, createSignal, onMount, Show } from "solid-js"
+import { Component, createSignal, onCleanup, onMount, Show } from "solid-js"
 import { createStore } from "solid-js/store"
 import { usePlatform } from "@/context/platform"
 import { useLanguage } from "@/context/language"
@@ -226,6 +226,7 @@ export const ErrorPage: Component<ErrorPageProps> = (props) => {
   let recordedFatalError: Promise<void> | undefined
   const [store, setStore] = createStore({
     actionError: undefined as string | undefined,
+    restoring: false,
   })
 
   function ensureFatalErrorRecorded() {
@@ -275,6 +276,49 @@ export const ErrorPage: Component<ErrorPageProps> = (props) => {
       })
   }
 
+  // Restore rewinds the serving server's checkout one commit and reboots it.
+  // DeployProvider mounts below the error boundary, so this polls the deploy
+  // status endpoint directly: a pipeline failure surfaces here, and the
+  // rebooted server answering reloads the page into the restored build.
+  async function restorePreviousCommit() {
+    const request = platform.fetch ?? fetch
+    setStore({ restoring: true, actionError: undefined })
+    try {
+      const response = await request("/global/restore", { method: "POST" })
+      const result = (await response.json()) as { started?: boolean; reason?: string }
+      if (!response.ok || !result.started) {
+        setStore({ restoring: false, actionError: result.reason ?? `HTTP ${response.status}` })
+        return
+      }
+    } catch (err) {
+      setStore({ restoring: false, actionError: formatError(err, language.t) })
+      return
+    }
+    const deadline = Date.now() + 15 * 60_000
+    let down = false
+    const poll = window.setInterval(async () => {
+      if (Date.now() > deadline) {
+        window.clearInterval(poll)
+        setStore({ restoring: false, actionError: language.t("error.page.action.restoreTimedOut") })
+        return
+      }
+      try {
+        const response = await request("/global/deploy", { cache: "no-store" })
+        const status = (await response.json()) as { error?: string }
+        if (status.error) {
+          window.clearInterval(poll)
+          setStore({ restoring: false, actionError: status.error })
+        } else if (down) {
+          window.clearInterval(poll)
+          location.reload()
+        }
+      } catch {
+        down = true
+      }
+    }, 2_000)
+    onCleanup(() => window.clearInterval(poll))
+  }
+
   return (
     <div
       class="relative flex-1 h-screen w-screen min-h-0 flex flex-col items-center justify-center font-sans"
@@ -299,6 +343,11 @@ export const ErrorPage: Component<ErrorPageProps> = (props) => {
           <Button size="large" onClick={platform.restart}>
             {language.t("error.page.action.restart")}
           </Button>
+          <Show when={platform.platform === "web"}>
+            <Button size="large" variant="ghost" disabled={store.restoring} onClick={restorePreviousCommit}>
+              {language.t(store.restoring ? "error.page.action.restoring" : "error.page.action.restore")}
+            </Button>
+          </Show>
           <Show when={platform.platform === "desktop" && platform.exportDebugLogs}>
             <Button size="large" variant="ghost" onClick={exportDebugLogs}>
               {language.t("error.page.action.exportLogs")}

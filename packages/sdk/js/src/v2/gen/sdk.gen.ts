@@ -94,6 +94,8 @@ import type {
   GlobalEventResponses,
   GlobalHealthErrors,
   GlobalHealthResponses,
+  GlobalRestoreStartErrors,
+  GlobalRestoreStartResponses,
   GlobalUpgradeErrors,
   GlobalUpgradeResponses,
   InstanceDisposeErrors,
@@ -1398,6 +1400,20 @@ export class Deploy extends HeyApiClient {
   }
 }
 
+export class Restore extends HeyApiClient {
+  /**
+   * Restore previous commit
+   *
+   * Undo the last deploy pull by resetting the source checkout to HEAD~1 (history kept, so the next deploy pull fast-forwards back), rebuild the web UI from the restored commit, then restart via the configured restart command. Sessions mid-turn are interrupted and resumed after the restart, same as deploy.
+   */
+  public start<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
+    return (options?.client ?? this.client).post<GlobalRestoreStartResponses, GlobalRestoreStartErrors, ThrowOnError>({
+      url: "/global/restore",
+      ...options,
+    })
+  }
+}
+
 export class Global extends HeyApiClient {
   /**
    * Get health
@@ -1467,6 +1483,11 @@ export class Global extends HeyApiClient {
   private _deploy?: Deploy
   get deploy(): Deploy {
     return (this._deploy ??= new Deploy({ client: this.client }))
+  }
+
+  private _restore?: Restore
+  get restore(): Restore {
+    return (this._restore ??= new Restore({ client: this.client }))
   }
 }
 

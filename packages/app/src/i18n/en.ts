@@ -420,6 +420,7 @@ export const dict = {
   "app.server.otherServers": "Other servers",
 
   "deploy.ongoing.title": "Deploy ongoing...",
+  "deploy.ongoing.phase.restore": "Restoring previous commit...",
   "deploy.ongoing.phase.pull": "Pulling latest changes...",
   "deploy.ongoing.phase.install": "Installing dependencies...",
   "deploy.ongoing.phase.build": "Building web UI...",
@@ -680,6 +681,9 @@ export const dict = {
   "error.page.description.localServerStartup": "An error occurred while starting the local server.",
   "error.page.details.label": "Error Details",
   "error.page.action.restart": "Restart",
+  "error.page.action.restore": "Restore previous commit",
+  "error.page.action.restoring": "Restoring previous commit...",
+  "error.page.action.restoreTimedOut": "Restore timed out waiting for the server to come back",
   "error.page.action.report": "Report Error",
   "error.page.action.reported": "Error Reported",
   "error.page.action.exportLogs": "Export Logs",

@@ -2098,7 +2098,7 @@ export type Config = {
 }
 
 export type GlobalDeployStatus = {
-  phase: "idle" | "resume" | "pull" | "install" | "build" | "manifest" | "drain" | "restart"
+  phase: "idle" | "restore" | "resume" | "pull" | "install" | "build" | "manifest" | "drain" | "restart"
   startedAt?: number
   error?: string
   activeSessions?: Array<string>
@@ -8150,6 +8150,31 @@ export type GlobalDeployStartResponses = {
 }
 
 export type GlobalDeployStartResponse = GlobalDeployStartResponses[keyof GlobalDeployStartResponses]
+
+export type GlobalRestoreStartData = {
+  body?: never
+  path?: never
+  query?: never
+  url: "/global/restore"
+}
+
+export type GlobalRestoreStartErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type GlobalRestoreStartError = GlobalRestoreStartErrors[keyof GlobalRestoreStartErrors]
+
+export type GlobalRestoreStartResponses = {
+  /**
+   * Self-restore started
+   */
+  200: GlobalDeployStartResult
+}
+
+export type GlobalRestoreStartResponse = GlobalRestoreStartResponses[keyof GlobalRestoreStartResponses]
 
 export type EventSubscribeData = {
   body?: never

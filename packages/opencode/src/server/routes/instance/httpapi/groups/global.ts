@@ -76,7 +76,8 @@ const GlobalDeployStartResult = Schema.Struct({
 const GlobalDeployStatus = Schema.Struct({
   // "resume" is the post-restart boot phase: the new server process is up but
   // still restoring sessions the deploy interrupted; announced by DeployResume.
-  phase: Schema.Literals(["idle", "resume", "pull", "install", "build", "manifest", "drain", "restart"]),
+  // "restore" is the HEAD~1 rewind step of POST /global/restore.
+  phase: Schema.Literals(["idle", "restore", "resume", "pull", "install", "build", "manifest", "drain", "restart"]),
   startedAt: Schema.optional(Schema.Finite),
   error: Schema.optional(Schema.String),
   activeSessions: Schema.optional(Schema.Array(Schema.String)),
@@ -89,6 +90,7 @@ export const GlobalPaths = {
   dispose: "/global/dispose",
   upgrade: "/global/upgrade",
   deploy: "/global/deploy",
+  restore: "/global/restore",
 } as const
 
 export const GlobalApi = HttpApi.make("global").add(
@@ -170,6 +172,16 @@ export const GlobalApi = HttpApi.make("global").add(
           summary: "Start self-deploy",
           description:
             "Pull, rebuild the web UI, then restart the server via the configured restart command. Sessions mid-turn are interrupted immediately and resumed after the restart with a deploy notice; the timeout query parameter is accepted for compatibility but no longer used.",
+        }),
+      ),
+      HttpApiEndpoint.post("deployRestore", GlobalPaths.restore, {
+        success: described(GlobalDeployStartResult, "Self-restore started"),
+      }).annotateMerge(
+        OpenApi.annotations({
+          identifier: "global.restore.start",
+          summary: "Restore previous commit",
+          description:
+            "Undo the last deploy pull by resetting the source checkout to HEAD~1 (history kept, so the next deploy pull fast-forwards back), rebuild the web UI from the restored commit, then restart via the configured restart command. Sessions mid-turn are interrupted and resumed after the restart, same as deploy.",
         }),
       ),
     )

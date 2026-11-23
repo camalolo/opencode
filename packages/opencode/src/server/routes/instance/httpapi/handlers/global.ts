@@ -211,6 +211,10 @@ export const globalHandlers = HttpApiBuilder.group(RootHttpApi, "global", (handl
       return yield* deploySvc.start({ timeoutSeconds: ctx.query.timeout ?? 600 })
     })
 
+    const deployRestore = Effect.fn("GlobalHttpApi.deployRestore")(function* () {
+      return yield* deploySvc.restore()
+    })
+
     return handlers
       .handle("health", health)
       .handleRaw("event", event)
@@ -220,5 +224,6 @@ export const globalHandlers = HttpApiBuilder.group(RootHttpApi, "global", (handl
       .handleRaw("upgrade", upgradeRaw)
       .handle("deployStatus", deployStatus)
       .handle("deployStart", deployStart)
+      .handle("deployRestore", deployRestore)
   }),
 )

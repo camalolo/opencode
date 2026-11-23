@@ -33,7 +33,7 @@ const MAX_STEP_OUTPUT_BYTES = 4 * 1024 * 1024
  * sessions are parked on a durable trigger and survive restarts untouched. */
 const blocksDeploy = (info: SessionStatus.Info) => info.type === "busy" || info.type === "retry"
 
-export type Phase = "idle" | "pull" | "install" | "build" | "manifest" | "drain" | "restart"
+export type Phase = "idle" | "restore" | "pull" | "install" | "build" | "manifest" | "drain" | "restart"
 
 export interface State {
   phase: Phase
@@ -49,6 +49,7 @@ export interface StartResult {
 
 export interface Interface {
   readonly start: (input: { timeoutSeconds: number }) => Effect.Effect<StartResult>
+  readonly restore: () => Effect.Effect<StartResult>
   readonly status: () => Effect.Effect<State>
 }
 
@@ -116,13 +117,22 @@ const layer = Layer.effect(
       return [...sessions.entries()].filter(([, info]) => blocksDeploy(info)).map(([id]) => id)
     })
 
-    const runDeploy = Effect.fn("Deploy.run")(function* () {
-      const steps: Array<[Phase, string]> = [
-        ["pull", flags.deployPullCommand || "git pull --ff-only origin laurent-dev"],
-        ["install", flags.deployInstallCommand || "bun install"],
-        ["build", flags.deployBuildCommand || "bun run --cwd packages/app build"],
-        ["manifest", flags.deployManifestCommand || "bun deploy/gen-web-ui-manifest.ts"],
-      ]
+    // Build steps shared by deploy and restore. Restore rewinds the checkout
+    // one commit BEFORE anything is rebuilt, so a commit that broke the build
+    // is rolled back first. The rewind discards the last pulled commit but
+    // keeps history, so the next deploy pull fast-forwards back to the tip.
+    const buildSteps = (): Array<[Phase, string]> => [
+      ["install", flags.deployInstallCommand || "bun install"],
+      ["build", flags.deployBuildCommand || "bun run --cwd packages/app build"],
+      ["manifest", flags.deployManifestCommand || "bun deploy/gen-web-ui-manifest.ts"],
+    ]
+
+    const restoreStep = (): [Phase, string] => [
+      "restore",
+      'git rev-parse -q --verify HEAD~1 >/dev/null || { echo "nothing to restore: HEAD~1 not found"; exit 1; }; git reset --hard HEAD~1',
+    ]
+
+    const runPipeline = Effect.fn("Deploy.run")(function* (steps: Array<[Phase, string]>) {
       for (const [phase, command] of steps) {
         const step = yield* runStep(phase, command)
         if (!step.ok) {
@@ -193,21 +203,40 @@ const layer = Layer.effect(
       yield* DeployResume.discard()
     })
 
-    const start: Interface["start"] = Effect.fn("Deploy.start")(function* (input) {
+    const guard = (action: string): StartResult | undefined => {
       if (!flags.restartCommand) {
-        return { started: false, reason: "OPENCODE_RESTART_COMMAND is not configured; refusing to deploy" }
+        return { started: false, reason: `OPENCODE_RESTART_COMMAND is not configured; refusing to ${action}` }
       }
-      if (!root) return { started: false, reason: "deploy requires a source checkout" }
+      if (!root) return { started: false, reason: `${action} requires a source checkout` }
       if (state.phase !== "idle") {
-        return { started: false, reason: `deploy already running (phase: ${state.phase})` }
+        return { started: false, reason: `deploy or restore already running (phase: ${state.phase})` }
       }
+      return undefined
+    }
+
+    const start: Interface["start"] = Effect.fn("Deploy.start")(function* (input) {
+      const refused = guard("deploy")
+      if (refused) return refused
       state.phase = "pull"
       state.startedAt = Date.now()
       state.error = undefined
       state.activeSessions = undefined
       announce()
       yield* Effect.logInfo("deploy started", { timeoutSeconds: input.timeoutSeconds })
-      bridge.fork(runDeploy())
+      bridge.fork(runPipeline([["pull", flags.deployPullCommand || "git pull --ff-only origin laurent-dev"], ...buildSteps()]))
+      return { started: true }
+    })
+
+    const restore: Interface["restore"] = Effect.fn("Deploy.restore")(function* () {
+      const refused = guard("restore")
+      if (refused) return refused
+      state.phase = "restore"
+      state.startedAt = Date.now()
+      state.error = undefined
+      state.activeSessions = undefined
+      announce()
+      yield* Effect.logInfo("restore started")
+      bridge.fork(runPipeline([restoreStep(), ...buildSteps()]))
       return { started: true }
     })
 
@@ -215,7 +244,7 @@ const layer = Layer.effect(
       return { ...state }
     })
 
-    return Service.of({ start, status })
+    return Service.of({ start, restore, status })
   }),
 )
 

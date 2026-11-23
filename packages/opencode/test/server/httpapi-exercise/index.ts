@@ -134,6 +134,21 @@ const scenarios: Scenario[] = [
       },
       "status",
     ),
+  http.protected
+    .post("/global/restore", "global.restore.start")
+    .global()
+    .json(
+      200,
+      (body) => {
+        object(body)
+        check(body.started === false, "restore should refuse to start without OPENCODE_RESTART_COMMAND")
+        check(
+          typeof body.reason === "string" && body.reason.includes("OPENCODE_RESTART_COMMAND"),
+          `restore refusal should explain the missing restart command: ${JSON.stringify(body)}`,
+        )
+      },
+      "status",
+    ),
   http.protected.get("/path", "path.get").json(200, (body, ctx) => {
     object(body)
     check(body.directory === ctx.directory, "directory should resolve from x-opencode-directory")
