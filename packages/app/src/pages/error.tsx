@@ -344,7 +344,7 @@ export const ErrorPage: Component<ErrorPageProps> = (props) => {
             {language.t("error.page.action.restart")}
           </Button>
           <Show when={platform.platform === "web"}>
-            <Button size="large" variant="ghost" disabled={store.restoring} onClick={restorePreviousCommit}>
+            <Button size="large" disabled={store.restoring} onClick={restorePreviousCommit}>
               {language.t(store.restoring ? "error.page.action.restoring" : "error.page.action.restore")}
             </Button>
           </Show>
