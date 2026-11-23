@@ -121,8 +121,10 @@ const layer = Layer.effect(
     // one commit BEFORE anything is rebuilt, so a commit that broke the build
     // is rolled back first. The rewind discards the last pulled commit but
     // keeps history, so the next deploy pull fast-forwards back to the tip.
+    // Vendored tools keep their own lockfile (not a workspace member), so the
+    // root install never fetches their runtime deps.
     const buildSteps = (): Array<[Phase, string]> => [
-      ["install", flags.deployInstallCommand || "bun install"],
+      ["install", flags.deployInstallCommand || "bun install && bun install --cwd tools/google-workspace-mcp"],
       ["build", flags.deployBuildCommand || "bun run --cwd packages/app build"],
       ["manifest", flags.deployManifestCommand || "bun deploy/gen-web-ui-manifest.ts"],
     ]
