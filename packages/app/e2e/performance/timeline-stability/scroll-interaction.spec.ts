@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test"
+import { expect, test, type CDPSession } from "@playwright/test"
 import {
   defineVisualRegions,
   reportVisualStability,
@@ -13,6 +13,7 @@ import {
   shell,
   textPart,
   userMessage,
+  waitForVisualSettle,
   type TimelineMessage,
 } from "./fixture"
 
@@ -57,6 +58,7 @@ test("keeps moving upward while drag-selecting above the timeline", async ({ pag
   const scroller = page.locator(".scroll-view__viewport", { has: page.locator("[data-timeline-row]") })
   const text = page.getByText("History 79.", { exact: false })
   await expect(text).toBeVisible()
+  await waitForVisualSettle(page, ['[data-timeline-part-id="prt_0079_scroll"]'])
   await scroller.evaluate((element) => {
     element.dataset.selectionLength = "0"
     document.addEventListener("selectionchange", () => {
@@ -300,6 +302,73 @@ test("handles a single row taller than the viewport", async ({ page }, testInfo)
     ]),
   )
 })
+
+test("keeps a touch swipe away from the end while the turn streams", async ({ page }) => {
+  const shellID = "prt_touch_01_shell"
+  const followingID = "prt_touch_02_following"
+  const timeline = await setupTimeline(page, {
+    messages: [
+      ...history(12),
+      userMessage(),
+      assistantMessage([shell(shellID, "running"), textPart(followingID, "Streaming after swipe")], {
+        completed: false,
+      }),
+    ],
+    settings: { shellToolPartsExpanded: true },
+    viewport: { width: 1400, height: 900 },
+    cpuRate: 4,
+    reducedMotion: true,
+    seedHistory: true,
+  })
+  const scroller = page.locator(".scroll-view__viewport", { has: page.locator("[data-timeline-row]") })
+  const distanceFromEnd = () =>
+    scroller.evaluate((element) => element.scrollHeight - element.clientHeight - element.scrollTop)
+  await timeline.waitForPart(shellID)
+  await expect.poll(distanceFromEnd).toBeLessThanOrEqual(2)
+
+  const devtools = await page.context().newCDPSession(page)
+  await devtools.send("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 5 })
+  // The phone scenario: the reader swipes up a little while the turn is still
+  // streaming, so rows resize between the drag's scroll events.
+  let streamed = 0
+  await swipe(devtools, {
+    fromY: 600,
+    toY: 700,
+    onStep: async () => {
+      if (streamed >= 4) return
+      streamed += 1
+      await timeline.send(partUpdated(textPart(followingID, streamText(streamed))), 60)
+    },
+  })
+  await timeline.settle()
+
+  const afterSwipe = await distanceFromEnd()
+  expect(afterSwipe, "swipe should carry the viewport away from the end").toBeGreaterThan(40)
+
+  await timeline.send(partUpdated(textPart(followingID, streamText(20))), 200)
+  // The streamed text grows below the viewport, so holding position means the
+  // distance grows. The end-follow keeps this distance pinned instead, which
+  // reads on a phone as "my swipe got dragged back to the end".
+  expect(await distanceFromEnd(), "streaming below must push the viewport further from the end").toBeGreaterThan(
+    afterSwipe,
+  )
+})
+
+function streamText(round: number) {
+  return `Streaming after swipe. ${"The turn keeps producing tokens while the reader scrolls back. ".repeat(round * 25)}`
+}
+
+async function swipe(devtools: CDPSession, input: { fromY: number; toY: number; onStep?: () => Promise<void> }) {
+  const x = 195
+  const steps = 6
+  await devtools.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x, y: input.fromY }] })
+  for (let step = 1; step <= steps; step++) {
+    const y = Math.round(input.fromY + ((input.toY - input.fromY) * step) / steps)
+    await devtools.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [{ x, y }] })
+    await input.onStep?.()
+  }
+  await devtools.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] })
+}
 
 function history(count: number): TimelineMessage[] {
   return Array.from({ length: count }, (_, index) => {

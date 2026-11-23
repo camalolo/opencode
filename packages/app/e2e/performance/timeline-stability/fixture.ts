@@ -134,6 +134,9 @@ export async function setupTimeline(
           shellToolPartsExpanded: false,
           showReasoningSummaries: false,
           showSessionProgressBar: true,
+          // seeded settings count as an existing install, which would otherwise
+          // pop the tabs release-notes toast over the composer mid-test
+          shouldDisplayTabsToast: false,
           ...settings,
         },
       }),

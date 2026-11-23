@@ -2160,12 +2160,14 @@ export default function Page() {
                   onMarkScrollGesture={markScrollGesture}
                   hasScrollGesture={hasScrollGesture}
                   onUserScroll={markUserScroll}
+                  onUserScrollUp={autoScroll.pause}
                   onHistoryScroll={onHistoryScroll}
                   onAutoScrollInteraction={autoScroll.handleInteraction}
                   resyncing={timeline.resyncing}
                   shouldAnchorBottom={() =>
                     !location.hash && !store.messageId && !ui.pendingMessage && !autoScroll.userScrolled()
                   }
+                  userScrolled={autoScroll.userScrolled}
                   mountAnchorBottom={mountAnchorBottom}
                   centered={centered()}
                   setContentRef={(el) => {

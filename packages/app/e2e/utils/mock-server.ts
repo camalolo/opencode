@@ -74,6 +74,9 @@ export async function mockOpenCodeServer(page: Page, config: MockServerConfig) {
     }
     if (path === "/global/health")
       return config.protocol === "v2" ? json(route, {}, undefined, 404) : json(route, { healthy: true })
+    // A status without a phase reads as "deploy in progress" and engages the
+    // app's deploy overlay over the whole page; tests always get idle.
+    if (path === "/global/deploy") return json(route, { phase: "idle" })
     if (path === "/api/health" && config.protocol === "v2")
       return json(route, { healthy: true, version: "2.0.0", pid: 1 })
     if (path === "/experimental/capabilities") return json(route, { backgroundSubagents: true })

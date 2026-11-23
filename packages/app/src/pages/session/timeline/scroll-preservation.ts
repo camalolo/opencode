@@ -22,6 +22,10 @@
 //    reconcile. Owns bottom follow and measurement-churn compensation. Its
 //    writes pass through the app's scrollToFn, which pre-writes the sizer
 //    height (clamp guard) and adopts the offset here via markTrusted.
+//    End-follow (followOnAppend and the scrollEndThreshold band) is bound to
+//    the user's follow state: once a gesture marks the viewport as scrolled
+//    away from the bottom, the band collapses and virtual-core stops
+//    re-anchoring to the end until the user returns.
 // 2. This preserver: undoes genuine clamps after content-height collapses
 //    (skipped while bottom-anchored or gesturing). Emits the `clamp-restore`
 //    diag event; if that never fires in real usage, this module can be
