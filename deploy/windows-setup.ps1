@@ -74,6 +74,7 @@ $extra = @(
   "OPENCODE_BROWSER_AGENT_SESSION=opencode-default",
   "OPENCODE_BROWSER_AGENT_SKIP_INSTALL=1",
   "OPENCODE_DISABLE_CHANNEL_DB=1",
+  "OPENCODE_EXPERIMENTAL_CODE_MODE=1",
   # The deploy endpoint exits the process and NSSM restarts it (AppExit Default
   # Restart below). A scheduled-task indirection is unnecessary: supervising
   # restarts is exactly what NSSM is for.
