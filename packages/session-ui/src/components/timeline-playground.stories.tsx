@@ -292,6 +292,8 @@ I'll need to:
 This should be straightforward given the existing component architecture.`,
 ]
 
+const SHORT_REASONING_SAMPLE = "Checking the existing component structure before making changes."
+
 const TOOL_SAMPLES = {
   read: {
     tool: "read",
@@ -1334,6 +1336,10 @@ function Playground() {
     appendParts([reasoningPart(REASONING_SAMPLES[idx])])
   }
 
+  const addShortReasoning = () => {
+    appendParts([reasoningPart(SHORT_REASONING_SAMPLE)])
+  }
+
   // Streaming reasoning: appends a part with no end time and marks the
   // assistant message in-flight. Nothing should render while it streams;
   // after 3s the message and part complete and the collapsed block pops in.
@@ -1800,6 +1806,9 @@ function Playground() {
                 </For>
                 <button style={btnStyle} onClick={addReasoning} data-playground="reasoning">
                   reasoning
+                </button>
+                <button style={btnStyle} onClick={addShortReasoning} data-playground="reasoning-short">
+                  reasoning (short)
                 </button>
                 <button style={btnStyle} onClick={addStreamingReasoning} data-playground="reasoning-streaming">
                   reasoning (streaming)

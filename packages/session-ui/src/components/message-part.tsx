@@ -65,7 +65,7 @@ import { patchFiles } from "./apply-patch-file"
 import { partDefaultOpen } from "./part-default-open"
 import { animate } from "motion"
 import { attached, inline, kind, typeLabel } from "./message-file"
-import { readPartText } from "./message-part-text"
+import { readPartText, reasoningIsShort } from "./message-part-text"
 import { SessionProgressIndicatorV2 } from "../v2/components/session-progress-indicator-v2"
 
 async function writeClipboard(text: string): Promise<boolean> {
@@ -1923,13 +1923,22 @@ PART_MAPPING["reasoning"] = function ReasoningPartDisplay(props) {
 
   return (
     <Show when={reasoningComplete(part(), messageCompleted()) && !!text().trim()}>
-      <div data-component="reasoning-part" data-timeline-part-id={part().id}>
-        <BasicTool
-          icon="brain"
-          trigger={{ title: heading(text()) ?? i18n.t("ui.sessionTurn.status.thinking"), subtitle: duration() || undefined }}
+      <div
+        data-component="reasoning-part"
+        data-timeline-part-id={part().id}
+        data-variant={reasoningIsShort(text()) ? "inline" : "collapsed"}
+      >
+        <Show
+          when={!reasoningIsShort(text())}
+          fallback={<Markdown text={i18n.t("ui.sessionTurn.status.thinkingWithReasoning", { text: text() })} />}
         >
-          <Markdown text={text()} />
-        </BasicTool>
+          <BasicTool
+            icon="brain"
+            trigger={{ title: heading(text()) ?? i18n.t("ui.sessionTurn.status.thinking"), subtitle: duration() || undefined }}
+          >
+            <Markdown text={text()} />
+          </BasicTool>
+        </Show>
       </div>
     </Show>
   )

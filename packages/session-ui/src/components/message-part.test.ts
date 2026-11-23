@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { readPartText } from "./message-part-text"
+import { readPartText, reasoningIsShort } from "./message-part-text"
 
 describe("readPartText", () => {
   test("returns empty string when accum is undefined and part text is undefined", () => {
@@ -24,5 +24,35 @@ describe("readPartText", () => {
 
   test("trims leading and trailing whitespace", () => {
     expect(readPartText(undefined, { id: "part_1", text: "\n  body  \n" })).toBe("body")
+  })
+})
+
+describe("reasoningIsShort", () => {
+  test("text without terminator reads as one sentence", () => {
+    expect(reasoningIsShort("Checking the request")).toBe(true)
+  })
+
+  test("single sentence is short", () => {
+    expect(reasoningIsShort("Checking the request.\n")).toBe(true)
+  })
+
+  test("two sentences are not short", () => {
+    expect(reasoningIsShort("Checking the request. Planning next steps.")).toBe(false)
+  })
+
+  test("question and exclamation marks count as terminators", () => {
+    expect(reasoningIsShort("Why does this fail? Let me look!")).toBe(false)
+  })
+
+  test("ellipsis counts as a terminator", () => {
+    expect(reasoningIsShort("Hmm… wait…")).toBe(false)
+  })
+
+  test("newlines collapse before counting", () => {
+    expect(reasoningIsShort("Line one\nLine two")).toBe(true)
+  })
+
+  test("whitespace-only text is short", () => {
+    expect(reasoningIsShort("   \n\t  ")).toBe(true)
   })
 })
