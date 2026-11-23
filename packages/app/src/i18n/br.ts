@@ -984,6 +984,9 @@ export const dict = {
   "settings.general.row.showCustomAgents.title": "Mostrar agente",
   "settings.general.row.showCustomAgents.description":
     "Alternar entre agentes na área de composição. Quando oculto, usa o agente Build como padrão.",
+  "settings.general.row.reasoningSummaries.option.auto": "Automático",
+  "settings.general.row.reasoningSummaries.option.off": "Desativado",
+  "settings.general.row.reasoningSummaries.option.on": "Ativado",
   "settings.general.row.reasoningSummaries.title": "Mostrar resumos de raciocínio",
   "settings.general.row.reasoningSummaries.description": "Exibir resumos de raciocínio do modelo na linha do tempo",
   "settings.general.row.shellToolPartsExpanded.title": "Expandir partes da ferramenta shell",

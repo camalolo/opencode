@@ -1068,6 +1068,9 @@ export const dict = {
   "settings.general.row.showCustomAgents.title": "Агентийг харуулах",
   "settings.general.row.showCustomAgents.description":
     "Хөгжмийн зохиолч дахь агентуудын хооронд шилжих. Нуусан үед өгөгдмөл нь Build agent.",
+  "settings.general.row.reasoningSummaries.option.auto": "Автомат",
+  "settings.general.row.reasoningSummaries.option.off": "Идэвхгүй",
+  "settings.general.row.reasoningSummaries.option.on": "Идэвхтэй",
   "settings.general.row.reasoningSummaries.title": "Шалтгаануудын хураангуйг харуул",
   "settings.general.row.reasoningSummaries.description": "Загварын үндэслэлийн хураангуйг цагийн хуваарьт харуул",
   "settings.general.row.shellToolPartsExpanded.title": "shell хэрэгслийн хэсгүүдийг өргөжүүлэх",

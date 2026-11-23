@@ -1070,6 +1070,9 @@ export const dict = {
   "settings.general.row.showCustomAgents.title": "Prikaži agenta",
   "settings.general.row.showCustomAgents.description":
     "Prebacivanje između agenata u skladatelju. Kada je skriven, zadana je Build agent.",
+  "settings.general.row.reasoningSummaries.option.auto": "Automatski",
+  "settings.general.row.reasoningSummaries.option.off": "Isključeno",
+  "settings.general.row.reasoningSummaries.option.on": "Uključeno",
   "settings.general.row.reasoningSummaries.title": "Prikaži sažetke obrazloženja",
   "settings.general.row.reasoningSummaries.description": "Prikažite sažetke obrazloženja modela na vremenskoj traci",
   "settings.general.row.shellToolPartsExpanded.title": "Proširite dijelove alata školjke",

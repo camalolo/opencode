@@ -1064,6 +1064,9 @@ export const dict = {
   "settings.general.row.showCustomAgents.title": "Zobraziť agenta",
   "settings.general.row.showCustomAgents.description":
     "Prepínať medzi agentmi v editore. Ak je skryté, predvolený je Build agent.",
+  "settings.general.row.reasoningSummaries.option.auto": "Automaticky",
+  "settings.general.row.reasoningSummaries.option.off": "Vypnuté",
+  "settings.general.row.reasoningSummaries.option.on": "Zapnuté",
   "settings.general.row.reasoningSummaries.title": "Zobraziť súhrny uvažovania",
   "settings.general.row.reasoningSummaries.description": "Zobrazovať súhrny uvažovania modelu v časovej osi",
   "settings.general.row.shellToolPartsExpanded.title": "Rozbaliť časti shell nástroja",

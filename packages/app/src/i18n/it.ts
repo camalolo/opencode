@@ -982,6 +982,9 @@ export const dict = {
   "settings.general.row.showCustomAgents.title": "Mostra agente",
   "settings.general.row.showCustomAgents.description":
     "Passa da un agente all'altro nel campo di composizione. Se nascosto, viene usato l'agente Build.",
+  "settings.general.row.reasoningSummaries.option.auto": "Automatico",
+  "settings.general.row.reasoningSummaries.option.off": "Disattivato",
+  "settings.general.row.reasoningSummaries.option.on": "Attivato",
   "settings.general.row.reasoningSummaries.title": "Mostra riassunti del ragionamento",
   "settings.general.row.reasoningSummaries.description":
     "Visualizza i riepiloghi del ragionamento del modello nella sequenza temporale",

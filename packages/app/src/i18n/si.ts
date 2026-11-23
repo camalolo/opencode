@@ -1054,6 +1054,9 @@ export const dict: Record<string, string> = {
   "settings.general.row.showCustomAgents.title": "නියෝජිතයා පෙන්වන්න",
   "settings.general.row.showCustomAgents.description":
     "නිර්මාපකයේ නියෝජිතයන් අතර මාරු වන්න. සැඟවුණු විට, බිල්ඩ් ඒජන්ත වෙත පෙරනිමි වේ.",
+  "settings.general.row.reasoningSummaries.option.auto": "ස්වයංක්‍රීය",
+  "settings.general.row.reasoningSummaries.option.off": "අක්‍රීය",
+  "settings.general.row.reasoningSummaries.option.on": "සක්‍රීය",
   "settings.general.row.reasoningSummaries.title": "තර්ක සාරාංශ පෙන්වන්න",
   "settings.general.row.reasoningSummaries.description": "කාලරේඛාව තුළ ආකෘති තර්ක සාරාංශ සංදර්ශන කරන්න",
   "settings.general.row.shellToolPartsExpanded.title": "ෂෙල් මෙවලම් කොටස් පුළුල් කරන්න",

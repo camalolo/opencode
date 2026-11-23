@@ -923,6 +923,9 @@ export const dict = {
   "settings.general.row.showCustomAgents.title": "Vis agent",
   "settings.general.row.showCustomAgents.description":
     "Skift mellem agenter i promptfeltet. Når vælgeren er skjult, bruges Build-agenten som standard.",
+  "settings.general.row.reasoningSummaries.option.auto": "Automatisk",
+  "settings.general.row.reasoningSummaries.option.off": "Fra",
+  "settings.general.row.reasoningSummaries.option.on": "Til",
   "settings.general.row.reasoningSummaries.title": "Vis ræsonneringsoversigter",
   "settings.general.row.reasoningSummaries.description": "Vis oversigter over modellens ræsonnering på tidslinjen",
 

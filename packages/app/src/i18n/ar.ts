@@ -982,6 +982,9 @@ export const dict = {
   "settings.general.row.showCustomAgents.title": "إظهار الوكيل",
   "settings.general.row.showCustomAgents.description":
     "التبديل بين الوكلاء في محرر الرسائل. عند إخفائه، يُستخدم وكيل Build افتراضيًا.",
+  "settings.general.row.reasoningSummaries.option.auto": "تلقائي",
+  "settings.general.row.reasoningSummaries.option.off": "إيقاف",
+  "settings.general.row.reasoningSummaries.option.on": "تشغيل",
   "settings.general.row.reasoningSummaries.title": "إظهار ملخصات الاستدلال",
   "settings.general.row.reasoningSummaries.description": "عرض ملخصات استدلال النموذج في الشريط الزمني",
   "settings.general.row.shellToolPartsExpanded.title": "توسيع أجزاء أداة shell",

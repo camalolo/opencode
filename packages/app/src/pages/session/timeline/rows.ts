@@ -1,7 +1,14 @@
 import { parseCommentNote, readCommentMetadata } from "@/utils/comment-note"
 import type { SessionMessageInfo } from "@opencode-ai/client/promise"
 import { AssistantMessage, Part, SessionStatus, UserMessage } from "@opencode-ai/sdk/v2"
-import { groupParts, renderable, type PartGroup } from "@opencode-ai/session-ui/message-part"
+import {
+  groupParts,
+  normalizeReasoningDisplay,
+  renderable,
+  showsReasoning,
+  type PartGroup,
+  type ReasoningDisplay,
+} from "@opencode-ai/session-ui/message-part"
 import { sessionWorking } from "@opencode-ai/session-ui/session-status"
 import { TimelineRow, type SummaryDiff } from "./timeline-row"
 import { uniqueSummaryDiffs } from "./summary-diffs"
@@ -38,7 +45,7 @@ export namespace Timeline {
     messages: SessionMessageInfo[],
     getMessage: (messageID: string) => UserMessage | AssistantMessage | undefined,
     getMessageParts: (messageID: string) => Part[],
-    showReasoning: boolean,
+    showReasoning: boolean | ReasoningDisplay,
     status: SessionStatus["type"],
     inlineComments: boolean,
     projectedUserMessages: UserMessage[],
@@ -106,7 +113,7 @@ export namespace Timeline {
     getMessageParts: (messageID: string) => Part[],
     assistantMessages: AssistantMessage[],
     index: number,
-    showReasoning: boolean,
+    showReasoning: boolean | ReasoningDisplay,
     status: SessionStatus["type"],
     isActive: boolean,
     // v2 renders comments inside the user message attachments row instead of a strip row
@@ -114,6 +121,7 @@ export namespace Timeline {
     inFlight?: { tool?: string; streaming: boolean },
   ) {
     const rows: TimelineRow.TimelineRow[] = []
+    const reasoningDisplay = normalizeReasoningDisplay(showReasoning)
 
     const previousUserMessage = index > 0
     const userParts = getMessageParts(userMessage.id)
@@ -124,11 +132,13 @@ export namespace Timeline {
     const latestError = assistantMessages.at(-1)?.error
     const error = latestError?.name === "MessageAbortedError" ? undefined : latestError
 
-    const assistantPartRefs = assistantMessages.flatMap((message, messageIndex) =>
-      getMessageParts(message.id)
-        .filter((part) => renderable(part, showReasoning))
-        .map((part) => ({ messageID: message.id, messageIndex, part })),
-    )
+    const assistantPartRefs = assistantMessages.flatMap((message, messageIndex) => {
+      const messageParts = getMessageParts(message.id)
+      const reasoning = showsReasoning(messageParts, reasoningDisplay)
+      return messageParts
+        .filter((part) => (part.type === "reasoning" ? reasoning && !!part.text?.trim() : renderable(part)))
+        .map((part) => ({ messageID: message.id, messageIndex, part }))
+    })
     const assistantItems =
       interrupted && !compaction
         ? [

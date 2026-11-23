@@ -1058,6 +1058,9 @@ export const dict = {
   "settings.general.row.showCustomAgents.title": "Papar ejen",
   "settings.general.row.showCustomAgents.description":
     "Tukar antara ejen dalam penyusun. Jika disembunyikan, lalai kepada ejen Build.",
+  "settings.general.row.reasoningSummaries.option.auto": "Auto",
+  "settings.general.row.reasoningSummaries.option.off": "Tidak aktif",
+  "settings.general.row.reasoningSummaries.option.on": "Aktif",
   "settings.general.row.reasoningSummaries.title": "Papar ringkasan penaakulan",
   "settings.general.row.reasoningSummaries.description": "Papar ringkasan penaakulan model dalam garis masa",
   "settings.general.row.shellToolPartsExpanded.title": "Kembangkan bahagian alat shell",

@@ -1077,6 +1077,9 @@ export const dict: Record<string, string> = {
   "settings.general.row.showCustomAgents.title": "ལས་ཚབ་སྟོན།",
   "settings.general.row.showCustomAgents.description":
     "བརྩམ་མི་ནང་ལུ་ ལས་ཚབ་ཚུ་གི་བར་ན་ སོར་བསྒྱུར་འབད། སྦ་བཞག་པའི་སྐབས་ བཟོ་བསྐྲུན་ལས་ཚབ་ལུ་སྔོན་སྒྲིག་འབདཝ་ཨིན།",
+  "settings.general.row.reasoningSummaries.option.auto": "རང་བཞིན་",
+  "settings.general.row.reasoningSummaries.option.off": "མི་སྟོན།",
+  "settings.general.row.reasoningSummaries.option.on": "སྟོན།",
   "settings.general.row.reasoningSummaries.title": "རྒྱུ་མཚན་བཅུད་བསྡུས་ཚུ་སྟོན།",
   "settings.general.row.reasoningSummaries.description":
     "དུས་ཚོད་གྲལ་ཐིག་ནང་དཔེ་ཚད་དོན་དག་བཅུད་བསྡུས་ཚུ་བཀྲམ་སྟོན་འབད།",

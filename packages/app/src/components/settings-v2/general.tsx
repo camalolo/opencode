@@ -8,7 +8,7 @@ import { useDialog } from "@opencode-ai/ui/context/dialog"
 import { useLanguage } from "@/context/language"
 import { usePlatform } from "@/context/platform"
 import { useUpdaterAction } from "../updater-action"
-import { useSettings } from "@/context/settings"
+import { useSettings, type ReasoningSummariesSetting } from "@/context/settings"
 import { ExternalLink } from "../external-link"
 import { SettingsListV2 } from "./parts/list"
 import { SettingsRowV2 } from "./parts/row"
@@ -33,6 +33,7 @@ import {
 import "./settings-v2.css"
 
 const schemeOptions: ("system" | "light" | "dark")[] = ["system", "light", "dark"]
+const reasoningSummariesOptions: ReasoningSummariesSetting[] = ["off", "auto", "on"]
 const fontSettings = {
   ui: {
     action: "settings-ui-font",
@@ -406,12 +407,23 @@ export const SettingsGeneralV2: Component<{
           title={language.t("settings.general.row.reasoningSummaries.title")}
           description={language.t("settings.general.row.reasoningSummaries.description")}
         >
-          <div data-action="settings-feed-reasoning-summaries">
-            <Switch
-              checked={settings.general.showReasoningSummaries()}
-              onChange={(checked) => settings.general.setShowReasoningSummaries(checked)}
-            />
-          </div>
+          <SelectV2
+            appearance="inline"
+            data-action="settings-feed-reasoning-summaries"
+            options={reasoningSummariesOptions}
+            current={settings.general.showReasoningSummaries()}
+            placement="bottom-end"
+            gutter={6}
+            value={(option) => option}
+            label={(option) =>
+              option === "off"
+                ? language.t("settings.general.row.reasoningSummaries.option.off")
+                : option === "auto"
+                  ? language.t("settings.general.row.reasoningSummaries.option.auto")
+                  : language.t("settings.general.row.reasoningSummaries.option.on")
+            }
+            onSelect={(option) => option && settings.general.setReasoningSummaries(option)}
+          />
         </SettingsRowV2>
 
         <SettingsRowV2

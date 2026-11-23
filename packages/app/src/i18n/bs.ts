@@ -1046,6 +1046,9 @@ export const dict = {
     "Postavi naslovnu traku i kartice sesije na dno ekrana na mobilnim uređajima",
   "settings.general.row.showCustomAgents.title": "Prilagođeni agenti",
   "settings.general.row.showCustomAgents.description": "Prikaži izbor agenta u uređivaču poruke",
+  "settings.general.row.reasoningSummaries.option.auto": "Automatski",
+  "settings.general.row.reasoningSummaries.option.off": "Isključeno",
+  "settings.general.row.reasoningSummaries.option.on": "Uključeno",
   "settings.general.row.reasoningSummaries.title": "Prikaži sažetke rasuđivanja",
   "settings.general.row.reasoningSummaries.description": "Prikaži sažetke rasuđivanja modela na vremenskoj traci",
 

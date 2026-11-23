@@ -1060,6 +1060,9 @@ export const dict = {
   "settings.general.row.showCustomAgents.title": "Agent görkez",
   "settings.general.row.showCustomAgents.description":
     "Kompozitordaky agentleriň arasynda geçiň. Gizlenende, agent gurmak üçin defolt.",
+  "settings.general.row.reasoningSummaries.option.auto": "Awto",
+  "settings.general.row.reasoningSummaries.option.off": "Ýapyk",
+  "settings.general.row.reasoningSummaries.option.on": "Açyk",
   "settings.general.row.reasoningSummaries.title": "Pikirleriň gysgaça mazmunyny görkeziň",
   "settings.general.row.reasoningSummaries.description":
     "Wagt görkezijisinde model pikirlenişiň gysgaça mazmunyny görkeziň",

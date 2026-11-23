@@ -1068,6 +1068,9 @@ export const dict = {
   "settings.general.row.showCustomAgents.title": "ایجنٹ دکھائیں۔",
   "settings.general.row.showCustomAgents.description":
     "کمپوزر میں ایجنٹس تبدیل کریں۔ چھپانے پر Build ایجنٹ بطور طے شدہ استعمال ہوگا۔",
+  "settings.general.row.reasoningSummaries.option.auto": "خودکار",
+  "settings.general.row.reasoningSummaries.option.off": "غیر فعال",
+  "settings.general.row.reasoningSummaries.option.on": "فعال",
   "settings.general.row.reasoningSummaries.title": "استدلال کے خلاصے دکھائیں۔",
   "settings.general.row.reasoningSummaries.description": "ٹائم لائن میں ماڈل استدلال کے خلاصے ڈسپلے کریں۔",
   "settings.general.row.shellToolPartsExpanded.title": "شیل ٹول کے حصے پھیلائیں",

@@ -966,6 +966,9 @@ export const dict = {
   "settings.general.row.showCustomAgents.title": "エージェントを表示",
   "settings.general.row.showCustomAgents.description":
     "コンポーザーでエージェントを切り替えます。非表示の場合は、デフォルトでBuildエージェントが使用されます。",
+  "settings.general.row.reasoningSummaries.option.auto": "自動",
+  "settings.general.row.reasoningSummaries.option.off": "オフ",
+  "settings.general.row.reasoningSummaries.option.on": "オン",
   "settings.general.row.reasoningSummaries.title": "推論の要約を表示",
   "settings.general.row.reasoningSummaries.description": "タイムラインにモデルの推論の要約を表示します",
   "settings.general.row.shellToolPartsExpanded.title": "shell ツールパーツを展開",

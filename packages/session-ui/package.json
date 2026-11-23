@@ -10,6 +10,7 @@
     "./session-status": "./src/components/session-status.ts",
     "./message-file": "./src/components/message-file.ts",
     "./message-part-text": "./src/components/message-part-text.ts",
+    "./reasoning-display": "./src/components/reasoning-display.ts",
     "./markdown-stream": "./src/components/markdown-stream.ts",
     "./markdown-cache": "./src/components/markdown-cache.tsx",
     "./line-comment-styles": "./src/components/line-comment-styles.ts",

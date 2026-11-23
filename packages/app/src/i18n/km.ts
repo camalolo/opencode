@@ -1054,6 +1054,9 @@ export const dict = {
   "settings.general.row.showCustomAgents.title": "បង្ហាញភ្នាក់ងារ",
   "settings.general.row.showCustomAgents.description":
     "ប្តូររវាងភ្នាក់ងារនៅក្នុងកម្មវិធីតែង។ នៅពេលលាក់ វាកំណត់លំនាំដើមទៅភ្នាក់ងារបង្កើត។",
+  "settings.general.row.reasoningSummaries.option.auto": "ស្វ័យប្រវត្តិ",
+  "settings.general.row.reasoningSummaries.option.off": "បិទ",
+  "settings.general.row.reasoningSummaries.option.on": "បើក",
   "settings.general.row.reasoningSummaries.title": "បង្ហាញការសង្ខេបហេតុផល",
   "settings.general.row.reasoningSummaries.description": "បង្ហាញសេចក្តីសង្ខេបហេតុផលរបស់ម៉ូដែលក្នុងបន្ទាត់ពេលវេលា",
   "settings.general.row.shellToolPartsExpanded.title": "ពង្រីកផ្នែកឧបករណ៍សែល",

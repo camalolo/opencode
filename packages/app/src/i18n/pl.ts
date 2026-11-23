@@ -986,6 +986,9 @@ export const dict = {
   "settings.general.row.showCustomAgents.title": "Wybór agenta",
   "settings.general.row.showCustomAgents.description":
     "Umożliwiaj przełączanie agentów w edytorze wiadomości. Po ukryciu domyślnie używany jest agent Build.",
+  "settings.general.row.reasoningSummaries.option.auto": "Automatycznie",
+  "settings.general.row.reasoningSummaries.option.off": "Wyłączone",
+  "settings.general.row.reasoningSummaries.option.on": "Włączone",
   "settings.general.row.reasoningSummaries.title": "Pokaż podsumowania wnioskowania",
   "settings.general.row.reasoningSummaries.description": "Wyświetlaj podsumowania wnioskowania modelu na osi czasu",
   "settings.general.row.shellToolPartsExpanded.title": "Rozwijaj elementy narzędzia shell",

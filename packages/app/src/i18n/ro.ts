@@ -1064,6 +1064,9 @@ export const dict = {
   "settings.general.row.showCustomAgents.title": "Afișează agentul",
   "settings.general.row.showCustomAgents.description":
     "Comută între agenți în editor. Când este ascuns, se folosește agentul Build.",
+  "settings.general.row.reasoningSummaries.option.auto": "Auto",
+  "settings.general.row.reasoningSummaries.option.off": "Dezactivat",
+  "settings.general.row.reasoningSummaries.option.on": "Activat",
   "settings.general.row.reasoningSummaries.title": "Afișează rezumatele de raționament",
   "settings.general.row.reasoningSummaries.description":
     "Afișează rezumatele de raționament ale modelului în cronologie",

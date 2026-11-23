@@ -1169,6 +1169,7 @@ function Playground() {
   const [session, setSession] = createSignal({ ...DEFAULT_SESSION })
   const [loaded, setLoaded] = createSignal("")
   const [issue, setIssue] = createSignal("")
+  const [reasoningDisplay, setReasoningDisplay] = createSignal<"off" | "auto" | "on">("on")
 
   // ---- CSS overrides ----
   const [css, setCss] = createStore<Record<string, string>>({})
@@ -1369,6 +1370,24 @@ function Playground() {
       toolPart(TOOL_SAMPLES.bash),
       textPart(MARKDOWN_SAMPLES.mixed),
     ])
+  }
+
+  // One turn, two assistant messages: a silent tool-call sub-turn (reasoning +
+  // tools, no text) followed by the replied sub-turn (reasoning + text).
+  const addHybridTurn = () => {
+    const user = mkUser("Fix the failing test", [], session().id)
+    const silent = mkAssistant(user.message.id, session().id)
+    const replied = mkAssistant(user.message.id, session().id)
+    setState(
+      produce((draft) => {
+        draft.messages.push(user.message)
+        draft.messages.push(silent)
+        draft.messages.push(replied)
+        draft.parts[user.message.id] = user.parts
+        draft.parts[silent.id] = [reasoningPart(REASONING_SAMPLES[0]), toolPart(TOOL_SAMPLES.edit)]
+        draft.parts[replied.id] = [reasoningPart(REASONING_SAMPLES[1]), textPart(MARKDOWN_SAMPLES.mixed)]
+      }),
+    )
   }
 
   const addAgentTasksTurn = () => {
@@ -1730,6 +1749,21 @@ function Playground() {
                 Appends to the last turn's assistant parts
               </div>
               <div style={{ display: "flex", "flex-wrap": "wrap", gap: "4px" }}>
+                <For each={["off", "auto", "on"] as const}>
+                  {(mode) => (
+                    <button
+                      style={{
+                        ...btnStyle,
+                        borderColor: reasoningDisplay() === mode ? "var(--text-weak)" : undefined,
+                      }}
+                      onClick={() => setReasoningDisplay(mode)}
+                    >
+                      reasoning: {mode}
+                    </button>
+                  )}
+                </For>
+              </div>
+              <div style={{ display: "flex", "flex-wrap": "wrap", gap: "4px" }}>
                 <For each={Object.keys(MARKDOWN_SAMPLES) as (keyof typeof MARKDOWN_SAMPLES)[]}>
                   {(key) => (
                     <button style={btnStyle} onClick={() => addText(key)}>
@@ -1768,6 +1802,9 @@ function Playground() {
                 </button>
                 <button style={btnStyle} onClick={addReasoningFullTurn}>
                   full turn
+                </button>
+                <button style={btnStyle} onClick={addHybridTurn}>
+                  hybrid turn
                 </button>
                 <button style={btnStyle} onClick={addAgentTasksTurn}>
                   agent tasks
@@ -2052,7 +2089,7 @@ function Playground() {
                           messageID={msg.id}
                           messages={state.messages}
                           active={false}
-                          showReasoningSummaries={true}
+                          showReasoningSummaries={reasoningDisplay()}
                           shellToolDefaultOpen={true}
                           editToolDefaultOpen={true}
                           classes={{

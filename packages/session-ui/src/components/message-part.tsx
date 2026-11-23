@@ -32,6 +32,7 @@ import {
   QuestionInfo,
 } from "@opencode-ai/sdk/v2"
 import { useData } from "../context"
+import { normalizeReasoningDisplay, showsReasoning } from "./reasoning-display"
 import { useFileComponent } from "@opencode-ai/ui/context/file"
 import { useDialog } from "@opencode-ai/ui/context/dialog"
 import { type UiI18n, useI18n } from "@opencode-ai/ui/context/i18n"
@@ -730,6 +731,8 @@ function index<T extends { id: string }>(items: readonly T[]) {
   return new Map(items.map((item) => [item.id, item] as const))
 }
 
+export { normalizeReasoningDisplay, showsReasoning, type ReasoningDisplay } from "./reasoning-display"
+
 export function renderable(part: PartType, showReasoningSummaries = true) {
   if (part.type === "tool") {
     if (HIDDEN_TOOLS.has(part.tool)) return false
@@ -757,6 +760,7 @@ export function AssistantParts(props: {
   const emptyParts: PartType[] = []
   const emptyTools: ToolPart[] = []
   const msgs = createMemo(() => index(props.messages))
+  const display = createMemo(() => normalizeReasoningDisplay(props.showReasoningSummaries))
   const part = createMemo(
     () =>
       new Map(
@@ -767,14 +771,16 @@ export function AssistantParts(props: {
   const grouped = createMemo(
     () =>
       groupParts(
-        props.messages.flatMap((message) =>
-          list(data.store.part?.[message.id], emptyParts)
-            .filter((part) => renderable(part, props.showReasoningSummaries ?? true))
+        props.messages.flatMap((message) => {
+          const parts = list(data.store.part?.[message.id], emptyParts)
+          const reasoning = showsReasoning(parts, display())
+          return parts
+            .filter((part) => (part.type === "reasoning" ? reasoning && !!part.text?.trim() : renderable(part)))
             .map((part) => ({
               messageID: message.id,
               part,
-            })),
-        ),
+            }))
+        }),
       ),
     [] as PartGroup[],
     { equals: sameGroups },

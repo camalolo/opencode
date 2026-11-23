@@ -19,6 +19,18 @@ export interface SoundSettings {
   errors: string
 }
 
+// How reasoning parts render in the timeline: never, only for assistant
+// messages that carry no text answer, or always.
+export type ReasoningSummariesSetting = "off" | "auto" | "on"
+
+// The setting was a boolean before the tri-state existed; stored booleans
+// migrate on read (true = always show, false/absent = off).
+function reasoningSetting(value: unknown): ReasoningSummariesSetting {
+  if (value === "auto" || value === "on" || value === "off") return value
+  if (value === true) return "on"
+  return "off"
+}
+
 export interface Settings {
   general: {
     autoSave: boolean
@@ -29,7 +41,7 @@ export interface Settings {
     showSearch: boolean
     showStatus: boolean
     showTerminal: boolean
-    showReasoningSummaries: boolean
+    showReasoningSummaries: boolean | ReasoningSummariesSetting
     shellToolPartsExpanded: boolean
     editToolPartsExpanded: boolean
     showCustomAgents: boolean
@@ -190,7 +202,7 @@ const defaultSettings: Settings = {
     showSearch: false,
     showStatus: false,
     showTerminal: false,
-    showReasoningSummaries: false,
+    showReasoningSummaries: "off",
     shellToolPartsExpanded: false,
     editToolPartsExpanded: false,
     showCustomAgents: false,
@@ -396,11 +408,8 @@ export const { use: useSettings, provider: SettingsProvider } = createSimpleCont
         setShowTerminal(value: boolean) {
           setStore("general", "showTerminal", value)
         },
-        showReasoningSummaries: withFallback(
-          () => store.general?.showReasoningSummaries,
-          defaultSettings.general.showReasoningSummaries,
-        ),
-        setShowReasoningSummaries(value: boolean) {
+        showReasoningSummaries: createMemo(() => reasoningSetting(store.general?.showReasoningSummaries)),
+        setReasoningSummaries(value: ReasoningSummariesSetting) {
           setStore("general", "showReasoningSummaries", value)
         },
         shellToolPartsExpanded: withFallback(

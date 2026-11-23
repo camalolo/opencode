@@ -1051,6 +1051,9 @@ export const dict = {
   "settings.general.row.showCustomAgents.title": "Выбор агента",
   "settings.general.row.showCustomAgents.description":
     "Показывать переключатель агентов в редакторе запросов. Если он скрыт, по умолчанию используется агент Build.",
+  "settings.general.row.reasoningSummaries.option.auto": "Авто",
+  "settings.general.row.reasoningSummaries.option.off": "Выкл",
+  "settings.general.row.reasoningSummaries.option.on": "Вкл",
   "settings.general.row.reasoningSummaries.title": "Показывать сводки рассуждений",
   "settings.general.row.reasoningSummaries.description": "Отображать сводки рассуждений модели в ленте",
 

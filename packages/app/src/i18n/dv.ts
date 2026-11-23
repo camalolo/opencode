@@ -1074,6 +1074,9 @@ export const dict = {
   "settings.general.row.showCustomAgents.title": "ޝޯ އޭޖެންޓް",
   "settings.general.row.showCustomAgents.description":
     "ކޮމްޕޯސަރުގައި ތިބި އޭޖެންޓުންގެ މެދުގައި ބަދަލުވުން. ފޮރުވާއިރު، ޑިފޯލްޓް ވާނީ ބިލްޑް އޭޖެންޓަށެވެ.",
+  "settings.general.row.reasoningSummaries.option.auto": "އޮޓޯ",
+  "settings.general.row.reasoningSummaries.option.off": "އޮފް",
+  "settings.general.row.reasoningSummaries.option.on": "އޮން",
   "settings.general.row.reasoningSummaries.title": "ރިޒަނިންގ ސުމާރީސް ދައްކާށެވެ",
   "settings.general.row.reasoningSummaries.description": "ޓައިމްލައިންގައި މޮޑެލް ރިޒަނިންގ ސުމާރީތައް ދައްކާލުން",
   "settings.general.row.shellToolPartsExpanded.title": "ޝެލް ޓޫލް ބައިތައް ފުޅާކުރުން",

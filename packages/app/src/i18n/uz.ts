@@ -1069,6 +1069,9 @@ export const dict = {
   "settings.general.row.showCustomAgents.title": "Agentni ko'rsatish",
   "settings.general.row.showCustomAgents.description":
     "Kompozitorda agentlar o'rtasida almashish. Yashirin bo'lsa, birlamchi Build agenti bo'ladi.",
+  "settings.general.row.reasoningSummaries.option.auto": "Avtomatik",
+  "settings.general.row.reasoningSummaries.option.off": "O‘chirilgan",
+  "settings.general.row.reasoningSummaries.option.on": "Yoqilgan",
   "settings.general.row.reasoningSummaries.title": "Fikrlash xulosalarini ko'rsating",
   "settings.general.row.reasoningSummaries.description": "Vaqt jadvalida model asoslarini ko'rsatish",
   "settings.general.row.shellToolPartsExpanded.title": "Qobiq asboblari qismlarini kengaytiring",

@@ -1070,6 +1070,9 @@ export const dict = {
   "settings.general.row.showCustomAgents.title": "Agenti göstər",
   "settings.general.row.showCustomAgents.description":
     "Mesaj sahəsində agentlər arasında keçid edin. Gizlədildikdə Build agenti seçilir.",
+  "settings.general.row.reasoningSummaries.option.auto": "Avtomatik",
+  "settings.general.row.reasoningSummaries.option.off": "Deaktiv",
+  "settings.general.row.reasoningSummaries.option.on": "Aktiv",
   "settings.general.row.reasoningSummaries.title": "Düşünmə xülasələrini göstər",
   "settings.general.row.reasoningSummaries.description": "Zaman xəttində modelin düşünmə xülasələrini göstər",
   "settings.general.row.shellToolPartsExpanded.title": "Shell alət hissələrini genişlət",

@@ -1065,6 +1065,9 @@ export const dict = {
   "settings.general.row.showCustomAgents.title": "Trego agjentin",
   "settings.general.row.showCustomAgents.description":
     "Kaloni ndërmjet agjentëve në kompozitor. Kur fshihet, si parazgjedhje është Build agent.",
+  "settings.general.row.reasoningSummaries.option.auto": "Auto",
+  "settings.general.row.reasoningSummaries.option.off": "Çaktivizuar",
+  "settings.general.row.reasoningSummaries.option.on": "Aktivizuar",
   "settings.general.row.reasoningSummaries.title": "Trego përmbledhjet e arsyetimit",
   "settings.general.row.reasoningSummaries.description": "Shfaqni përmbledhjet e arsyetimit të modelit në afatin kohor",
   "settings.general.row.shellToolPartsExpanded.title": "Zgjeroni pjesët e veglave të guaskës",

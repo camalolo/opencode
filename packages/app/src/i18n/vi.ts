@@ -1071,6 +1071,9 @@ export const dict = {
   "settings.general.row.showCustomAgents.title": "Hiển thị tác nhân",
   "settings.general.row.showCustomAgents.description":
     "Chuyển đổi giữa các tác nhân trong trình soạn thảo. Khi ẩn, tác nhân mặc định là Build.",
+  "settings.general.row.reasoningSummaries.option.auto": "Tự động",
+  "settings.general.row.reasoningSummaries.option.off": "Tắt",
+  "settings.general.row.reasoningSummaries.option.on": "Bật",
   "settings.general.row.reasoningSummaries.title": "Hiển thị tóm tắt lý luận",
   "settings.general.row.reasoningSummaries.description": "Hiển thị tóm tắt lý luận mô hình trong dòng thời gian",
   "settings.general.row.shellToolPartsExpanded.title": "Mở rộng các phần của công cụ shell",

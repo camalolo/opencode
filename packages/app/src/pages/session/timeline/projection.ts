@@ -1,5 +1,6 @@
 import type { SessionMessageInfo } from "@opencode-ai/client/promise"
 import type { AssistantMessage, Message, Part, SessionStatus, UserMessage } from "@opencode-ai/sdk/v2"
+import type { ReasoningDisplay } from "@opencode-ai/session-ui/message-part"
 import { createMemo, type Accessor } from "solid-js"
 import { reuseTimelineRows } from "./row-reconciliation"
 import { Timeline, TimelineRow } from "./rows"
@@ -12,7 +13,7 @@ export function createTimelineProjection(input: {
   sessionMessages: Accessor<SessionMessageInfo[]>
   parts: (messageID: string) => Part[]
   status: Accessor<SessionStatus>
-  showReasoningSummaries: Accessor<boolean>
+  showReasoningSummaries: Accessor<boolean | ReasoningDisplay>
   inlineComments: Accessor<boolean>
 }) {
   const messageByID = createMemo(() => new Map(input.messages().map((message) => [message.id, message] as const)))

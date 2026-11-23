@@ -1068,6 +1068,9 @@ export const dict = {
   "settings.general.row.showCustomAgents.title": "Mutasd az ügynököt",
   "settings.general.row.showCustomAgents.description":
     "Váltás az ágensek között a zeneszerzőben. Ha rejtett, alapértelmezés szerint Build agent.",
+  "settings.general.row.reasoningSummaries.option.auto": "Automatikus",
+  "settings.general.row.reasoningSummaries.option.off": "Ki",
+  "settings.general.row.reasoningSummaries.option.on": "Be",
   "settings.general.row.reasoningSummaries.title": "Mutasson érvelési összefoglalókat",
   "settings.general.row.reasoningSummaries.description": "Modell indoklási összefoglalók megjelenítése az idővonalon",
   "settings.general.row.shellToolPartsExpanded.title": "Shelleszköz részeinek kibontása",

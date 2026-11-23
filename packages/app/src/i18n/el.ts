@@ -1073,6 +1073,9 @@ export const dict = {
   "settings.general.row.showCustomAgents.title": "Εμφάνιση πράκτορα",
   "settings.general.row.showCustomAgents.description":
     "Εναλλαγή μεταξύ πρακτόρων στον συνθέτη. Όταν είναι κρυφό, ορίζεται από προεπιλογή Build agent.",
+  "settings.general.row.reasoningSummaries.option.auto": "Αυτόματο",
+  "settings.general.row.reasoningSummaries.option.off": "Ανενεργό",
+  "settings.general.row.reasoningSummaries.option.on": "Ενεργό",
   "settings.general.row.reasoningSummaries.title": "Εμφάνιση περιλήψεων συλλογισμών",
   "settings.general.row.reasoningSummaries.description": "Εμφάνιση περιλήψεων συλλογισμών μοντέλων στη γραμμή χρόνου",
   "settings.general.row.shellToolPartsExpanded.title": "Ανάπτυξη εξαρτημάτων εργαλείου κελύφους",

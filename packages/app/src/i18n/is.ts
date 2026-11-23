@@ -1060,6 +1060,9 @@ export const dict = {
   "settings.general.row.showCustomAgents.title": "Sýna fulltrúa",
   "settings.general.row.showCustomAgents.description":
     "Skiptu á milli fulltrúa í innsláttarreitnum. Þegar þeir eru faldir er Build-fulltrúinn sjálfgefinn.",
+  "settings.general.row.reasoningSummaries.option.auto": "Sjálfvirkt",
+  "settings.general.row.reasoningSummaries.option.off": "Slökkt",
+  "settings.general.row.reasoningSummaries.option.on": "Kveikt",
   "settings.general.row.reasoningSummaries.title": "Sýndu samantektir um rökstuðning",
   "settings.general.row.reasoningSummaries.description": "Birta rökstuðningssamantektir líkana á tímalínunni",
   "settings.general.row.shellToolPartsExpanded.title": "Stækkaðu hluta skeljaverkfæra",

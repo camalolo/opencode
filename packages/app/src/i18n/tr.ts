@@ -1052,6 +1052,9 @@ export const dict = {
   "settings.general.row.showCustomAgents.title": "Ajanı göster",
   "settings.general.row.showCustomAgents.description":
     "Düzenleyicide ajanlar arasında geçiş yapın. Gizlendiğinde varsayılan olarak Build ajanı kullanılır.",
+  "settings.general.row.reasoningSummaries.option.auto": "Otomatik",
+  "settings.general.row.reasoningSummaries.option.off": "Kapalı",
+  "settings.general.row.reasoningSummaries.option.on": "Açık",
   "settings.general.row.reasoningSummaries.title": "Akıl yürütme özetlerini göster",
   "settings.general.row.reasoningSummaries.description": "Zaman çizelgesinde model akıl yürütme özetlerini görüntüle",
   "settings.general.row.shellToolPartsExpanded.title": "Kabuk araç bileşenlerini genişlet",
