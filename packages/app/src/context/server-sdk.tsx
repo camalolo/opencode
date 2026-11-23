@@ -221,6 +221,12 @@ function createServerSdkContextBase(server: ServerConnection.Any, scope: ServerS
   const FLUSH_FRAME_MS = 16
   const STREAM_YIELD_MS = 8
   const RECONNECT_DELAY_MS = 250
+  // A server restart (deploy) leaves the browser's connection pool for the
+  // host sick for a while: new stream requests fail instantly or hang until
+  // the heartbeat watchdog aborts them. Hammering at the base delay cannot
+  // fix that state and only churns sockets, so consecutive failures escalate
+  // the wait up to this cap. The first successful event resets it.
+  const RECONNECT_MAX_DELAY_MS = 5_000
   // Both event protocols heartbeat every 10 seconds. If nothing arrives for
   // ~2.5 beats the stream is dead (phone sleep/wake, silent network loss): the
   // pending read never settles, so the retry loop below never fires on its
@@ -327,29 +333,37 @@ function createServerSdkContextBase(server: ServerConnection.Any, scope: ServerS
     const response = await doFetch(`${base}/global/event`, { headers, signal: input.signal } as RequestInit)
     if (!response.ok || !response.body) throw new Error(`event stream HTTP ${response.status}`)
     const reader = response.body.getReader()
-    const decoder = new TextDecoder()
-    let carry = ""
-    while (true) {
-      const { done, value } = await reader.read()
-      if (done) break
-      carry += decoder.decode(value, { stream: true })
-      let boundary = carry.indexOf("\n\n")
-      while (boundary !== -1) {
-        const frame = carry.slice(0, boundary)
-        carry = carry.slice(boundary + 2)
-        boundary = carry.indexOf("\n\n")
-        for (const rawLine of frame.split("\n")) {
-          const line = rawLine.endsWith("\r") ? rawLine.slice(0, -1) : rawLine
-          if (!line.startsWith("data:")) continue
-          const text = line.slice(5).trim()
-          if (!text) continue
-          try {
-            yield JSON.parse(text) as { directory?: string; payload: Event }
-          } catch {
-            // skip malformed frames; the next heartbeat proves liveness
+    // A consumer exit without signal abort (a throw that abandons the
+    // for-await) must still release the response, or the browser keeps the
+    // request in-flight and holds a per-host connection slot for the dead
+    // stream — exactly the state a deploy restart leaves behind.
+    try {
+      const decoder = new TextDecoder()
+      let carry = ""
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        carry += decoder.decode(value, { stream: true })
+        let boundary = carry.indexOf("\n\n")
+        while (boundary !== -1) {
+          const frame = carry.slice(0, boundary)
+          carry = carry.slice(boundary + 2)
+          boundary = carry.indexOf("\n\n")
+          for (const rawLine of frame.split("\n")) {
+            const line = rawLine.endsWith("\r") ? rawLine.slice(0, -1) : rawLine
+            if (!line.startsWith("data:")) continue
+            const text = line.slice(5).trim()
+            if (!text) continue
+            try {
+              yield JSON.parse(text) as { directory?: string; payload: Event }
+            } catch {
+              // skip malformed frames; the next heartbeat proves liveness
+            }
           }
         }
       }
+    } finally {
+      void reader.cancel().catch(() => {})
     }
   }
 
@@ -361,6 +375,9 @@ function createServerSdkContextBase(server: ServerConnection.Any, scope: ServerS
     const previous = run
     const current = (async () => {
       if (previous) await previous
+      // Consecutive failed attempts drive the reconnect backoff; any event
+      // proves the stream is live again and resets it.
+      let failures = 0
       // oxlint-disable-next-line no-unmodified-loop-condition -- `started` is set to false by stop() which also aborts; both flags are checked to allow graceful exit
       while (!abort.signal.aborted && started && generation === active) {
         attempt = new AbortController()
@@ -390,6 +407,7 @@ function createServerSdkContextBase(server: ServerConnection.Any, scope: ServerS
             streamErrorLogged = false
             lastEventAt = Date.now()
             everConnected = true
+            failures = 0
             const legacy = "payload" in event
             const payload = legacy ? (event.payload as Event) : adaptServerEvent(event)
             const marker = legacy ? (payload.type as string) : undefined
@@ -456,13 +474,17 @@ function createServerSdkContextBase(server: ServerConnection.Any, scope: ServerS
               error,
             })
           }
+          failures++
         } finally {
           abort.signal.removeEventListener("abort", onAbort)
           attempt = undefined
         }
 
         if (abort.signal.aborted || !started || generation !== active) return
-        await wait(RECONNECT_DELAY_MS)
+        // Escalate across consecutive failures (a restart window, a browser
+        // connection pool clogged with the dead stream's sockets) instead of
+        // retrying at 4 Hz; one failure keeps the snappy base delay.
+        await wait(Math.min(RECONNECT_DELAY_MS * 2 ** Math.max(failures - 1, 0), RECONNECT_MAX_DELAY_MS))
       }
     })().finally(() => {
       if (run !== current) return
