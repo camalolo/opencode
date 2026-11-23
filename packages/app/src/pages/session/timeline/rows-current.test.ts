@@ -2,11 +2,8 @@ import { describe, expect, mock, test } from "bun:test"
 import type { SessionMessageInfo } from "@opencode-ai/client/promise"
 import type { UserMessage } from "@opencode-ai/sdk/v2"
 import { normalizeSessionMessages } from "@/utils/session-message"
-import { normalizeReasoningDisplay, showsReasoning } from "@opencode-ai/session-ui/reasoning-display"
 
 mock.module("@opencode-ai/session-ui/message-part", () => ({
-  normalizeReasoningDisplay,
-  showsReasoning,
   renderable: () => true,
   groupParts: (refs: Array<{ messageID: string; part: { id: string } }>) =>
     refs.map((ref) => ({

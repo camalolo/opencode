@@ -1138,9 +1138,6 @@ export const dict = {
   "settings.general.row.showCustomAgents.title": "Tampilkan agen",
   "settings.general.row.showCustomAgents.description":
     "Beralih antaragen di penyusun. Saat disembunyikan, Agen Build digunakan sebagai bawaan.",
-  "settings.general.row.reasoningSummaries.option.auto": "Otomatis",
-  "settings.general.row.reasoningSummaries.option.off": "Nonaktif",
-  "settings.general.row.reasoningSummaries.option.on": "Aktif",
   "settings.general.row.reasoningSummaries.title": "Tampilkan ringkasan penalaran",
   "settings.general.row.reasoningSummaries.description": "Tampilkan ringkasan penalaran model di linimasa",
   "settings.general.row.shellToolPartsExpanded.title": "Bentangkan bagian alat shell",

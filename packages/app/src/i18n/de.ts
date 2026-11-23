@@ -876,9 +876,6 @@ export const dict = {
   "settings.general.row.showCustomAgents.title": "Agent anzeigen",
   "settings.general.row.showCustomAgents.description":
     "Im Eingabebereich zwischen Agenten wechseln. Ist die Auswahl ausgeblendet, wird standardmäßig der Build-Agent verwendet.",
-  "settings.general.row.reasoningSummaries.option.auto": "Automatisch",
-  "settings.general.row.reasoningSummaries.option.off": "Aus",
-  "settings.general.row.reasoningSummaries.option.on": "Ein",
   "settings.general.row.reasoningSummaries.title": "Reasoning-Zusammenfassungen anzeigen",
   "settings.general.row.reasoningSummaries.description":
     "Zusammenfassungen des Modell-Reasonings in der Timeline anzeigen",

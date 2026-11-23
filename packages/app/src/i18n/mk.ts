@@ -1066,9 +1066,6 @@ export const dict = {
   "settings.general.row.showCustomAgents.title": "Покажи агент",
   "settings.general.row.showCustomAgents.description":
     "Префрлете се помеѓу агенти во композиторот. Кога е скриено, стандардно е Build agent.",
-  "settings.general.row.reasoningSummaries.option.auto": "Автоматски",
-  "settings.general.row.reasoningSummaries.option.off": "Исклучено",
-  "settings.general.row.reasoningSummaries.option.on": "Вклучено",
   "settings.general.row.reasoningSummaries.title": "Прикажи резимеа за расудување",
   "settings.general.row.reasoningSummaries.description":
     "Прикажи резимеа на расудувањето на моделите во временската линија",

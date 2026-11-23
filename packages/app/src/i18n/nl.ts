@@ -1070,9 +1070,6 @@ export const dict = {
   "settings.general.row.showCustomAgents.title": "Toon agent",
   "settings.general.row.showCustomAgents.description":
     "Schakel tussen agenten in het invoerveld. Indien verborgen wordt standaard de Build-agent gebruikt.",
-  "settings.general.row.reasoningSummaries.option.auto": "Automatisch",
-  "settings.general.row.reasoningSummaries.option.off": "Uit",
-  "settings.general.row.reasoningSummaries.option.on": "Aan",
   "settings.general.row.reasoningSummaries.title": "Toon redeneeroverzichten",
   "settings.general.row.reasoningSummaries.description":
     "Geef samenvattingen van modelredeneringen weer in de tijdlijn",

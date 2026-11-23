@@ -1064,9 +1064,6 @@ export const dict = {
   "settings.general.row.showCustomAgents.title": "Намоиши агент",
   "settings.general.row.showCustomAgents.description":
     "Гузариш байни агентҳо дар оҳангсоз. Ҳангоми пинҳон, пешфарз ба Сохтани агент.",
-  "settings.general.row.reasoningSummaries.option.auto": "Авто",
-  "settings.general.row.reasoningSummaries.option.off": "Ғайрифаъол",
-  "settings.general.row.reasoningSummaries.option.on": "Фаъол",
   "settings.general.row.reasoningSummaries.title": "Ҷамъбасти далелҳоро нишон диҳед",
   "settings.general.row.reasoningSummaries.description": "Дар ҷадвали вақт хулосаҳои далелҳои моделиро нишон диҳед",
   "settings.general.row.shellToolPartsExpanded.title": "Қисмҳои shell асбобро васеъ кунед",

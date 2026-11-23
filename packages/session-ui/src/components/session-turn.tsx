@@ -14,15 +14,7 @@ import { getDirectory, getFilename } from "@opencode-ai/core/util/path"
 import { createEffect, createMemo, createSignal, For, on, ParentProps, Show } from "solid-js"
 import { createStore } from "solid-js/store"
 import { Dynamic } from "solid-js/web"
-import {
-  AssistantParts,
-  Message,
-  MessageDivider,
-  PART_MAPPING,
-  normalizeReasoningDisplay,
-  showsReasoning,
-  type UserActions,
-} from "./message-part"
+import { AssistantParts, Message, MessageDivider, PART_MAPPING, heading, reasoningComplete, type UserActions } from "./message-part"
 import { Card } from "@opencode-ai/ui/card"
 import { Accordion } from "@opencode-ai/ui/accordion"
 import { StickyAccordionHeader } from "@opencode-ai/ui/sticky-accordion-header"
@@ -108,7 +100,7 @@ function summaryDiff(value: SnapshotFileDiff): value is SummaryDiff {
 
 const hidden = new Set(["todowrite"])
 
-function partState(part: PartType, showReasoning: boolean) {
+function partState(part: PartType, showReasoningSummaries: boolean, messageCompleted: boolean) {
   if (part.type === "tool") {
     if (hidden.has(part.tool)) return
     if (part.tool === "question" && (part.state.status === "pending" || part.state.status === "running")) return
@@ -116,47 +108,13 @@ function partState(part: PartType, showReasoning: boolean) {
   }
   if (part.type === "text") return part.text?.trim() ? ("visible" as const) : undefined
   if (part.type === "reasoning") {
-    if (showReasoning && part.text?.trim()) return "visible" as const
+    if (showReasoningSummaries && part.text?.trim() && reasoningComplete(part, messageCompleted)) {
+      return "visible" as const
+    }
     return
   }
   if (PART_MAPPING[part.type]) return "visible" as const
   return
-}
-
-function clean(value: string) {
-  return value
-    .replace(/`([^`]+)`/g, "$1")
-    .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
-    .replace(/[*_~]+/g, "")
-    .trim()
-}
-
-function heading(text: string) {
-  const markdown = text.replace(/\r\n?/g, "\n")
-
-  const html = markdown.match(/<h[1-6][^>]*>([\s\S]*?)<\/h[1-6]>/i)
-  if (html?.[1]) {
-    const value = clean(html[1].replace(/<[^>]+>/g, " "))
-    if (value) return value
-  }
-
-  const atx = markdown.match(/^\s{0,3}#{1,6}[ \t]+(.+?)(?:[ \t]+#+[ \t]*)?$/m)
-  if (atx?.[1]) {
-    const value = clean(atx[1])
-    if (value) return value
-  }
-
-  const setext = markdown.match(/^([^\n]+)\n(?:=+|-+)\s*$/m)
-  if (setext?.[1]) {
-    const value = clean(setext[1])
-    if (value) return value
-  }
-
-  const strong = markdown.match(/^\s*(?:\*\*|__)(.+?)(?:\*\*|__)\s*$/m)
-  if (strong?.[1]) {
-    const value = clean(strong[1])
-    if (value) return value
-  }
 }
 
 export function SessionTurn(
@@ -370,12 +328,11 @@ export function SessionTurn(
   const assistantDerived = createMemo(() => {
     let visible = 0
     let reason: string | undefined
-    const display = normalizeReasoningDisplay(showReasoningSummaries())
+    const show = showReasoningSummaries()
     for (const message of assistantMessages()) {
-      const parts = list(data.store.part?.[message.id], emptyParts)
-      const showReasoning = showsReasoning(parts, display)
-      for (const part of parts) {
-        if (partState(part, showReasoning) === "visible") {
+      const completed = typeof message.time.completed === "number"
+      for (const part of list(data.store.part?.[message.id], emptyParts)) {
+        if (partState(part, show, completed) === "visible") {
           visible++
         }
         if (part.type === "reasoning" && part.text) {
@@ -388,12 +345,11 @@ export function SessionTurn(
   })
   const assistantVisible = createMemo(() => assistantDerived().visible)
   const reasoningHeading = createMemo(() => assistantDerived().reason)
-  const display = createMemo(() => normalizeReasoningDisplay(showReasoningSummaries()))
   const showThinking = createMemo(() => {
     if (!working() || !!error()) return false
     if (status().type === "retry") return false
-    if (display() === "off") return true
-    return assistantVisible() === 0
+    if (showReasoningSummaries()) return assistantVisible() === 0
+    return true
   })
 
   const autoScroll = createAutoScroll({
@@ -442,7 +398,7 @@ export function SessionTurn(
               <Show when={showThinking()}>
                 <div data-slot="session-turn-thinking">
                   <TextShimmer text={i18n.t("ui.sessionTurn.status.thinking")} />
-                  <Show when={display() === "off"}>
+                  <Show when={!showReasoningSummaries()}>
                     <TextReveal
                       text={reasoningHeading()}
                       class="session-turn-thinking-heading"

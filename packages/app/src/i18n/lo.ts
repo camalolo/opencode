@@ -1051,9 +1051,6 @@ export const dict = {
   "settings.general.row.showCustomAgents.title": "ສະແດງຕົວແທນ",
   "settings.general.row.showCustomAgents.description":
     "ສະຫຼັບລະຫວ່າງຕົວແທນໃນຕົວປະກອບ. ເມື່ອຖືກເຊື່ອງໄວ້, ເລີ່ມຕົ້ນທີ່ຈະສ້າງຕົວແທນ.",
-  "settings.general.row.reasoningSummaries.option.auto": "ອັດຕະໂນມັດ",
-  "settings.general.row.reasoningSummaries.option.off": "ປິດ",
-  "settings.general.row.reasoningSummaries.option.on": "ເປີດ",
   "settings.general.row.reasoningSummaries.title": "ສະແດງການສັງລວມເຫດຜົນ",
   "settings.general.row.reasoningSummaries.description": "ສະແດງສະຫຼຸບເຫດຜົນຂອງຕົວແບບໃນທາມລາຍ",
   "settings.general.row.shellToolPartsExpanded.title": "ຂະຫຍາຍສ່ວນຂອງເຄື່ອງມື Shell",

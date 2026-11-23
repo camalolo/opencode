@@ -1063,9 +1063,6 @@ export const dict = {
   "settings.general.row.showCustomAgents.title": "Visa agent",
   "settings.general.row.showCustomAgents.description":
     "Växla mellan agenter i inmatningsfältet. När alternativet är dolt används agenten Bygg som standard.",
-  "settings.general.row.reasoningSummaries.option.auto": "Auto",
-  "settings.general.row.reasoningSummaries.option.off": "Av",
-  "settings.general.row.reasoningSummaries.option.on": "På",
   "settings.general.row.reasoningSummaries.title": "Visa resonemangssammanfattningar",
   "settings.general.row.reasoningSummaries.description": "Visa modellresonemangssammanfattningar i tidslinjen",
   "settings.general.row.shellToolPartsExpanded.title": "Expandera skalverktygsdelar",

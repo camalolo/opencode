@@ -141,9 +141,7 @@ const markBoundaryGesture = (input: {
 
 function TimelineThinkingRow(props: {
   reasoningHeading?: string
-  // The reasoning heading preview only makes sense when reasoning is not
-  // rendered inline; in "auto"/"on" the reasoning block itself is visible.
-  reasoningHidden: boolean
+  showReasoningSummaries: boolean
   phase?: "tool" | "queued" | "between" | "sleeping"
   tool?: string
 }) {
@@ -162,7 +160,7 @@ function TimelineThinkingRow(props: {
   return (
     <div data-slot="session-turn-thinking">
       <TextShimmer text={label()} />
-      <Show when={props.reasoningHidden && !props.phase}>
+      <Show when={!props.showReasoningSummaries && !props.phase}>
         <TextReveal text={props.reasoningHeading} class="session-turn-thinking-heading" travel={25} duration={700} />
       </Show>
     </div>
@@ -1458,7 +1456,7 @@ export function MessageTimeline(props: {
             <div data-slot="session-turn-message-container" class="w-full px-4 md:px-5">
               <TimelineThinkingRow
                 reasoningHeading={thinkingRow().reasoningHeading}
-                reasoningHidden={settings.general.showReasoningSummaries() === "off"}
+                showReasoningSummaries={settings.general.showReasoningSummaries()}
                 phase={thinkingRow().phase}
                 tool={thinkingRow().tool}
               />

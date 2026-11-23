@@ -1053,9 +1053,6 @@ export const dict = {
   "settings.general.row.showCustomAgents.title": "Mostrar agente",
   "settings.general.row.showCustomAgents.description":
     "Cambiar de agente en el editor. Si se oculta, se usa el agente Build de forma predeterminada.",
-  "settings.general.row.reasoningSummaries.option.auto": "Automático",
-  "settings.general.row.reasoningSummaries.option.off": "Desactivado",
-  "settings.general.row.reasoningSummaries.option.on": "Activado",
   "settings.general.row.reasoningSummaries.title": "Mostrar resúmenes de razonamiento",
   "settings.general.row.reasoningSummaries.description":
     "Mostrar resúmenes del razonamiento del modelo en la línea de tiempo",

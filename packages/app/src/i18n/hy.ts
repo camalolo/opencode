@@ -1065,9 +1065,6 @@ export const dict = {
   "settings.general.row.showCustomAgents.title": "Ցույց տալ գործակալին",
   "settings.general.row.showCustomAgents.description":
     "Փոխարկեք կոմպոզիտորի գործակալների միջև։ Երբ թաքնված է, կանխադրված է Build agent:",
-  "settings.general.row.reasoningSummaries.option.auto": "Ավտոմատ",
-  "settings.general.row.reasoningSummaries.option.off": "Անջատված",
-  "settings.general.row.reasoningSummaries.option.on": "Միացված",
   "settings.general.row.reasoningSummaries.title": "Ցույց տալ հիմնավորման ամփոփագրերը",
   "settings.general.row.reasoningSummaries.description": "Ցուցադրել մոդելի հիմնավորման ամփոփագրերը ժամանակացույցում",
   "settings.general.row.shellToolPartsExpanded.title": "Ընդարձակել Shell գործիքի մասերը",

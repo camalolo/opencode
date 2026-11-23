@@ -1066,9 +1066,6 @@ export const dict = {
   "settings.general.row.showCustomAgents.title": "एजेंट दिखाएँ",
   "settings.general.row.showCustomAgents.description":
     "कंपोज़र में एजेंट के बीच स्विच करें। छिपाए जाने पर, डिफ़ॉल्ट रूप से बिल्ड एजेंट हो जाता है।",
-  "settings.general.row.reasoningSummaries.option.auto": "स्वतः",
-  "settings.general.row.reasoningSummaries.option.off": "बंद",
-  "settings.general.row.reasoningSummaries.option.on": "चालू",
   "settings.general.row.reasoningSummaries.title": "तर्क सारांश दिखाएँ",
   "settings.general.row.reasoningSummaries.description": "टाइमलाइन में मॉडल तर्क सारांश प्रदर्शित करें",
   "settings.general.row.shellToolPartsExpanded.title": "शेल टूल पार्ट्स का विस्तार करें",

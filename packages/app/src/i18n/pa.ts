@@ -1063,9 +1063,6 @@ export const dict = {
   "settings.general.row.showCustomAgents.title": "ایجنٹ وکھاؤ",
   "settings.general.row.showCustomAgents.description":
     "کمپوزر چ ایجنٹاں دے وچکار سوئچ کرو۔ جدوں لُکیا ہوندا اے، تے بلڈ ایجنٹ تے ڈیفالٹ ہوندا اے۔",
-  "settings.general.row.reasoningSummaries.option.auto": "خودکار",
-  "settings.general.row.reasoningSummaries.option.off": "بند",
-  "settings.general.row.reasoningSummaries.option.on": "چالو",
   "settings.general.row.reasoningSummaries.title": "استدلال دے خلاصے وکھاؤ",
   "settings.general.row.reasoningSummaries.description": "ٹائم لائن وچ ماڈل دی استدلال دے خلاصے وکھاؤ",
   "settings.general.row.shellToolPartsExpanded.title": "شیل ٹول دے حصیاں نو ودھاؤ",

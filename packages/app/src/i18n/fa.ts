@@ -1056,9 +1056,6 @@ export const dict = {
   "settings.general.row.showCustomAgents.title": "نشان دادن عامل",
   "settings.general.row.showCustomAgents.description":
     "بین عوامل در آهنگساز جابجا شوید. هنگامی که مخفی می شود، به طور پیش فرض بر روی Build agent قرار می گیرد.",
-  "settings.general.row.reasoningSummaries.option.auto": "خودکار",
-  "settings.general.row.reasoningSummaries.option.off": "خاموش",
-  "settings.general.row.reasoningSummaries.option.on": "روشن",
   "settings.general.row.reasoningSummaries.title": "نمایش خلاصه های استدلال",
   "settings.general.row.reasoningSummaries.description": "نمایش خلاصه های استدلال مدل در جدول زمانی",
   "settings.general.row.shellToolPartsExpanded.title": "قطعات ابزار پوسته را گسترش دهید",

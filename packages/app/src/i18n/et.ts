@@ -1054,9 +1054,6 @@ export const dict = {
   "settings.general.row.showCustomAgents.title": "Näita agenti",
   "settings.general.row.showCustomAgents.description":
     "Helilooja agentide vahel vahetamine. Kui see on peidetud, on vaikimisi Agent.",
-  "settings.general.row.reasoningSummaries.option.auto": "Automaatne",
-  "settings.general.row.reasoningSummaries.option.off": "Väljas",
-  "settings.general.row.reasoningSummaries.option.on": "Sees",
   "settings.general.row.reasoningSummaries.title": "Näita põhjenduste kokkuvõtteid",
   "settings.general.row.reasoningSummaries.description": "Kuva mudeli arutluskäigu kokkuvõtted ajaskaalal",
   "settings.general.row.shellToolPartsExpanded.title": "Laienda shellitööriista osi",

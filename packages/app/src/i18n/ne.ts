@@ -1058,9 +1058,6 @@ export const dict: Record<string, string> = {
   "settings.general.row.showCustomAgents.title": "एजेन्ट देखाउनुहोस्",
   "settings.general.row.showCustomAgents.description":
     "कम्पोजरमा एजेन्टहरू बीच स्विच गर्नुहोस्। लुकेको बेला, बिल्ड एजेन्टमा पूर्वनिर्धारित हुन्छ।",
-  "settings.general.row.reasoningSummaries.option.auto": "स्वतः",
-  "settings.general.row.reasoningSummaries.option.off": "बन्द",
-  "settings.general.row.reasoningSummaries.option.on": "चालु",
   "settings.general.row.reasoningSummaries.title": "तर्क सारांशहरू देखाउनुहोस्",
   "settings.general.row.reasoningSummaries.description": "टाइमलाइनमा मोडेल तर्क सारांशहरू प्रदर्शन गर्नुहोस्",
   "settings.general.row.shellToolPartsExpanded.title": "शेल उपकरणका भागहरू विस्तार गर्नुहोस्",

@@ -1065,9 +1065,6 @@ export const dict = {
   "settings.general.row.showCustomAgents.title": "Razstavni agent",
   "settings.general.row.showCustomAgents.description":
     "Preklapljanje med agenti v skladatelju. Ko je skrit, je privzeto nastavljen na Build agent.",
-  "settings.general.row.reasoningSummaries.option.auto": "Samodejno",
-  "settings.general.row.reasoningSummaries.option.off": "Izklopljeno",
-  "settings.general.row.reasoningSummaries.option.on": "Vklopljeno",
   "settings.general.row.reasoningSummaries.title": "Prikažite povzetke sklepanja",
   "settings.general.row.reasoningSummaries.description": "Prikažite povzetke sklepanja modela na časovnici",
   "settings.general.row.shellToolPartsExpanded.title": "Razširite dele orodja lupine",

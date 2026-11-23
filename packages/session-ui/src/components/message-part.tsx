@@ -32,7 +32,6 @@ import {
   QuestionInfo,
 } from "@opencode-ai/sdk/v2"
 import { useData } from "../context"
-import { normalizeReasoningDisplay, showsReasoning } from "./reasoning-display"
 import { useFileComponent } from "@opencode-ai/ui/context/file"
 import { useDialog } from "@opencode-ai/ui/context/dialog"
 import { type UiI18n, useI18n } from "@opencode-ai/ui/context/i18n"
@@ -731,7 +730,42 @@ function index<T extends { id: string }>(items: readonly T[]) {
   return new Map(items.map((item) => [item.id, item] as const))
 }
 
-export { normalizeReasoningDisplay, showsReasoning, type ReasoningDisplay } from "./reasoning-display"
+function clean(value: string) {
+  return value
+    .replace(/`([^`]+)`/g, "$1")
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
+    .replace(/[*_~]+/g, "")
+    .trim()
+}
+
+export function heading(text: string) {
+  const markdown = text.replace(/\r\n?/g, "\n")
+
+  const html = markdown.match(/<h[1-6][^>]*>([\s\S]*?)<\/h[1-6]>/i)
+  if (html?.[1]) {
+    const value = clean(html[1].replace(/<[^>]+>/g, " "))
+    if (value) return value
+  }
+
+  const atx = markdown.match(/^\s{0,3}#{1,6}[ \t]+(.+?)(?:[ \t]+#+[ \t]*)?$/m)
+  if (atx?.[1]) {
+    const value = clean(atx[1])
+    if (value) return value
+  }
+
+  const setext = markdown.match(/^([^\n]+)\n(?:=+|-+)\s*$/m)
+  if (setext?.[1]) {
+    const value = clean(setext[1])
+    if (value) return value
+  }
+
+  const strong = markdown.match(/^\s*(?:\*\*|__)(.+?)(?:\*\*|__)\s*$/m)
+  if (strong?.[1]) {
+    const value = clean(strong[1])
+    if (value) return value
+  }
+  return undefined
+}
 
 export function renderable(part: PartType, showReasoningSummaries = true) {
   if (part.type === "tool") {
@@ -760,7 +794,6 @@ export function AssistantParts(props: {
   const emptyParts: PartType[] = []
   const emptyTools: ToolPart[] = []
   const msgs = createMemo(() => index(props.messages))
-  const display = createMemo(() => normalizeReasoningDisplay(props.showReasoningSummaries))
   const part = createMemo(
     () =>
       new Map(
@@ -771,16 +804,14 @@ export function AssistantParts(props: {
   const grouped = createMemo(
     () =>
       groupParts(
-        props.messages.flatMap((message) => {
-          const parts = list(data.store.part?.[message.id], emptyParts)
-          const reasoning = showsReasoning(parts, display())
-          return parts
-            .filter((part) => (part.type === "reasoning" ? reasoning && !!part.text?.trim() : renderable(part)))
+        props.messages.flatMap((message) =>
+          list(data.store.part?.[message.id], emptyParts)
+            .filter((part) => renderable(part, props.showReasoningSummaries ?? true))
             .map((part) => ({
               messageID: message.id,
               part,
-            }))
-        }),
+            })),
+        ),
       ),
     [] as PartGroup[],
     { equals: sameGroups },
@@ -1859,18 +1890,46 @@ PART_MAPPING["text"] = function TextPartDisplay(props) {
   )
 }
 
+// Reasoning renders only once it has finished streaming: a part with a start
+// but no end is still streaming, unless its message already completed (abort).
+export function reasoningComplete(part: PartType, messageCompleted: boolean) {
+  if (part.type !== "reasoning") return true
+  const time = (part as ReasoningPart).time
+  if (!time || typeof time.end === "number") return true
+  return messageCompleted
+}
+
 PART_MAPPING["reasoning"] = function ReasoningPartDisplay(props) {
   const data = useData()
+  const i18n = useI18n()
   const part = () => props.part as ReasoningPart
-  const streaming = createMemo(
-    () => props.message.role === "assistant" && typeof (props.message as AssistantMessage).time.completed !== "number",
+  const messageCompleted = createMemo(
+    () => props.message.role === "assistant" && typeof (props.message as AssistantMessage).time.completed === "number",
   )
   const text = () => readPartText(data.store.part_text_accum_delta, part())
+  // Nothing renders while the part streams — the turn-level "Thinking" shimmer
+  // covers the wait — and the collapsed block pops in once reasoning finishes.
+  const numfmt = createMemo(() => new Intl.NumberFormat(i18n.locale()))
+  const duration = createMemo(() => {
+    const time = part().time
+    if (typeof time?.start !== "number" || typeof time.end !== "number") return ""
+    const total = Math.round((time.end - time.start) / 1000)
+    if (total < 60) return i18n.t("ui.message.duration.seconds", { count: numfmt().format(total) })
+    return i18n.t("ui.message.duration.minutesSeconds", {
+      minutes: numfmt().format(Math.floor(total / 60)),
+      seconds: numfmt().format(total % 60),
+    })
+  })
 
   return (
-    <Show when={text()}>
+    <Show when={reasoningComplete(part(), messageCompleted()) && !!text().trim()}>
       <div data-component="reasoning-part" data-timeline-part-id={part().id}>
-        <PacedMarkdown text={text()} cacheKey={part().id} streaming={streaming()} />
+        <BasicTool
+          icon="brain"
+          trigger={{ title: heading(text()) ?? i18n.t("ui.sessionTurn.status.thinking"), subtitle: duration() || undefined }}
+        >
+          <Markdown text={text()} />
+        </BasicTool>
       </div>
     </Show>
   )

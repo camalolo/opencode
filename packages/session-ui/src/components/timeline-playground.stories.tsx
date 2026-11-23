@@ -1169,7 +1169,7 @@ function Playground() {
   const [session, setSession] = createSignal({ ...DEFAULT_SESSION })
   const [loaded, setLoaded] = createSignal("")
   const [issue, setIssue] = createSignal("")
-  const [reasoningDisplay, setReasoningDisplay] = createSignal<"off" | "auto" | "on">("on")
+  const [reasoningDisplay, setReasoningDisplay] = createSignal<"off" | "on">("on")
 
   // ---- CSS overrides ----
   const [css, setCss] = createStore<Record<string, string>>({})
@@ -1306,6 +1306,7 @@ function Playground() {
         draft.parts[id] = [...existing, ...parts]
       }),
     )
+    return id
   }
 
   // ---- User message helpers ----
@@ -1331,6 +1332,32 @@ function Playground() {
   const addReasoning = () => {
     const idx = Math.floor(Math.random() * REASONING_SAMPLES.length)
     appendParts([reasoningPart(REASONING_SAMPLES[idx])])
+  }
+
+  // Streaming reasoning: appends a part with no end time and marks the
+  // assistant message in-flight. Nothing should render while it streams;
+  // after 3s the message and part complete and the collapsed block pops in.
+  const addStreamingReasoning = () => {
+    const idx = Math.floor(Math.random() * REASONING_SAMPLES.length)
+    const part = { ...reasoningPart(REASONING_SAMPLES[idx]) }
+    delete (part as Partial<ReasoningPart>).time?.end
+    const messageID = appendParts([part])
+    const complete = () =>
+      setState(
+        produce((draft) => {
+          const message = draft.messages.find((item) => item.id === messageID)
+          if (message?.role === "assistant") message.time = { ...message.time, completed: Date.now() }
+          const current = draft.parts[messageID]?.find((item) => item.id === part.id)
+          if (current?.type === "reasoning") current.time = { ...current.time, end: Date.now() }
+        }),
+      )
+    setState(
+      produce((draft) => {
+        const message = draft.messages.find((item) => item.id === messageID)
+        if (message?.role === "assistant") delete message.time.completed
+      }),
+    )
+    setTimeout(complete, 3000)
   }
 
   const addTool = (name: keyof typeof TOOL_SAMPLES) => {
@@ -1749,7 +1776,7 @@ function Playground() {
                 Appends to the last turn's assistant parts
               </div>
               <div style={{ display: "flex", "flex-wrap": "wrap", gap: "4px" }}>
-                <For each={["off", "auto", "on"] as const}>
+                <For each={["off", "on"] as const}>
                   {(mode) => (
                     <button
                       style={{
@@ -1771,8 +1798,11 @@ function Playground() {
                     </button>
                   )}
                 </For>
-                <button style={btnStyle} onClick={addReasoning}>
+                <button style={btnStyle} onClick={addReasoning} data-playground="reasoning">
                   reasoning
+                </button>
+                <button style={btnStyle} onClick={addStreamingReasoning} data-playground="reasoning-streaming">
+                  reasoning (streaming)
                 </button>
               </div>
 
@@ -2089,7 +2119,7 @@ function Playground() {
                           messageID={msg.id}
                           messages={state.messages}
                           active={false}
-                          showReasoningSummaries={reasoningDisplay()}
+                          showReasoningSummaries={reasoningDisplay() === "on"}
                           shellToolDefaultOpen={true}
                           editToolDefaultOpen={true}
                           classes={{

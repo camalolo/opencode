@@ -19,16 +19,11 @@ export interface SoundSettings {
   errors: string
 }
 
-// How reasoning parts render in the timeline: never, only for assistant
-// messages that carry no text answer, or always.
-export type ReasoningSummariesSetting = "off" | "auto" | "on"
-
-// The setting was a boolean before the tri-state existed; stored booleans
-// migrate on read (true = always show, false/absent = off).
-function reasoningSetting(value: unknown): ReasoningSummariesSetting {
-  if (value === "auto" || value === "on" || value === "off") return value
-  if (value === true) return "on"
-  return "off"
+// The setting was briefly a tri-state ("off"/"auto"/"on"); collapse stored
+// strings back to the boolean switch. Absent and unknown read as the default.
+function reasoningSetting(value: unknown): boolean {
+  if (value === "auto" || value === "on") return true
+  return value === true
 }
 
 export interface Settings {
@@ -41,7 +36,7 @@ export interface Settings {
     showSearch: boolean
     showStatus: boolean
     showTerminal: boolean
-    showReasoningSummaries: boolean | ReasoningSummariesSetting
+    showReasoningSummaries: boolean
     shellToolPartsExpanded: boolean
     editToolPartsExpanded: boolean
     showCustomAgents: boolean
@@ -202,7 +197,7 @@ const defaultSettings: Settings = {
     showSearch: false,
     showStatus: false,
     showTerminal: false,
-    showReasoningSummaries: "off",
+    showReasoningSummaries: false,
     shellToolPartsExpanded: false,
     editToolPartsExpanded: false,
     showCustomAgents: false,
@@ -409,7 +404,7 @@ export const { use: useSettings, provider: SettingsProvider } = createSimpleCont
           setStore("general", "showTerminal", value)
         },
         showReasoningSummaries: createMemo(() => reasoningSetting(store.general?.showReasoningSummaries)),
-        setReasoningSummaries(value: ReasoningSummariesSetting) {
+        setShowReasoningSummaries(value: boolean) {
           setStore("general", "showReasoningSummaries", value)
         },
         shellToolPartsExpanded: withFallback(

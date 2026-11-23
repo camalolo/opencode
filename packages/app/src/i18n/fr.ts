@@ -989,9 +989,6 @@ export const dict = {
     "Placer la barre de titre et les onglets de session en bas de l'écran sur mobile",
   "settings.general.row.showCustomAgents.title": "Agents personnalisés",
   "settings.general.row.showCustomAgents.description": "Afficher le sélecteur d'agent dans la zone de saisie",
-  "settings.general.row.reasoningSummaries.option.auto": "Automatique",
-  "settings.general.row.reasoningSummaries.option.off": "Désactivé",
-  "settings.general.row.reasoningSummaries.option.on": "Activé",
   "settings.general.row.reasoningSummaries.title": "Afficher les résumés de raisonnement",
   "settings.general.row.reasoningSummaries.description":
     "Afficher les résumés de raisonnement du modèle dans la chronologie",

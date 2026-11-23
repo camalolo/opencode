@@ -1075,9 +1075,6 @@ export const dict = {
   "settings.general.row.showCustomAgents.title": "Rodyti agentą",
   "settings.general.row.showCustomAgents.description":
     "Perjunkite tarp kompozitoriaus agentų. Kai paslėpta, numatytasis kūrimo agentas.",
-  "settings.general.row.reasoningSummaries.option.auto": "Automatinis",
-  "settings.general.row.reasoningSummaries.option.off": "Išjungta",
-  "settings.general.row.reasoningSummaries.option.on": "Įjungta",
   "settings.general.row.reasoningSummaries.title": "Rodyti samprotavimų santraukas",
   "settings.general.row.reasoningSummaries.description": "Rodyti modelio motyvų santraukas laiko juostoje",
   "settings.general.row.shellToolPartsExpanded.title": "Išskleiskite apvalkalo įrankių dalis",

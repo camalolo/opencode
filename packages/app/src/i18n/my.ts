@@ -1073,9 +1073,6 @@ export const dict = {
   "settings.general.row.showCustomAgents.title": "အေးဂျင့်ကို ပြပါ။",
   "settings.general.row.showCustomAgents.description":
     "တေးရေးဆရာရှိ အေးဂျင့်များအကြား ပြောင်းပါ။ ဝှက်ထားသည့်အခါ၊ Build အေးဂျင့်အဖြစ် သတ်မှတ်သည်။",
-  "settings.general.row.reasoningSummaries.option.auto": "အလိုအလျောက်",
-  "settings.general.row.reasoningSummaries.option.off": "ပိတ်",
-  "settings.general.row.reasoningSummaries.option.on": "ဖွင့်",
   "settings.general.row.reasoningSummaries.title": "ကျိုးကြောင်းဆင်ခြင်ခြင်း အနှစ်ချုပ်များကို ပြပါ။",
   "settings.general.row.reasoningSummaries.description":
     "အချိန်ဇယားတွင် မော်ဒယ် ကျိုးကြောင်းဆင်ခြင်ခြင်း အနှစ်ချုပ်များကို ပြသပါ။",

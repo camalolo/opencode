@@ -1063,9 +1063,6 @@ export const dict = {
   "settings.general.row.showCustomAgents.title": "Прикажи агента",
   "settings.general.row.showCustomAgents.description":
     "Пребацивање између агената у композитору. Када је скривено, подразумевано је Буилд агент.",
-  "settings.general.row.reasoningSummaries.option.auto": "Аутоматски",
-  "settings.general.row.reasoningSummaries.option.off": "Искључено",
-  "settings.general.row.reasoningSummaries.option.on": "Укључено",
   "settings.general.row.reasoningSummaries.title": "Прикажи резимее образложења",
   "settings.general.row.reasoningSummaries.description": "Приказ резимеа образложења модела на временској линији",
   "settings.general.row.shellToolPartsExpanded.title": "Проширите shell делова алата",

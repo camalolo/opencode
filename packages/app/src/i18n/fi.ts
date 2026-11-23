@@ -959,9 +959,6 @@ export const dict = {
   "settings.general.row.showCustomAgents.title": "Näytä agentin valinta",
   "settings.general.row.showCustomAgents.description":
     "Vaihda agenttien välillä viestikentässä. Kun valinta on piilotettu, Build-agenttia käytetään oletuksena.",
-  "settings.general.row.reasoningSummaries.option.auto": "Automaattinen",
-  "settings.general.row.reasoningSummaries.option.off": "Pois",
-  "settings.general.row.reasoningSummaries.option.on": "Päällä",
   "settings.general.row.reasoningSummaries.title": "Näytä päättelyn yhteenvedot",
   "settings.general.row.reasoningSummaries.description": "Näytä mallin päättelyn yhteenvedot aikajanalla",
   "settings.general.row.shellToolPartsExpanded.title": "Laajenna shell-työkalun osat",

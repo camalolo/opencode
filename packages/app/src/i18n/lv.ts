@@ -1065,9 +1065,6 @@ export const dict = {
   "settings.general.row.showCustomAgents.title": "Rādīt aģentu",
   "settings.general.row.showCustomAgents.description":
     "Pārslēgties starp aģentiem redaktorā. Ja paslēpts, tiek izmantots Build aģents.",
-  "settings.general.row.reasoningSummaries.option.auto": "Automātiski",
-  "settings.general.row.reasoningSummaries.option.off": "Izslēgts",
-  "settings.general.row.reasoningSummaries.option.on": "Ieslēgts",
   "settings.general.row.reasoningSummaries.title": "Rādīt pamatojuma kopsavilkumus",
   "settings.general.row.reasoningSummaries.description": "Rādīt modeļa pamatojuma kopsavilkumus laika joslā",
   "settings.general.row.shellToolPartsExpanded.title": "Izvērst čaulas rīka daļas",

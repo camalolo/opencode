@@ -1057,9 +1057,6 @@ export const dict = {
   "settings.general.row.showCustomAgents.title": "Vís agentar",
   "settings.general.row.showCustomAgents.description":
     "Skift millum agentar í tónaskaldinum. Tá ið tað er fjalt, er tað forsett til Build agent.",
-  "settings.general.row.reasoningSummaries.option.auto": "Sjálvvirkandi",
-  "settings.general.row.reasoningSummaries.option.off": "Av",
-  "settings.general.row.reasoningSummaries.option.on": "Á",
   "settings.general.row.reasoningSummaries.title": "Vís grundgevingarsamantektir",
   "settings.general.row.reasoningSummaries.description": "Vís modellgrundgevingarsamantektir í tíðarlinjuni",
   "settings.general.row.shellToolPartsExpanded.title": "Víðka shell-tólpartar",

@@ -1058,9 +1058,6 @@ export const dict = {
   "settings.general.row.showCustomAgents.title": "აგენტის ჩვენება",
   "settings.general.row.showCustomAgents.description":
     "გადართვა კომპოზიტორში აგენტებს შორის. როდესაც დამალულია, ნაგულისხმევად არის Build აგენტი.",
-  "settings.general.row.reasoningSummaries.option.auto": "ავტომატური",
-  "settings.general.row.reasoningSummaries.option.off": "გამორთული",
-  "settings.general.row.reasoningSummaries.option.on": "ჩართული",
   "settings.general.row.reasoningSummaries.title": "მსჯელობის შეჯამების ჩვენება",
   "settings.general.row.reasoningSummaries.description": "მოდელების მსჯელობის რეზიუმეების ჩვენება ვადებში",
   "settings.general.row.shellToolPartsExpanded.title": "Shell ხელსაწყოს ნაწილების გაფართოება",

@@ -26,7 +26,6 @@ import {
   terminalFontFamily,
   terminalInput,
   useSettings,
-  type ReasoningSummariesSetting,
 } from "@/context/settings"
 import { decode64 } from "@/utils/base64"
 import { playSoundById, SOUND_OPTIONS } from "@/utils/sound"
@@ -121,7 +120,6 @@ export const SettingsGeneral: Component = () => {
     permission.disableAutoAccept(params.id, value)
   }
   const desktop = createMemo(() => platform.platform === "desktop")
-  const reasoningSummariesOptions: ReasoningSummariesSetting[] = ["off", "auto", "on"]
 
   const themeOptions = createMemo<ThemeOption[]>(() => theme.ids().map((id) => ({ id, name: theme.name(id) })))
 
@@ -353,24 +351,12 @@ export const SettingsGeneral: Component = () => {
           title={language.t("settings.general.row.reasoningSummaries.title")}
           description={language.t("settings.general.row.reasoningSummaries.description")}
         >
-          <Select
-            data-action="settings-feed-reasoning-summaries"
-            options={reasoningSummariesOptions}
-            current={settings.general.showReasoningSummaries()}
-            value={(o) => o}
-            label={(o) =>
-              o === "off"
-                ? language.t("settings.general.row.reasoningSummaries.option.off")
-                : o === "auto"
-                  ? language.t("settings.general.row.reasoningSummaries.option.auto")
-                  : language.t("settings.general.row.reasoningSummaries.option.on")
-            }
-            onSelect={(option) => option && settings.general.setReasoningSummaries(option)}
-            variant="secondary"
-            size="small"
-            triggerVariant="settings"
-            triggerStyle={{ "min-width": "180px" }}
-          />
+          <div data-action="settings-feed-reasoning-summaries">
+            <Switch
+              checked={settings.general.showReasoningSummaries()}
+              onChange={(checked) => settings.general.setShowReasoningSummaries(checked)}
+            />
+          </div>
         </SettingsRow>
 
         <SettingsRow

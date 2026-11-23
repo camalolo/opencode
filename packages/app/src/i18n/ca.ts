@@ -1070,9 +1070,6 @@ export const dict = {
   "settings.general.row.showCustomAgents.title": "Agent d'espectacles",
   "settings.general.row.showCustomAgents.description":
     "Canvia entre agents del compositor. Quan s'amaga, el valor predeterminat és Build agent.",
-  "settings.general.row.reasoningSummaries.option.auto": "Automàtic",
-  "settings.general.row.reasoningSummaries.option.off": "Desactivat",
-  "settings.general.row.reasoningSummaries.option.on": "Activat",
   "settings.general.row.reasoningSummaries.title": "Mostra resums de raonament",
   "settings.general.row.reasoningSummaries.description": "Mostra els resums de raonament del model a la línia de temps",
   "settings.general.row.shellToolPartsExpanded.title": "Amplieu les peces de l'eina de closca",

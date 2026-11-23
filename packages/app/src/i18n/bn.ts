@@ -1056,9 +1056,6 @@ export const dict: Record<string, string> = {
   "settings.general.row.showCustomAgents.title": "এজেন্ট দেখান",
   "settings.general.row.showCustomAgents.description":
     "কম্পোজারে এজেন্টদের মধ্যে স্যুইচ করুন। লুকানো হলে, বিল্ড এজেন্টে ডিফল্ট।",
-  "settings.general.row.reasoningSummaries.option.auto": "স্বয়ংক্রিয়",
-  "settings.general.row.reasoningSummaries.option.off": "বন্ধ",
-  "settings.general.row.reasoningSummaries.option.on": "চালু",
   "settings.general.row.reasoningSummaries.title": "যুক্তির সারাংশ দেখান",
   "settings.general.row.reasoningSummaries.description": "টাইমলাইনে মডেল যুক্তির সারাংশ প্রদর্শন করুন",
   "settings.general.row.shellToolPartsExpanded.title": "শেল টুল অংশ প্রসারিত",
