@@ -69,6 +69,8 @@ describe("Image", () => {
       source.free()
       expect(resized.get_width()).toBeLessThanOrEqual(2_000)
       expect(resized.get_height()).toBeLessThanOrEqual(2_000)
+      expect(result.original_path).toBeDefined()
+      expect(result.original_scale).toBeCloseTo(resized.get_width() / 9_000)
       resized.free()
     }),
   )
@@ -92,6 +94,9 @@ describe("Image", () => {
       expect(base64.length).toBeLessThan(5 * 1024 * 1024)
       expect(resized.get_width()).toBeLessThanOrEqual(2_000)
       expect(resized.get_height()).toBeLessThanOrEqual(2_000)
+      expect(result.original_path).toBeDefined()
+      expect(result.original_scale).toBeGreaterThan(0)
+      expect(result.original_scale).toBeLessThanOrEqual(1)
       resized.free()
     }),
   )

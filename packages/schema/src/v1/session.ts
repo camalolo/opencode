@@ -178,6 +178,9 @@ export const FilePart = Schema.Struct({
   // Set when ingest downscaled the image: filesystem path of the stashed
   // full-resolution original, so the model can parse it for fine detail.
   original_path: Schema.optional(Schema.String),
+  // Width ratio embedded/original after ingest resizing (1 = dimensions kept,
+  // only recompressed). Lets consumers judge whether detail was actually lost.
+  original_scale: Schema.optional(UnitFraction),
 }).annotate({ identifier: "FilePart" })
 export type FilePart = Types.DeepMutable<Schema.Schema.Type<typeof FilePart>>
 

@@ -2,7 +2,6 @@ import { LayerNode } from "@opencode-ai/core/effect/layer-node"
 import { Global } from "@opencode-ai/core/global"
 import { Config } from "@/config/config"
 import { SessionV1 } from "@opencode-ai/core/v1/session"
-import type { MessageV2 } from "@/session/message-v2"
 import photonWasm from "@silvia-odwyer/photon-node/photon_rs_bg.wasm" with { type: "file" }
 import { Context, Effect, Layer, Schema } from "effect"
 import crypto from "node:crypto"
@@ -170,7 +169,10 @@ const layer = Layer.effect(
               mime: candidate.mime,
               url: `data:${candidate.mime};base64,${candidate.data}`,
             }
-            if (originalPath !== undefined) resized.original_path = originalPath
+            if (originalPath !== undefined) {
+              resized.original_path = originalPath
+              resized.original_scale = size.width / originalWidth
+            }
             return resized
           }
         }

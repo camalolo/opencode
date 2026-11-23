@@ -486,6 +486,7 @@ export type FilePart = {
   url: string
   source?: FilePartSource
   original_path?: string
+  original_scale?: number
 }
 
 export type ToolStatePending = {
