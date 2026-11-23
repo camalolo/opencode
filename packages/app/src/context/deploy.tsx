@@ -22,6 +22,12 @@ type DeployState = GlobalDeployStatus & {
 }
 
 const POLL_INTERVAL_MS = 2_000
+// Heartbeat while no deploy is known to run. Deploy visibility must not
+// depend on the event stream: a deploy restart is exactly what breaks that
+// stream on long-lived pages, and the browser can keep refusing to reconnect
+// for a long while afterwards. Polling the viewed server is the authoritative
+// path, so a deploy that starts on a degraded page still surfaces.
+const IDLE_POLL_INTERVAL_MS = 5_000
 // Grace before reloading so a deploy event announcing the next phase can still
 // beat the poll (a failed restart re-announces its error).
 const RELOAD_DELAY_MS = 1_500
@@ -126,17 +132,22 @@ export const { use: useDeploy, provider: DeployProvider } = createSimpleContext(
       }
     })
 
-    // While a deploy is live, poll status so progress survives missed events;
-    // failures flip the entry to "down" until the restarted server answers.
+    // Poll status so progress survives missed events and failures flip the
+    // entry to "down" until the restarted server answers. While a deploy is
+    // live every connection is watched (their stored status stays fresh for a
+    // server switch); otherwise only the viewed server is heartbeated at the
+    // idle rate — the overlay never renders for any other connection.
     createEffect(() => {
       const watching = server.list.filter((conn) => {
         const status = store.servers[ServerConnection.key(conn)]
         return status && status.phase !== "idle"
       })
-      if (watching.length === 0) return
-      const tick = () => watching.forEach(fetchStatus)
+      const polled = watching.length
+        ? watching
+        : server.list.filter((conn) => ServerConnection.key(conn) === server.key)
+      const tick = () => polled.forEach(fetchStatus)
       tick()
-      const id = setInterval(tick, POLL_INTERVAL_MS)
+      const id = setInterval(tick, watching.length ? POLL_INTERVAL_MS : IDLE_POLL_INTERVAL_MS)
       onCleanup(() => clearInterval(id))
     })
 
