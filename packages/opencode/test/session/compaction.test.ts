@@ -1897,6 +1897,64 @@ describe("session.compaction.process", () => {
     }).pipe(withCompaction({ llm: stub.llmLayer }))
   })
 
+  itCompaction.instance("retries a summary that reports unresolved work without a next move", () => {
+    const stub = llm()
+    let first = ""
+    let second = ""
+    stub.push(
+      reply(
+        "## Objective\n- fix the crash\n\n## Work State\n### Completed\n- read the parser\n\n### Active\n- reproducing the crash\n\n### Blocked\n- (none)\n\n## Next Move\n- (none)",
+        (input) => {
+          first = JSON.stringify(input.messages)
+        },
+      ),
+    )
+    stub.push(
+      reply(
+        "## Objective\n- fix the crash\n\n## Work State\n### Completed\n- read the parser\n\n### Active\n- reproducing the crash\n\n### Blocked\n- (none)\n\n## Next Move\n1. capture the stack trace",
+        (input) => {
+          second = JSON.stringify(input.messages)
+        },
+      ),
+    )
+
+    return Effect.gen(function* () {
+      const ssn = yield* SessionNs.Service
+      const session = yield* ssn.create({})
+      yield* createUserMessage(session.id, "older context")
+      yield* createUserMessage(session.id, "keep this turn")
+      yield* createCompactionMarker(session.id)
+
+      const msgs = yield* ssn.messages({ sessionID: session.id })
+      const parent = msgs.at(-1)?.info.id
+      expect(parent).toBeTruthy()
+      const result = yield* SessionCompaction.use.process({
+        parentID: parent!,
+        messages: msgs,
+        sessionID: session.id,
+        auto: false,
+      })
+
+      expect(result).toBe("continue")
+      expect(first).not.toContain("reported unresolved work")
+      expect(second).toContain("reported unresolved work")
+
+      const summaries = (yield* ssn.messages({ sessionID: session.id })).filter(
+        (msg) => msg.info.role === "assistant" && msg.info.summary,
+      )
+      expect(summaries).toHaveLength(1)
+      const summary = summaries[0]
+      expect(summary?.info.role).toBe("assistant")
+      if (summary?.info.role === "assistant") {
+        expect(summary.info.error).toBeUndefined()
+        expect(summary.info.finish).toBe("stop")
+      }
+      expect(summary?.parts.some((part) => part.type === "text" && part.text.includes("capture the stack trace"))).toBe(
+        true,
+      )
+    }).pipe(withCompaction({ llm: stub.llmLayer }))
+  })
+
   itCompaction.instance("fails the compaction when the summary never matches the template", () => {
     const stub = llm()
     stub.push(reply("Continuing the work — next I will edit the generator label."))

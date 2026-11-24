@@ -37,6 +37,7 @@ const MIN_PRESERVE_RECENT_TOKENS = 2_000
 const MAX_PRESERVE_RECENT_TOKENS = 15_000
 const SUMMARY_OUTPUT_TOKENS = 4_096
 const SUMMARY_NUDGE = `Your previous reply did not follow the summary format. Respond again with only the summary Markdown, starting with "## Objective". Do not continue the conversation and do not reproduce its transcript markers such as "[User]:", "[Assistant tool call]:" or "[Tool result]:".`
+const SUMMARY_STATE_NUDGE = `Your previous summary reported unresolved work under "### Active" or "### Blocked" but proposed no "## Next Move". Respond again with only the summary Markdown in the same template: address every unresolved item in Next Move, or state there why it cannot proceed.`
 type Turn = {
   start: number
   end: number
@@ -100,6 +101,27 @@ function summaryText(message: SessionV1.WithParts) {
     .join("\n\n")
     .trim()
   return text || undefined
+}
+
+function summarySection(text: string, heading: string) {
+  const lines = text.split("\n")
+  const start = lines.findIndex((line) => line.trim() === heading)
+  if (start === -1) return ""
+  const body: string[] = []
+  for (const line of lines.slice(start + 1)) {
+    if (/^#{2,3}\s/.test(line)) break
+    body.push(line)
+  }
+  return body.join("\n")
+}
+
+function summarySectionEmpty(text: string, heading: string) {
+  return summarySection(text, heading)
+    .split("\n")
+    .every((line) => {
+      const entry = line.replace(/^\s*(?:[-*]|\d+\.)\s*/, "").trim()
+      return entry === "" || entry === "(none)"
+    })
 }
 
 function completedCompactions(messages: SessionV1.WithParts[]) {
@@ -520,13 +542,17 @@ const layer = Layer.effect(
       // the compacted history: models sometimes continue the serialized
       // conversation ("Continuing the wiring — ..." plus replayed tool calls)
       // instead of answering the prompt.
-      const filled = (message: SessionV1.Assistant) =>
+      const summaryIssue = (message: SessionV1.Assistant) =>
         Effect.gen(function* () {
           const parts = yield* MessageV2.parts(message.id).pipe(Effect.provideService(Database.Service, database))
-          const first = summaryText({ info: message, parts })?.split("\n").find((line) => line.trim())
-          return first?.trim().startsWith("## ") ?? false
+          const text = summaryText({ info: message, parts }) ?? ""
+          const first = text.split("\n").find((line) => line.trim())
+          if (!first?.trim().startsWith("## ")) return SUMMARY_NUDGE
+          const unresolved = !summarySectionEmpty(text, "### Active") || !summarySectionEmpty(text, "### Blocked")
+          if (unresolved && summarySectionEmpty(text, "## Next Move")) return SUMMARY_STATE_NUDGE
+          return undefined
         })
-      const attempt = Effect.fn("SessionCompaction.summary")(function* (nudged: boolean) {
+      const attempt = Effect.fn("SessionCompaction.summary")(function* (nudge?: string) {
         const msg: SessionV1.Assistant = {
           id: MessageID.ascending(),
           role: "assistant",
@@ -572,7 +598,7 @@ const layer = Layer.effect(
                   type: "text",
                   text: [
                     nextPrompt,
-                    ...(nudged ? [SUMMARY_NUDGE] : []),
+                    ...(nudge ? [nudge] : []),
                     ...(compacting.prompt ? ["The following is the conversation history:", conversation] : []),
                   ]
                     .filter(Boolean)
@@ -586,23 +612,27 @@ const layer = Layer.effect(
         return { message: processor.message, result }
       })
 
-      let summary = yield* attempt(false)
+      let summary = yield* attempt()
       // A plugin-provided prompt owns its own output format; only the built-in
       // template can be checked.
-      if (
-        !compacting.prompt &&
-        !summary.message.error &&
-        summary.result !== "compact" &&
-        !(yield* filled(summary.message))
-      ) {
-        yield* Effect.logInfo("compaction summary did not match the template; retrying", {
+      const issue =
+        !compacting.prompt && !summary.message.error && summary.result !== "compact"
+          ? yield* summaryIssue(summary.message)
+          : undefined
+      if (issue) {
+        yield* Effect.logInfo("compaction summary did not satisfy the summary contract; retrying", {
           "session.id": input.sessionID,
+          reason: issue === SUMMARY_NUDGE ? "template" : "work-state",
         })
         // Replace the reply instead of keeping it: a transcript replay must not
         // become the history other messages (and future compactions) anchor on.
         yield* session.removeMessage({ sessionID: input.sessionID, messageID: summary.message.id })
-        summary = yield* attempt(true)
-        if (!summary.message.error && summary.result !== "compact" && !(yield* filled(summary.message))) {
+        summary = yield* attempt(issue)
+        if (
+          !summary.message.error &&
+          summary.result !== "compact" &&
+          (yield* summaryIssue(summary.message))
+        ) {
           summary.message.error = new SessionV1.APIError({
             message: "Compaction summary did not match the required template",
             isRetryable: false,
@@ -696,7 +726,7 @@ const layer = Layer.effect(
               (input.overflow
                 ? "The previous request exceeded the provider's size limit due to large media attachments. The conversation was compacted and media files were removed from context. If the user was asking about attached images or files, explain that the attachments were too large to process and suggest they try again with smaller or fewer files.\n\n"
                 : "") +
-              "The conversation was compacted and the summary above captures the objective, work state, and next steps. Continue the task now: take the next concrete step from the summary's Next Move using tools — do not repeat or rewrite the summary, and only stop to ask the user if you are genuinely blocked."
+              "The conversation was compacted and the summary above captures the objective, work state, and next steps. Continue the task now: take the next concrete step from the summary's Next Move using tools — do not repeat or rewrite the summary. Its Work State is the source of truth: do not repeat reads, searches, or tests it records as Completed. Only stop to ask the user if you are genuinely blocked."
             yield* session.updatePart({
               id: PartID.ascending(),
               messageID: continueMsg.id,

@@ -46,6 +46,8 @@ Rules:
 - Keep every section, even when empty.
 - Use terse bullets, not prose paragraphs.
 - Preserve exact file paths, symbols, commands, error strings, URLs, and identifiers when known.
+- Make "Next Move" follow from "Work State": every unresolved item in Active or Blocked must be addressed by a Next Move entry, and never propose work already listed as Completed.
+- Drop superseded hypotheses and dead ends; record exact verification commands and whether they passed.
 - Do not mention the summary process or that context was compacted.
 - Start your response with "## Objective" and output only the summary itself: never continue the conversation, answer it, or reproduce its transcript markers such as "[User]:", "[Assistant tool call]:" or "[Tool result]:".`
 export const SUMMARY_SYSTEM =
