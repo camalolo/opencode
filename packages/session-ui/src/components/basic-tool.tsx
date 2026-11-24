@@ -308,7 +308,7 @@ export function BasicTool(props: BasicToolProps) {
         >
           <Show when={!props.defer || ready()}>
             {props.children}
-            <ToolParameters text={parameters()} />
+            <ToolParameters text={parameters()} nested={!!hasChildren()} />
           </Show>
         </div>
       </Show>
@@ -316,7 +316,7 @@ export function BasicTool(props: BasicToolProps) {
         <Collapsible.Content>
           <Show when={!props.defer || ready()}>
             {props.children}
-            <ToolParameters text={parameters()} />
+            <ToolParameters text={parameters()} nested={!!hasChildren()} />
           </Show>
         </Collapsible.Content>
       </Show>
@@ -324,12 +324,33 @@ export function BasicTool(props: BasicToolProps) {
   )
 }
 
-function ToolParameters(props: { text: string }) {
+function ToolParameters(props: { text: string; nested?: boolean }) {
+  const i18n = useI18n()
+
   return (
     <Show when={props.text}>
-      <pre data-component="tool-parameters" dir="ltr">
-        <code>{props.text}</code>
-      </pre>
+      <Show
+        when={props.nested}
+        fallback={
+          <pre data-component="tool-parameters" dir="ltr">
+            <code>{props.text}</code>
+          </pre>
+        }
+      >
+        <div data-component="tool-parameters-details">
+          <Collapsible>
+            <Collapsible.Trigger>
+              <span data-slot="tool-parameters-details-title">{i18n.t("ui.basicTool.details")}</span>
+              <Collapsible.Arrow />
+            </Collapsible.Trigger>
+            <Collapsible.Content>
+              <pre data-component="tool-parameters" dir="ltr">
+                <code>{props.text}</code>
+              </pre>
+            </Collapsible.Content>
+          </Collapsible>
+        </div>
+      </Show>
     </Show>
   )
 }
