@@ -1,10 +1,23 @@
-import { createEffect, For, Match, on, onCleanup, onMount, Show, Switch, type Accessor, type JSX } from "solid-js"
+import {
+  createEffect,
+  createMemo,
+  For,
+  Match,
+  on,
+  onCleanup,
+  onMount,
+  Show,
+  Switch,
+  type Accessor,
+  type JSX,
+} from "solid-js"
 import { animate, type AnimationPlaybackControls } from "motion"
 import { useI18n } from "@opencode-ai/ui/context/i18n"
 import { createStore } from "solid-js/store"
 import { Collapsible } from "@opencode-ai/ui/collapsible"
 import type { IconProps } from "@opencode-ai/ui/icon"
 import { TextShimmer } from "@opencode-ai/ui/text-shimmer"
+import { hasToolParameters, toolParametersText } from "./tool-parameters"
 
 export type TriggerTitle = {
   title: string
@@ -28,6 +41,7 @@ export interface BasicToolProps {
   children?: JSX.Element
   status?: string
   hideDetails?: boolean
+  parameters?: unknown
   defaultOpen?: boolean
   open?: boolean
   onOpenChange?: (open: boolean) => void
@@ -92,6 +106,9 @@ export function BasicTool(props: BasicToolProps) {
   const ready = () => state.ready
   const pending = () => props.status === "pending" || props.status === "running"
   const hasChildren = () => (props.defer ? "children" in props : props.children)
+  const hasParameters = () => hasToolParameters(props.parameters)
+  const hasDetails = () => hasParameters() || (hasChildren() && !props.hideDetails)
+  const parameters = createMemo(() => toolParametersText(props.parameters))
   const dynamicTrigger = typeof props.trigger === "function" ? props.trigger(open) : undefined
 
   let cancelReady: (() => void) | undefined
@@ -248,7 +265,7 @@ export function BasicTool(props: BasicToolProps) {
           </Switch>
         </div>
       </div>
-      <Show when={hasChildren() && !props.hideDetails && !props.locked && (!pending() || props.allowOpenWhilePending)}>
+      <Show when={hasDetails() && !props.locked && (!pending() || props.allowOpenWhilePending)}>
         <Collapsible.Arrow />
       </Show>
     </div>
@@ -279,7 +296,7 @@ export function BasicTool(props: BasicToolProps) {
           {trigger()}
         </Collapsible.Trigger>
       </Show>
-      <Show when={props.animated && hasChildren() && !props.hideDetails}>
+      <Show when={props.animated && hasDetails()}>
         <div
           ref={contentRef}
           data-slot="collapsible-content"
@@ -289,15 +306,31 @@ export function BasicTool(props: BasicToolProps) {
             overflow: initialOpen ? "visible" : "hidden",
           }}
         >
-          <Show when={!props.defer || ready()}>{props.children}</Show>
+          <Show when={!props.defer || ready()}>
+            {props.children}
+            <ToolParameters text={parameters()} />
+          </Show>
         </div>
       </Show>
-      <Show when={!props.animated && hasChildren() && !props.hideDetails}>
+      <Show when={!props.animated && hasDetails()}>
         <Collapsible.Content>
-          <Show when={!props.defer || ready()}>{props.children}</Show>
+          <Show when={!props.defer || ready()}>
+            {props.children}
+            <ToolParameters text={parameters()} />
+          </Show>
         </Collapsible.Content>
       </Show>
     </Collapsible>
+  )
+}
+
+function ToolParameters(props: { text: string }) {
+  return (
+    <Show when={props.text}>
+      <pre data-component="tool-parameters" dir="ltr">
+        <code>{props.text}</code>
+      </pre>
+    </Show>
   )
 }
 
@@ -337,6 +370,7 @@ export function GenericTool(props: {
         subtitle: label(props.input),
         args: args(props.input),
       }}
+      parameters={props.input}
       hideDetails={props.hideDetails}
     />
   )

@@ -356,3 +356,39 @@ body:not([data-new-layout]) {
     }
   }
 }
+
+[data-component="tool-parameters"] {
+  margin: 4px 0 16px;
+  padding: 10px 12px;
+  min-width: 0;
+  max-width: 100%;
+  max-height: 320px;
+  overflow: auto;
+  border: 0.5px solid var(--v2-border-border-base);
+  border-radius: 6px;
+  background: var(--v2-background-bg-layer-01);
+  direction: ltr;
+  unicode-bidi: isolate;
+  user-select: text;
+
+  code {
+    display: block;
+    font-family: var(--font-family-mono);
+    font-feature-settings: var(--font-family-mono--font-feature-settings);
+    font-size: 12px;
+    line-height: var(--line-height-large);
+    color: var(--v2-text-text-muted);
+    white-space: pre;
+  }
+}
+
+body:not([data-new-layout]) {
+  [data-component="tool-parameters"] {
+    border: 1px solid var(--border-weak-base);
+    background: transparent;
+
+    code {
+      color: var(--text-base);
+    }
+  }
+}

@@ -1173,32 +1173,14 @@ export function ContextToolGroup(props: {
           <Index each={props.parts}>
             {(partAccessor) => {
               const trigger = createMemo(() => contextToolTrigger(partAccessor(), i18n))
-              const running = createMemo(
-                () => partAccessor().state.status === "pending" || partAccessor().state.status === "running",
-              )
               return (
                 <div data-slot="context-tool-group-item">
-                  <div data-component="tool-trigger">
-                    <div data-slot="basic-tool-tool-trigger-content">
-                      <div data-slot="basic-tool-tool-info">
-                        <div data-slot="basic-tool-tool-info-structured">
-                          <div data-slot="basic-tool-tool-info-main">
-                            <span data-slot="basic-tool-tool-title">
-                              <TextShimmer text={trigger().title} active={running()} />
-                            </span>
-                            <Show when={trigger().subtitle}>
-                              <span data-slot="basic-tool-tool-subtitle">{trigger().subtitle}</span>
-                            </Show>
-                            <Show when={trigger().args?.length}>
-                              <For each={trigger().args}>
-                                {(arg) => <span data-slot="basic-tool-tool-arg">{arg}</span>}
-                              </For>
-                            </Show>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
+                  <BasicTool
+                    icon={getToolInfo(partAccessor().tool, partAccessor().state.input).icon}
+                    status={partAccessor().state.status}
+                    parameters={partAccessor().state.input}
+                    trigger={trigger()}
+                  />
                   <ToolImages part={partAccessor()} />
                 </div>
               )
@@ -1962,6 +1944,7 @@ ToolRegistry.register({
       <>
         <BasicTool
           {...props}
+          parameters={props.input}
           icon="glasses"
           trigger={{
             title: i18n.t("ui.tool.read"),
@@ -1991,6 +1974,7 @@ ToolRegistry.register({
     return (
       <BasicTool
         {...props}
+        parameters={props.input}
         icon="eye"
         trigger={{
           title: i18n.t("ui.tool.showImage"),
@@ -2008,6 +1992,7 @@ ToolRegistry.register({
     return (
       <BasicTool
         {...props}
+        parameters={props.input}
         icon="bullet-list"
         trigger={{ title: i18n.t("ui.tool.list"), subtitle: getDirectory(props.input.path || "/") }}
       >
@@ -2034,6 +2019,7 @@ ToolRegistry.register({
     return (
       <BasicTool
         {...props}
+        parameters={props.input}
         icon="magnifying-glass-menu"
         trigger={{
           title: i18n.t("ui.tool.glob"),
@@ -2067,6 +2053,7 @@ ToolRegistry.register({
     return (
       <BasicTool
         {...props}
+        parameters={props.input}
         icon="magnifying-glass-menu"
         trigger={{
           title: i18n.t("ui.tool.grep"),
@@ -2103,6 +2090,7 @@ ToolRegistry.register({
     return (
       <BasicTool
         {...props}
+        parameters={props.input}
         hideDetails
         icon="window-cursor"
         trigger={
@@ -2150,6 +2138,7 @@ ToolRegistry.register({
     return (
       <BasicTool
         {...props}
+        parameters={props.input}
         icon="window-cursor"
         trigger={{
           title: title(),
@@ -2295,6 +2284,7 @@ ToolRegistry.register({
     return (
       <BasicTool
         {...props}
+        parameters={props.input}
         icon="console"
         allowOpenWhilePending
         trigger={(open) => (
@@ -2392,6 +2382,7 @@ ToolRegistry.register({
       <div data-component="edit-tool">
         <BasicTool
           {...props}
+          parameters={props.input}
           icon="code-lines"
           defer={props.deferContent !== false}
           trigger={
@@ -2459,6 +2450,7 @@ ToolRegistry.register({
       <div data-component="write-tool">
         <BasicTool
           {...props}
+          parameters={props.input}
           icon="code-lines"
           defer={props.deferContent !== false}
           trigger={
@@ -2542,6 +2534,7 @@ ToolRegistry.register({
           <div data-component="apply-patch-tool">
             <BasicTool
               {...props}
+              parameters={props.input}
               icon="code-lines"
               defer={props.deferContent !== false}
               trigger={{
@@ -2779,6 +2772,7 @@ ToolRegistry.register({
     return (
       <BasicTool
         {...props}
+        parameters={props.input}
         defaultOpen={completed()}
         icon="bubble-5"
         trigger={{
@@ -2825,6 +2819,6 @@ ToolRegistry.register({
       </div>
     )
 
-    return <BasicTool icon="brain" status={props.status} trigger={trigger()} hideDetails />
+    return <BasicTool icon="brain" status={props.status} trigger={trigger()} parameters={props.input} hideDetails />
   },
 })
