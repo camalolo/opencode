@@ -1516,7 +1516,23 @@ export function MessageTimeline(props: {
       if (part?.type === "tool") return part
     }
     const asyncFile = () => ["edit", "write", "apply_patch"].includes(tool()?.tool ?? "")
-    const [ready, setReady] = createSignal(initialItem.size <= timelineFallbackItemSize || !asyncFile())
+    const expanded = () => {
+      const part = tool()
+      if (!part) return false
+      const fallback = partDefaultOpen(
+        part,
+        settings.general.shellToolPartsExpanded(),
+        settings.general.editToolPartsExpanded(),
+      )
+      return toolOpen[part.id] ?? fallback ?? false
+    }
+    // The reservation keeps a row from collapsing while its deferred diff loads.
+    // A collapsed row never mounts that content, so nothing would ever clear the
+    // reservation: only reserve while the row can actually render.
+    const [ready, setReady] = createSignal(initialItem.size <= timelineFallbackItemSize || !asyncFile() || !expanded())
+    createEffect(() => {
+      if (asyncFile() && !expanded()) setReady(true)
+    })
     let contentMeasureFrame: number | undefined
 
     onMount(() => virtualizer.measureElement(element))
