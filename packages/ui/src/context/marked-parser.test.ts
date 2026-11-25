@@ -17,3 +17,14 @@ test("renders inline and block math", async () => {
 test("uses the configured code highlighter", async () => {
   expect(await parser.parse("```ts\nconst value = 1\n```\n")).toBe('<pre data-language="ts">const value = 1</pre>\n')
 })
+
+test("renders single tildes literally", async () => {
+  expect(await parser.parse("Quota impact: ~1.35× deepseek's rate (~$0.014/call)")).toBe(
+    "<p>Quota impact: ~1.35× deepseek&#39;s rate (~$0.014/call)</p>\n",
+  )
+})
+
+test("renders double tildes as strikethrough", async () => {
+  expect(await parser.parse("~~deleted~~ and ~kept~")).toBe("<p><del>deleted</del> and ~kept~</p>\n")
+  expect(await parser.parse("~~deleted **bold** text~~")).toBe("<p><del>deleted <strong>bold</strong> text</del></p>\n")
+})

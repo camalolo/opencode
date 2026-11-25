@@ -12,9 +12,25 @@ export function createMarkdownParser(highlight: (code: string, language: string)
         },
       },
     },
+    doubleTildeStrikethrough,
     katexExtension,
     markedShiki({ highlight }),
   )
+}
+
+// GFM treats a pair of single tildes (`~text~`) as strikethrough. Prose uses a
+// lone `~` for "approximately", so two of them in one line would silently
+// strike out everything in between. Only honor `~~`; a single `~` stays text.
+const doubleTildeStrikethrough: MarkedExtension = {
+  extensions: [
+    {
+      name: "singleTilde",
+      level: "inline",
+      tokenizer(src) {
+        return src.startsWith("~") && !src.startsWith("~~") ? { type: "text", raw: "~", text: "~" } : undefined
+      },
+    },
+  ],
 }
 
 const inlineMathRegex = /^\\\(((?:\\.|[^\\\n])*?)\\\)/
