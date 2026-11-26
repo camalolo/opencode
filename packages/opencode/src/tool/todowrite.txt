@@ -26,6 +26,7 @@ Skip when:
 - Mark `completed` only after the required work is actually done, including any required verification. Never based on intent.
 - Keep exactly one `in_progress` while work remains
 - If blocked or partial, keep it `in_progress` and add a follow-up todo describing the blocker
+- Before you stop, reconcile the list: mark finished items `completed` and cancel items you will not do. Stopping with open items makes the harness remind you to continue.
 - Preserve user-provided commands verbatim (flags, args, order)
 - Items should be specific and actionable; break large work into smaller steps
 

@@ -41,6 +41,7 @@ import { SessionSleepScheduler } from "@/session/sleep-scheduler"
 import { SessionStatus } from "@/session/status"
 import { SessionSummary } from "@/session/summary"
 import { Todo } from "@/session/todo"
+import { SessionTodoKeeper } from "@/session/todo-keeper"
 import { SessionShare } from "@/share/session"
 import { ShareNext } from "@/share/share-next"
 import { Skill } from "@/skill"
@@ -257,6 +258,7 @@ const app = LayerNode.group([
   SessionRevert.node,
   SessionSummary.node,
   SessionPrompt.node,
+  SessionTodoKeeper.node,
   Instruction.node,
   LLM.node,
   LSP.node,

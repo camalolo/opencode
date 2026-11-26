@@ -32,7 +32,7 @@ const layer = Layer.effectDiscard(
       .register({
         [name]: Tool.make({
           description:
-            "Create and maintain a structured task list for the current coding session. Use it to track progress during multi-step work and keep todo statuses current.",
+            "Create and maintain a structured task list for the current coding session. Use it to track progress during multi-step work and keep todo statuses current. Reconcile open items before you stop; stopping with open items triggers a reminder to continue.",
           input: Input,
           output: Output,
           toModelOutput: ({ output }) => [{ type: "text", text: toModelOutput(output) }],
