@@ -1,4 +1,5 @@
 import type { Session } from "@opencode-ai/sdk/v2/client"
+import { DateTime } from "luxon"
 import { type Accessor, createMemo, For, Show, Suspense } from "solid-js"
 import { Spinner } from "@opencode-ai/ui/spinner"
 import { ScrollView } from "@opencode-ai/ui/scroll-view"
@@ -51,6 +52,7 @@ export type HomeSessionsViewProps = {
   searchResults: Accessor<HomeSessionRecord[]>
   searchActive: Accessor<string>
   searchNoResultsLabel: Accessor<string>
+  lastActivityAt: (record: HomeSessionRecord) => number
   titleOpacity: (id: HomeSessionGroup["id"]) => number
   isOpenTab: (record: HomeSessionRecord) => boolean
   onCreateSession: () => void
@@ -497,6 +499,7 @@ function HomeSessionRow(props: HomeSessionsViewProps & { record: HomeSessionReco
         <Show when={showProjectName()}>
           <HomeSessionProjectName name={props.record.projectName} />
         </Show>
+        <HomeSessionLastActivity value={props.lastActivityAt(props.record)} language={props.language} />
       </button>
       <Show when={SHOW_HOME_SESSION_ARCHIVE}>
         <div
@@ -547,6 +550,29 @@ function HomeSessionProjectName(props: { name: string; search?: boolean }) {
       classList={{ "text-[13px] leading-4 tracking-[-0.04px]": !!props.search }}
     >
       {props.name}
+    </span>
+  )
+}
+
+function HomeSessionLastActivity(props: { value: number; language: ReturnType<typeof useLanguage> }) {
+  const full = createMemo(() =>
+    DateTime.fromMillis(props.value).setLocale(props.language.intl()).toLocaleString(DateTime.DATETIME_MED),
+  )
+  const text = createMemo(() => {
+    const time = DateTime.fromMillis(props.value).setLocale(props.language.intl())
+    // Drop the year inside the current year; the full date stays in the tooltip.
+    const format =
+      time.year === DateTime.local().year
+        ? ({ month: "short", day: "numeric", hour: "numeric", minute: "2-digit" } as const)
+        : DateTime.DATETIME_MED
+    return time.toLocaleString(format)
+  })
+  return (
+    <span
+      class="shrink-0 whitespace-nowrap text-[12px] leading-4 tracking-[-0.04px] text-v2-text-text-faint tabular-nums [font-weight:440]"
+      title={full()}
+    >
+      {text()}
     </span>
   )
 }

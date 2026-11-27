@@ -172,6 +172,8 @@ export function createHomeSessionsController(home: HomeController) {
       groups,
       loading: () => sessionLoad.isLoading,
       searchRecords: allRecords,
+      lastActivityAt: (record: HomeSessionRecord) =>
+        record.session.time.updated ?? record.session.time.created,
     },
     session: {
       showProjectName: () => !home.project.selected(),
